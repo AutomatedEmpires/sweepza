@@ -20,6 +20,7 @@ const GITHUB_API = "https://api.github.com"
 const OWNER = process.env.GITHUB_OWNER ?? "AutomatedEmpires"
 const REPO = process.env.GITHUB_REPO ?? "sweepza"
 const PER_PAGE = 50
+const MAX_PAGES = 100
 
 const repoItems = worker.database("repoItems", {
   type: "managed",
@@ -112,8 +113,14 @@ const labelsToString = (labels?: GitHubLabel[]) =>
     .filter((name): name is string => Boolean(name))
     .join(", ")
 
-worker.sync("githubSync", { mode: "replace", schedule: "30m" }, async () => {
-  for (let page = 1; ; page += 1) {
+worker.sync("githubSync", {
+  database: repoItems,
+  mode: "replace",
+  schedule: "30m",
+  execute: async () => {
+    const changes = []
+
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
     const issues = await gh<GitHubIssue>(
       `/repos/${OWNER}/${REPO}/issues?state=all&per_page=${PER_PAGE}&page=${page}`,
     )
@@ -122,25 +129,28 @@ worker.sync("githubSync", { mode: "replace", schedule: "30m" }, async () => {
     for (const issue of issues) {
       if (issue.pull_request) continue
 
-      await repoItems.upsert(
-        Builder.row({
-          Title: issue.title,
-          "Node ID": issue.node_id,
-          Number: issue.number,
-          Type: "Issue",
-          State: issue.state === "open" ? "Open" : "Closed",
-          Author: issue.user?.login ?? "",
-          Labels: labelsToString(issue.labels),
-          Branch: "",
-          URL: issue.html_url,
-          Created: issue.created_at,
-          Updated: issue.updated_at,
-        }),
-      )
+      changes.push({
+        type: "upsert" as const,
+        key: issue.node_id,
+        properties: {
+          Title: Builder.title(issue.title),
+          "Node ID": Builder.richText(issue.node_id),
+          Number: Builder.number(issue.number),
+          Type: Builder.select("Issue"),
+          State: Builder.select(issue.state === "open" ? "Open" : "Closed"),
+          Author: Builder.richText(issue.user?.login ?? ""),
+          Labels: Builder.richText(labelsToString(issue.labels)),
+          Branch: Builder.richText(""),
+          URL: Builder.url(issue.html_url),
+          Created: Builder.dateTime(issue.created_at),
+          Updated: Builder.dateTime(issue.updated_at),
+        },
+        upstreamUpdatedAt: issue.updated_at,
+      })
     }
   }
 
-  for (let page = 1; ; page += 1) {
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
     const pulls = await gh<GitHubPull>(
       `/repos/${OWNER}/${REPO}/pulls?state=all&per_page=${PER_PAGE}&page=${page}`,
     )
@@ -148,21 +158,27 @@ worker.sync("githubSync", { mode: "replace", schedule: "30m" }, async () => {
 
     for (const pull of pulls) {
       const state = pull.merged_at ? "Merged" : pull.state === "open" ? "Open" : "Closed"
-      await repoItems.upsert(
-        Builder.row({
-          Title: pull.title,
-          "Node ID": pull.node_id,
-          Number: pull.number,
-          Type: "Pull Request",
-          State: state,
-          Author: pull.user?.login ?? "",
-          Labels: labelsToString(pull.labels),
-          Branch: pull.head?.ref ?? "",
-          URL: pull.html_url,
-          Created: pull.created_at,
-          Updated: pull.updated_at,
-        }),
-      )
+      changes.push({
+        type: "upsert" as const,
+        key: pull.node_id,
+        properties: {
+          Title: Builder.title(pull.title),
+          "Node ID": Builder.richText(pull.node_id),
+          Number: Builder.number(pull.number),
+          Type: Builder.select("Pull Request"),
+          State: Builder.select(state),
+          Author: Builder.richText(pull.user?.login ?? ""),
+          Labels: Builder.richText(labelsToString(pull.labels)),
+          Branch: Builder.richText(pull.head?.ref ?? ""),
+          URL: Builder.url(pull.html_url),
+          Created: Builder.dateTime(pull.created_at),
+          Updated: Builder.dateTime(pull.updated_at),
+        },
+        upstreamUpdatedAt: pull.updated_at,
+      })
     }
   }
+
+    return { changes, hasMore: false }
+  },
 })
