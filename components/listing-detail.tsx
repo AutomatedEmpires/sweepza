@@ -9,6 +9,7 @@ import { track } from "@/lib/analytics";
 import {
   SOURCE_LABEL_TEXT,
   computeBadges,
+  daysUntil,
   isExpired,
 } from "@/lib/listing-badges";
 import {
@@ -33,6 +34,14 @@ interface RuleRow {
   value: string;
 }
 
+function countdownLabel(listing: Listing): string {
+  if (isExpired(listing)) return "Ended";
+  const days = daysUntil(listing.endDate);
+  if (days <= 0) return "Ends today";
+  if (days === 1) return "1 day left";
+  return `${days} days left`;
+}
+
 export function ListingDetail({ listing }: { listing: Listing }) {
   const store = useSeekerState();
   const expired = isExpired(listing);
@@ -42,6 +51,8 @@ export function ListingDetail({ listing }: { listing: Listing }) {
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [hostOpen, setHostOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [reported, setReported] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -103,6 +114,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
+  const hostName = listing.host?.name ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
@@ -110,6 +122,10 @@ export function ListingDetail({ listing }: { listing: Listing }) {
   const entered = uiState === "entered";
   const won = uiState === "won";
   const skipped = uiState === "skipped";
+
+  const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
+  const endLabel = formatEndDate(listing.endDate);
+  const countdown = countdownLabel(listing);
 
   const prizeMeta = [
     listing.prizeCategory,
@@ -194,78 +210,246 @@ export function ListingDetail({ listing }: { listing: Listing }) {
         Discover
       </Link>
 
-      {/* 1. Image */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-card border border-sand bg-sand">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={listing.imageAltText ?? listing.prizeName}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-ink/30">
-            <Icon name="gift" size={64} />
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={toggleSaved}
-          aria-pressed={saved}
-          aria-label={saved ? "Saved" : "Save listing"}
-          className={cn(
-            "absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full backdrop-blur transition",
-            saved ? "bg-ember text-cream" : "bg-cream/90 text-ink",
+      {/* Hero card */}
+      <div className="overflow-hidden rounded-card border border-sand bg-cream shadow-sm">
+        {/* Photo + overlays */}
+        <div className="relative aspect-[4/3] w-full bg-sand">
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt={listing.imageAltText ?? listing.prizeName}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-ink/30">
+              <Icon name="gift" size={64} />
+            </div>
           )}
-        >
-          <Icon name="bookmark" size={20} />
-        </button>
-      </div>
 
-      {/* 2. Badges */}
-      {badges.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {badges.map((badge) => (
-            <ListingBadge key={badge.id} badge={badge} />
-          ))}
+          {/* Host seal */}
+          <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-cream/90 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur">
+            {listing.host?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={listing.host.logoUrl}
+                alt={listing.host.name}
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            ) : (
+              <span className="grid h-7 w-7 place-items-center rounded-full bg-sand text-[11px] font-bold text-ink/60">
+                {hostName.charAt(0)}
+              </span>
+            )}
+            <span className="max-w-[7rem] truncate text-xs font-semibold text-ink">
+              {hostName}
+            </span>
+            {hostVerified && (
+              <Icon name="verified" size={14} className="text-moss" />
+            )}
+          </div>
+
+          {/* Category ribbon */}
+          {listing.prizeCategory && (
+            <span className="absolute left-1/2 top-3 -translate-x-1/2 -rotate-1 rounded-md bg-moss px-3 py-1 font-display text-sm uppercase tracking-wide text-cream shadow-sm">
+              {listing.prizeCategory}
+            </span>
+          )}
+
+          {/* Save */}
+          <button
+            type="button"
+            onClick={toggleSaved}
+            aria-pressed={saved}
+            aria-label={saved ? "Saved" : "Save listing"}
+            className={cn(
+              "absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full shadow-sm backdrop-blur transition",
+              saved ? "bg-ember text-cream" : "bg-cream/90 text-ink",
+            )}
+          >
+            <Icon name="bookmark" size={20} />
+          </button>
+
+          {/* Flag / report */}
+          <button
+            type="button"
+            onClick={() => setReported((r) => !r)}
+            aria-pressed={reported}
+            aria-label={reported ? "Reported" : "Report listing"}
+            className={cn(
+              "absolute right-3 top-16 grid h-10 w-10 place-items-center rounded-full shadow-sm backdrop-blur transition",
+              reported ? "bg-ember text-cream" : "bg-cream/90 text-ink/70",
+            )}
+          >
+            <Icon name="flag" size={18} />
+          </button>
+
+          {/* Urgency / trust badges */}
+          {badges.length > 0 && (
+            <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 pr-3">
+              {badges.slice(0, 4).map((badge) => (
+                <ListingBadge key={badge.id} badge={badge} />
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* 3. Title */}
-      <h1 className="mt-3 text-2xl font-bold leading-tight text-ink">
-        {listing.title}
-      </h1>
+        {/* Cream content panel */}
+        <div className="relative -mt-5 rounded-t-[2rem] bg-cream px-5 pb-5 pt-5">
+          <h1 className="font-display text-3xl leading-tight text-ink">
+            <span className="box-decoration-clone bg-gradient-to-b from-transparent to-moss/25 px-0.5">
+              {listing.title}
+            </span>
+          </h1>
 
-      {/* 4. Host row */}
-      <div className="mt-3 flex items-center gap-2">
-        {listing.host?.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={listing.host.logoUrl}
-            alt={listing.host.name}
-            className="h-7 w-7 rounded-full object-cover"
-          />
-        ) : (
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-sand text-[11px] font-bold text-ink/60">
-            {(listing.host?.name ?? "Sweepza").charAt(0)}
-          </span>
-        )}
-        <span className="truncate text-sm font-medium text-ink/75">
-          {listing.host?.name ?? sourceText}
-        </span>
-        {hostVerified && (
-          <Icon name="verified" size={15} className="shrink-0 text-sky" />
-        )}
-        <span className="ml-auto whitespace-nowrap text-xs font-medium text-ink/45">
-          {sourceText}
-        </span>
+          <p className="mt-1 text-xs font-medium text-ink/45">
+            {hostName} · {sourceText}
+          </p>
+
+          <p className="mt-2 text-sm leading-relaxed text-ink/70">
+            {listing.shortDescription}
+          </p>
+
+          {/* Dashed divider with doodle */}
+          <div className="relative my-4 flex items-center justify-center">
+            <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-sand" />
+            <span className="relative bg-cream px-2 text-moss">
+              <Icon name="gift" size={16} />
+            </span>
+          </div>
+
+          {/* Begins / Ends */}
+          <div className="flex items-stretch text-center">
+            <div className="flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+                Begins
+              </p>
+              <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
+                <Icon name="calendar" size={14} className="text-ink/40" />
+                {startLabel}
+              </p>
+            </div>
+            <div className="mx-3 w-px bg-sand" />
+            <div className="flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+                Ends
+              </p>
+              <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
+                <Icon name="calendar" size={14} className="text-ink/40" />
+                {endLabel}
+              </p>
+              <p
+                className={cn(
+                  "text-[11px] font-semibold",
+                  expired ? "text-ink/40" : "text-ember",
+                )}
+              >
+                {countdown}
+              </p>
+            </div>
+          </div>
+
+          {/* Official rules pill */}
+          {listing.officialRulesUrl && (
+            <a
+              href={listing.officialRulesUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:bg-ink/5"
+            >
+              <Icon name="rules" size={14} /> Official Rules
+            </a>
+          )}
+
+          {/* Enter + info */}
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleEnter}
+              disabled={expired}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-base font-semibold transition",
+                expired
+                  ? "cursor-not-allowed bg-ink/10 text-ink/40"
+                  : won
+                    ? "bg-moss text-cream"
+                    : entered
+                      ? "bg-moss/15 text-moss"
+                      : "bg-moss text-cream hover:bg-moss/90",
+              )}
+            >
+              {expired ? (
+                "Sweepstakes ended"
+              ) : won ? (
+                <>
+                  <Icon name="trophy" size={18} /> Won
+                </>
+              ) : entered ? (
+                <>
+                  <Icon name="check" size={18} /> Entered — enter again
+                </>
+              ) : (
+                <>
+                  Enter Now <Icon name="send" size={18} />
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInfoOpen((o) => !o)}
+              aria-expanded={infoOpen}
+              aria-label="About entering"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
+            >
+              <Icon name="info" size={20} />
+            </button>
+          </div>
+
+          {infoOpen && (
+            <p className="mt-2 rounded-card border border-sand bg-cream/70 p-3 text-xs leading-relaxed text-ink/65">
+              Entering opens the host&apos;s official entry page in a new tab and
+              marks this sweepstakes as entered for you. Always read the official
+              rules — Sweepza never charges to enter.
+            </p>
+          )}
+
+          {/* Secondary actions */}
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleSkip}
+              aria-pressed={skipped}
+              aria-label="Skip listing"
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink",
+                skipped && "text-ink",
+              )}
+            >
+              <Icon name="skip" size={15} /> {skipped ? "Skipped" : "Skip"}
+            </button>
+            <span className="text-ink/20">·</span>
+            <button
+              type="button"
+              onClick={handleShare}
+              aria-label="Share listing"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink"
+            >
+              <Icon name="share" size={15} /> Share
+            </button>
+          </div>
+
+          {/* Footer microcopy */}
+          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+            No purchase necessary
+          </p>
+        </div>
       </div>
 
-      {/* 5. Prize summary */}
+      {/* Prize summary */}
       <div className="mt-4 rounded-card border border-sand bg-cream/60 p-4">
         <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ember/10 text-ember">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-moss/10 text-moss">
             <Icon name="gift" size={20} />
           </span>
           <div className="min-w-0">
@@ -276,76 +460,16 @@ export function ListingDetail({ listing }: { listing: Listing }) {
               {listing.prizeName}
             </p>
             {prizeValue && (
-              <p className="text-sm font-semibold text-ember">
-                {prizeValue} value
-              </p>
+              <p className="text-sm font-semibold text-ink">{prizeValue} value</p>
             )}
             {prizeMeta && (
               <p className="mt-0.5 text-xs text-ink/55">{prizeMeta}</p>
             )}
           </div>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-ink/70">
-          {listing.shortDescription}
-        </p>
       </div>
 
-      {/* 6. Primary Enter + actions */}
-      <div className="mt-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleEnter}
-          disabled={expired}
-          className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold transition",
-            expired
-              ? "cursor-not-allowed bg-ink/10 text-ink/40"
-              : won
-                ? "bg-moss text-cream"
-                : entered
-                  ? "bg-moss/15 text-moss"
-                  : "bg-ember text-cream hover:bg-ember/90",
-          )}
-        >
-          {expired ? (
-            "Sweepstakes ended"
-          ) : won ? (
-            <>
-              <Icon name="trophy" size={16} /> Won
-            </>
-          ) : entered ? (
-            <>
-              <Icon name="check" size={16} /> Entered — enter again
-            </>
-          ) : (
-            "Enter sweepstakes"
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleSkip}
-          aria-pressed={skipped}
-          aria-label="Skip listing"
-          className={cn(
-            "grid h-11 w-11 shrink-0 place-items-center rounded-full border border-sand text-ink/60 transition",
-            skipped && "bg-ink/5 text-ink",
-          )}
-        >
-          <Icon name="skip" size={18} />
-        </button>
-
-        <button
-          type="button"
-          onClick={handleShare}
-          aria-label="Share listing"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
-        >
-          <Icon name="share" size={18} />
-        </button>
-      </div>
-
-      {/* 7. Rules snapshot */}
+      {/* Rules snapshot */}
       <div className="mt-6">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/45">
           Rules snapshot
@@ -366,19 +490,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
         </dl>
       </div>
 
-      {/* 8. Official rules link */}
-      {listing.officialRulesUrl && (
-        <a
-          href={listing.officialRulesUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-sky transition hover:underline"
-        >
-          <Icon name="verified" size={16} /> View official rules
-        </a>
-      )}
-
-      {/* 9. Host popup access */}
+      {/* Host popup access */}
       {listing.host ? (
         <div className="mt-6">
           <button
@@ -403,7 +515,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
               <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
                 {listing.host.name}
                 {hostVerified && (
-                  <Icon name="verified" size={14} className="text-sky" />
+                  <Icon name="verified" size={14} className="text-moss" />
                 )}
               </span>
               <span className="block text-xs text-ink/55">
@@ -440,7 +552,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
         </div>
       )}
 
-      {/* 10. Related Winner Wall */}
+      {/* Related Winner Wall */}
       {listing.winnerReported && (
         <div className="mt-6 rounded-card border border-moss/30 bg-moss/5 p-4">
           <div className="flex items-center gap-2 text-moss">
