@@ -1,0 +1,3 @@
+# Sweepza
+
+Sweepstakes | Simplified. Bootstrapping the foundation…
