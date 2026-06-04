@@ -47,3 +47,10 @@ Secrets via GitHub Actions + Vercel env (referenced through `lib/env.ts`) · Hos
 - **`.env.example`** is referenced by `README.md` but not committed. Add it (Clerk, Supabase, Stripe, PostHog, Vercel keys) using the exact variable names from `lib/env.ts`. (Skipped here to avoid guessing var names.)
 - **CI workflow:** the connected GitHub app lacks the `workflows` permission, so I could not add/modify `.github/workflows`. Confirm CI runs lint + build + typecheck on PRs; add it if missing.
 - After bumping pnpm to 10.12.4, run `pnpm install` to refresh the lockfile and confirm CI is green before merge.
+
+---
+
+## 2026-06-04 update — cross-app provider lock formalized + TypeScript aligned (PR: `chore/ts-runtime-align`)
+- **Auth = Clerk and Maps = Mapbox are now formally LOCKED** as the cross-app standard (founder directive, 2026-06-04). Sweepza already complies (Clerk; no maps) — **no provider change.**
+- **This branch (`chore/ts-runtime-align`)** bumps **TypeScript `^5.6.3` → `^5.8.3`** to match E&E + BidSpace. That is the only code change in the PR; Node `24.16.0` / pnpm `10.12.4` / exact `engines.node` were already correct.
+- **E&E is being brought onto the standard in parallel** (Supabase Auth → Clerk, Azure Maps → Mapbox; tracked in E&E **issue #91**). When it lands, all three apps share identical auth/map provider config.
