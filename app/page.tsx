@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
+import { getPublicListings } from "@/lib/db/listings";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import { formatPrizeValue } from "@/lib/listing-format";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
 import type { Listing } from "@/lib/types/listing";
+
+export const dynamic = "force-dynamic";
 
 const STEPS: { icon: IconName; title: string; body: string }[] = [
   {
@@ -36,9 +38,10 @@ function Rail({ listings }: { listings: Listing[] }) {
   );
 }
 
-export default function HomePage() {
+export default async function HomePage() {
   const now = new Date();
-  const active = MOCK_LISTINGS.filter((l) => !isExpired(l, now));
+  const listings = await getPublicListings({ limit: 30 });
+  const active = listings.filter((listing) => !isExpired(listing, now));
 
   const endingSoon = [...active]
     .sort((a, b) => daysUntil(a.endDate, now) - daysUntil(b.endDate, now))
