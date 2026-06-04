@@ -19,16 +19,20 @@ export type SourceLabel =
   | "host_submitted"
   | "claimed_by_host";
 
+// Stored lifecycle states — canonical locked enum `lifecycle_status`.
+// Source of truth: "Sweepza — Listing States & Quality Gate [CANONICAL]".
+// Visibility and moderation are separate overlays, not lifecycle: the old
+// `submitted`/`needs_review` collapse to `pending_review`, `suspended` =
+// `paused` + moderation_status `action_taken`, and `hidden` lives on
+// visibility_status. Mirrors lib/db/enums.ts LIFECYCLE_STATUSES.
 export type LifecycleStatus =
   | "draft"
-  | "submitted"
-  | "needs_review"
+  | "pending_review"
   | "active"
+  | "paused"
   | "expired"
   | "archived"
-  | "rejected"
-  | "hidden"
-  | "suspended";
+  | "rejected";
 
 export type HostVerificationStatus =
   | "none"
