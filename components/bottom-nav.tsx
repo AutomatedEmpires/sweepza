@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
+// Seeker-leaning bottom nav for MVP. Full role-scoped nav (seeker Me tab,
+// host-mode nav) arrives with auth in Lane B / Phase 4.
 const items = [
-  { href: "/", label: "Discover" },
-  { href: "/listings", label: "Browse" },
+  { href: "/discover", label: "Discover" },
+  { href: "/saved", label: "Saved" },
   { href: "/winners", label: "Winners" },
   { href: "/host", label: "Host" },
 ] as const;
@@ -20,10 +22,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-stretch border-t border-sand bg-cream/95 backdrop-blur"
     >
       {items.map((item) => {
-        const active =
-          item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link
             key={item.href}

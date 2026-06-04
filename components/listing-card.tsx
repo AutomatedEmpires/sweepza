@@ -1,18 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
+import { track } from "@/lib/analytics";
 import {
   SOURCE_LABEL_TEXT,
   computeBadges,
   daysUntil,
   isExpired,
 } from "@/lib/listing-badges";
+import { useSeekerState } from "@/lib/seeker-state";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const MAX_CARD_BADGES = 3;
+
+// Canonical discovery surfaces for analytics (scroll/swipe/detail). Undefined
+// means a non-discovery context (e.g. the seeker dashboard) where a view event
+// should not fire.
+export type CardSurface = "scroll" | "swipe" | "detail";
 
 const ENTRY_FREQUENCY_LABEL: Record<Listing["entryFrequency"], string> = {
   one_time: "One-time entry",
@@ -53,12 +60,70 @@ function formatPrizeValue(value?: number, currency = "USD"): string | null {
   }
 }
 
-export function ListingCard({ listing }: { listing: Listing }) {
+export function ListingCard({
+  listing,
+  surface,
+}: {
+  listing: Listing;
+  surface?: CardSurface;
+}) {
+  const store = useSeekerState();
   const expired = isExpired(listing);
   const initialState: SeekerUiState =
     listing.seekerState?.primaryUiState ?? "none";
-  const [uiState, setUiState] = useState<SeekerUiState>(initialState);
-  const [saved, setSaved] = useState(initialState === "saved");
+
+  // Falls back to local state when no seeker-state provider is mounted.
+  const [localState, setLocalState] = useState<SeekerUiState>(initialState);
+  const [localSaved, setLocalSaved] = useState(initialState === "saved");
+
+  const uiState = store ? store.getState(listing.id) ?? initialState : localState;
+  const saved = store ? store.isSaved(listing.id) : localSaved;
+
+  const baseProps = useMemo(
+    () => ({
+      listing_id: listing.id,
+      source_label: listing.sourceLabel,
+      ...(surface ? { surface } : {}),
+    }),
+    [listing.id, listing.sourceLabel, surface],
+  );
+
+  useEffect(() => {
+    if (surface) track("listing_viewed", { ...baseProps, category: listing.prizeCategory });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function setPrimary(next: SeekerUiState) {
+    if (store) store.setPrimaryState(listing.id, next);
+    else setLocalState(next);
+  }
+
+  function toggleSaved() {
+    const willSave = !saved;
+    if (store) store.toggleSaved(listing.id);
+    else setLocalSaved(willSave);
+    if (willSave) track("listing_saved", baseProps);
+  }
+
+  function handleEnter() {
+    if (expired || uiState === "won") return;
+    track("listing_enter_clicked", baseProps);
+    if (typeof window !== "undefined") {
+      window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
+    }
+    setPrimary("entered");
+    track("listing_marked_entered", { listing_id: listing.id });
+  }
+
+  function handleSkip() {
+    const next = uiState === "skipped" ? "none" : "skipped";
+    setPrimary(next);
+    if (next === "skipped") track("listing_skipped", baseProps);
+  }
+
+  function handleShare() {
+    track("listing_shared", { ...baseProps, share_type: "link" });
+  }
 
   const badges = useMemo(
     () => computeBadges(listing).slice(0, MAX_CARD_BADGES),
@@ -74,16 +139,6 @@ export function ListingCard({ listing }: { listing: Listing }) {
   const entered = uiState === "entered";
   const won = uiState === "won";
   const skipped = uiState === "skipped";
-
-  function handleEnter() {
-    if (expired || won) return;
-    // Mock-only in Lane C. Lane D wires real seeker-state writes + PostHog
-    // (listing_enter_clicked / listing_marked_entered).
-    if (typeof window !== "undefined") {
-      window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
-    }
-    setUiState("entered");
-  }
 
   return (
     <article
@@ -118,7 +173,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
 
         <button
           type="button"
-          onClick={() => setSaved((s) => !s)}
+          onClick={toggleSaved}
           aria-pressed={saved}
           aria-label={saved ? "Saved" : "Save listing"}
           className={cn(
@@ -225,7 +280,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
 
           <button
             type="button"
-            onClick={() => setUiState((s) => (s === "skipped" ? "none" : "skipped"))}
+            onClick={handleSkip}
             aria-pressed={skipped}
             aria-label="Skip listing"
             className={cn(
@@ -238,6 +293,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
 
           <button
             type="button"
+            onClick={handleShare}
             aria-label="Share listing"
             className="grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
           >
