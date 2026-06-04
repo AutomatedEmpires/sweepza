@@ -1,9 +1,12 @@
 import { DiscoverFeed } from "@/components/discover-feed";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
+import { getPublicListings } from "@/lib/db/listings";
 
 export const metadata = { title: "Discover" };
+export const dynamic = "force-dynamic";
 
-export default function DiscoverPage() {
+export default async function DiscoverPage() {
+  const listings = await getPublicListings();
+
   return (
     <section className="px-4 pb-8 pt-8">
       <header className="mb-4 flex flex-col gap-1 px-1">
@@ -12,7 +15,7 @@ export default function DiscoverPage() {
           Scroll the feed, filter fast, and track what you enter.
         </p>
       </header>
-      <DiscoverFeed listings={MOCK_LISTINGS} />
+      <DiscoverFeed listings={listings} />
     </section>
   );
 }
