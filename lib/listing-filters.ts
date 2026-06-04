@@ -101,6 +101,29 @@ export function filterListings(
   );
 }
 
+// Free-text search across card-relevant fields. All whitespace-separated terms
+// must match (AND), case-insensitive substring. Empty query is a no-op.
+export function searchListings(listings: Listing[], query: string): Listing[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return listings;
+  const terms = q.split(/\s+/);
+  return listings.filter((listing) => {
+    const haystack = [
+      listing.title,
+      listing.shortDescription,
+      listing.prizeName,
+      listing.prizeCategory,
+      listing.originalSponsorName,
+      listing.host?.name,
+      ...(listing.tags ?? []),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
 function time(iso?: string): number {
   return iso ? new Date(iso).getTime() : 0;
 }
