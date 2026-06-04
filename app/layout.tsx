@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
+import { SeekerStateProvider } from "@/lib/seeker-state";
+import { MOCK_LISTINGS } from "@/lib/mock/listings";
+import type { SeekerUiState } from "@/lib/types/listing";
 
 export const metadata: Metadata = {
   title: {
@@ -26,6 +29,15 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
+// Seed the seeker-state store from mock data so Discover and Saved share state
+// within a session. Replaced by Supabase-backed state in Lane B.
+const initialSeekerState: Record<string, SeekerUiState> = Object.fromEntries(
+  MOCK_LISTINGS.filter((l) => l.seekerState).map((l) => [
+    l.id,
+    l.seekerState!.primaryUiState,
+  ]),
+);
+
 export default function RootLayout({
   children,
 }: {
@@ -34,7 +46,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <MobileShell>{children}</MobileShell>
+        <SeekerStateProvider initial={initialSeekerState}>
+          <MobileShell>{children}</MobileShell>
+        </SeekerStateProvider>
       </body>
     </html>
   );
