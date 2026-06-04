@@ -19,6 +19,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        // Hand-drawn marker face for sweeps-card titles + ribbons.
+        display: ["var(--font-display)", "var(--font-sans)", "system-ui", "cursive"],
       },
     },
   },

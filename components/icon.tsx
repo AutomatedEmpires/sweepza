@@ -18,7 +18,11 @@ export type IconName =
   | "share"
   | "trophy"
   | "location"
-  | "gift";
+  | "gift"
+  | "flag"
+  | "info"
+  | "send"
+  | "rules";
 
 const GLYPHS: Record<IconName, ReactNode> = {
   calendar: (
@@ -62,6 +66,31 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <rect x="3.5" y="9" width="17" height="11.5" rx="1.5" />
       <path d="M3 9h18v4H3zM12 9v11.5" />
       <path d="M12 9S10.5 4.5 8 4.5 5.5 8 8 9M12 9s1.5-4.5 4-4.5S18.5 8 16 9" />
+    </>
+  ),
+  flag: (
+    <>
+      <path d="M5.5 21V3.5" />
+      <path d="M5.5 4.5h11l-2.2 3.1 2.2 3.1h-11" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11.5v4.5M12 8h.01" />
+    </>
+  ),
+  send: (
+    <>
+      <path d="M21.5 2.5L2.5 11l7 2.6 2.6 7z" />
+      <path d="M21.5 2.5L9.5 13.6" />
+    </>
+  ),
+  rules: (
+    <>
+      <path d="M6 2.5h8l4 4V21H6z" />
+      <path d="M14 2.5V6.5h4" />
+      <path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3" />
     </>
   ),
 };

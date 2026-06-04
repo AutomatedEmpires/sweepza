@@ -1,9 +1,20 @@
 import type { Metadata, Viewport } from "next";
+import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
 import { SeekerStateProvider } from "@/lib/seeker-state";
 import { MOCK_LISTINGS } from "@/lib/mock/listings";
 import type { SeekerUiState } from "@/lib/types/listing";
+
+// Hand-drawn marker face for sweeps-card titles and ribbons. Exposed as the
+// `font-display` Tailwind token via the --font-display CSS variable. Body copy
+// continues to use the system sans stack.
+const display = Patrick_Hand({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -44,7 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={display.variable}>
       <body>
         <SeekerStateProvider initial={initialSeekerState}>
           <MobileShell>{children}</MobileShell>

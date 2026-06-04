@@ -12,11 +12,7 @@ import {
   daysUntil,
   isExpired,
 } from "@/lib/listing-badges";
-import {
-  ENTRY_FREQUENCY_LABEL,
-  endDateLabel,
-  formatPrizeValue,
-} from "@/lib/listing-format";
+import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
@@ -26,6 +22,14 @@ const MAX_CARD_BADGES = 3;
 // means a non-discovery context (e.g. the seeker dashboard) where a view event
 // should not fire.
 export type CardSurface = "scroll" | "swipe" | "detail";
+
+function countdownLabel(listing: Listing): string {
+  if (isExpired(listing)) return "Ended";
+  const days = daysUntil(listing.endDate);
+  if (days <= 0) return "Ends today";
+  if (days === 1) return "1 day left";
+  return `${days} days left`;
+}
 
 export function ListingCard({
   listing,
@@ -99,6 +103,7 @@ export function ListingCard({
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
+  const hostName = listing.host?.name ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
@@ -107,17 +112,18 @@ export function ListingCard({
   const won = uiState === "won";
   const skipped = uiState === "skipped";
 
-  const days = daysUntil(listing.endDate);
-  void days;
+  const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
+  const endLabel = formatEndDate(listing.endDate);
+  const countdown = countdownLabel(listing);
 
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-card border border-sand bg-white shadow-sm",
+        "relative overflow-hidden rounded-card border border-sand bg-cream shadow-sm",
         expired && "opacity-70",
       )}
     >
-      {/* Image zone */}
+      {/* Hero photo + overlays */}
       <div className="relative aspect-[4/3] w-full bg-sand">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -133,32 +139,8 @@ export function ListingCard({
           </div>
         )}
 
-        {badges.length > 0 && (
-          <div className="absolute left-3 top-3 flex flex-wrap gap-1.5 pr-12">
-            {badges.map((badge) => (
-              <ListingBadge key={badge.id} badge={badge} />
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={toggleSaved}
-          aria-pressed={saved}
-          aria-label={saved ? "Saved" : "Save listing"}
-          className={cn(
-            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition",
-            saved ? "bg-ember text-cream" : "bg-cream/90 text-ink",
-          )}
-        >
-          <Icon name="bookmark" size={18} />
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-col gap-3 p-4">
-        {/* Host identity zone */}
-        <div className="flex items-center gap-2">
+        {/* Host seal */}
+        <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-cream/90 py-0.5 pl-0.5 pr-2 shadow-sm backdrop-blur">
           {listing.host?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -168,61 +150,108 @@ export function ListingCard({
             />
           ) : (
             <span className="grid h-6 w-6 place-items-center rounded-full bg-sand text-[10px] font-bold text-ink/60">
-              {(listing.host?.name ?? "Sweepza").charAt(0)}
+              {hostName.charAt(0)}
             </span>
           )}
-          <span className="truncate text-xs font-medium text-ink/70">
-            {listing.host?.name ?? sourceText}
-          </span>
           {hostVerified && (
-            <Icon name="verified" size={14} className="shrink-0 text-sky" />
+            <Icon name="verified" size={13} className="text-moss" />
           )}
-          <span className="ml-auto whitespace-nowrap text-[11px] font-medium text-ink/45">
-            {sourceText}
+        </div>
+
+        {/* Category ribbon */}
+        {listing.prizeCategory && (
+          <span className="absolute left-1/2 top-3 -translate-x-1/2 -rotate-1 rounded-md bg-moss px-3 py-1 font-display text-sm uppercase tracking-wide text-cream shadow-sm">
+            {listing.prizeCategory}
+          </span>
+        )}
+
+        {/* Save */}
+        <button
+          type="button"
+          onClick={toggleSaved}
+          aria-pressed={saved}
+          aria-label={saved ? "Saved" : "Save listing"}
+          className={cn(
+            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full shadow-sm backdrop-blur transition",
+            saved ? "bg-ember text-cream" : "bg-cream/90 text-ink",
+          )}
+        >
+          <Icon name="bookmark" size={18} />
+        </button>
+
+        {/* Urgency / trust badges */}
+        {badges.length > 0 && (
+          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 pr-3">
+            {badges.map((badge) => (
+              <ListingBadge key={badge.id} badge={badge} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Cream content panel with curved top edge */}
+      <div className="relative -mt-4 rounded-t-[1.75rem] bg-cream px-4 pb-4 pt-4">
+        <h3 className="font-display text-xl leading-tight text-ink">
+          <Link
+            href={`/sweeps/${listing.slug}`}
+            className="line-clamp-2 decoration-moss decoration-2 underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+          >
+            {listing.title}
+          </Link>
+        </h3>
+
+        <p className="mt-0.5 truncate text-[11px] font-medium text-ink/45">
+          {hostName} · {sourceText}
+        </p>
+
+        {prizeValue && (
+          <p className="mt-1 text-sm font-semibold text-ink">{prizeValue} value</p>
+        )}
+        <p className="mt-1 line-clamp-2 text-sm text-ink/60">
+          {listing.shortDescription}
+        </p>
+
+        {/* Dashed divider with doodle */}
+        <div className="relative my-3 flex items-center justify-center">
+          <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-sand" />
+          <span className="relative bg-cream px-2 text-moss">
+            <Icon name="gift" size={15} />
           </span>
         </div>
 
-        {/* Prize / title zone */}
-        <div className="flex flex-col gap-1">
-          <h3 className="text-base font-bold leading-snug text-ink">
-            <Link
-              href={`/sweeps/${listing.slug}`}
-              className="line-clamp-2 hover:underline focus-visible:underline focus-visible:outline-none"
+        {/* Begins / Ends */}
+        <div className="flex items-stretch text-center">
+          <div className="flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+              Begins
+            </p>
+            <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
+              <Icon name="calendar" size={13} className="text-ink/40" />
+              {startLabel}
+            </p>
+          </div>
+          <div className="mx-2 w-px bg-sand" />
+          <div className="flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+              Ends
+            </p>
+            <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
+              <Icon name="calendar" size={13} className="text-ink/40" />
+              {endLabel}
+            </p>
+            <p
+              className={cn(
+                "text-[10px] font-semibold",
+                expired ? "text-ink/40" : "text-ember",
+              )}
             >
-              {listing.title}
-            </Link>
-          </h3>
-          {prizeValue && (
-            <p className="text-sm font-semibold text-ember">{prizeValue} value</p>
-          )}
-          <p className="line-clamp-2 text-sm text-ink/60">
-            {listing.shortDescription}
-          </p>
+              {countdown}
+            </p>
+          </div>
         </div>
 
-        {/* Rules snapshot zone */}
-        <dl className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink/70">
-          <div className="inline-flex items-center gap-1.5">
-            <Icon name="calendar" size={14} className="text-ink/40" />
-            <span>{endDateLabel(listing)}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5">
-            <Icon name="repeat" size={14} className="text-ink/40" />
-            <span>{ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}</span>
-          </div>
-          {listing.eligibilityCountry && (
-            <div className="inline-flex items-center gap-1.5">
-              <Icon name="location" size={14} className="text-ink/40" />
-              <span>
-                {listing.eligibilityCountry}
-                {listing.ageRequirement ? ` · ${listing.ageRequirement}+` : ""}
-              </span>
-            </div>
-          )}
-        </dl>
-
-        {/* Action zone */}
-        <div className="mt-1 flex items-center gap-2">
+        {/* Actions */}
+        <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
             onClick={handleEnter}
@@ -235,7 +264,7 @@ export function ListingCard({
                   ? "bg-moss text-cream"
                   : entered
                     ? "bg-moss/15 text-moss"
-                    : "bg-ember text-cream hover:bg-ember/90",
+                    : "bg-moss text-cream hover:bg-moss/90",
             )}
           >
             {expired ? (
@@ -249,7 +278,9 @@ export function ListingCard({
                 <Icon name="check" size={16} /> Entered
               </>
             ) : (
-              "Enter"
+              <>
+                Enter Now <Icon name="send" size={16} />
+              </>
             )}
           </button>
 
@@ -275,6 +306,11 @@ export function ListingCard({
             <Icon name="share" size={18} />
           </button>
         </div>
+
+        {/* Footer microcopy */}
+        <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+          No purchase necessary
+        </p>
       </div>
     </article>
   );
