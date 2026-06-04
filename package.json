@@ -11,9 +11,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:reset": "supabase db reset",
+    "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
