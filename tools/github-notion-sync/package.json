@@ -1,0 +1,21 @@
+{
+  "name": "@sweepza/github-notion-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Notion Worker: mirrors GitHub issues and pull requests into a managed Notion database (GitHub → Notion, one direction).",
+  "scripts": {
+    "build": "tsc --outDir dist --rootDir src --noEmit false",
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "deploy": "ntn workers deploy",
+    "sync": "ntn workers sync trigger githubSync"
+  },
+  "dependencies": {
+    "@notionhq/workers": ">=0.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "typescript": "^5.8.3"
+  }
+}

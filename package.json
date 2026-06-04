@@ -12,6 +12,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "echo \"(no tests yet)\"",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
