@@ -1,0 +1,36 @@
+"use client";
+
+import { cn } from "@/lib/cn";
+import { FILTER_CHIPS, type FilterChipId } from "@/lib/listing-filters";
+
+export function FilterChips({
+  active,
+  onToggle,
+}: {
+  active: FilterChipId[];
+  onToggle: (id: FilterChipId) => void;
+}) {
+  return (
+    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      {FILTER_CHIPS.map((chip) => {
+        const on = active.includes(chip.id);
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => onToggle(chip.id)}
+            aria-pressed={on}
+            className={cn(
+              "whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+              on
+                ? "border-ember bg-ember text-cream"
+                : "border-sand bg-white text-ink/70 hover:border-ink/20",
+            )}
+          >
+            {chip.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
