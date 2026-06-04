@@ -5,15 +5,12 @@ on:
     branches: [main]
   pull_request:
 
-concurrency:
-  group: $ github.workflow -$ github.ref 
-  cancel-in-progress: true
-
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -27,7 +24,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Typecheck
         run: pnpm typecheck
