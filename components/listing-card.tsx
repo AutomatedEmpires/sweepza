@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
@@ -11,6 +12,11 @@ import {
   daysUntil,
   isExpired,
 } from "@/lib/listing-badges";
+import {
+  ENTRY_FREQUENCY_LABEL,
+  endDateLabel,
+  formatPrizeValue,
+} from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
@@ -20,45 +26,6 @@ const MAX_CARD_BADGES = 3;
 // means a non-discovery context (e.g. the seeker dashboard) where a view event
 // should not fire.
 export type CardSurface = "scroll" | "swipe" | "detail";
-
-const ENTRY_FREQUENCY_LABEL: Record<Listing["entryFrequency"], string> = {
-  one_time: "One-time entry",
-  daily: "Daily entry",
-  weekly: "Weekly entry",
-  monthly: "Monthly entry",
-  instant_win: "Instant win",
-  other: "See rules",
-};
-
-function formatEndDate(endDate: string): string {
-  return new Date(endDate).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function endDateLabel(listing: Listing): string {
-  if (isExpired(listing)) return `Ended ${formatEndDate(listing.endDate)}`;
-  const days = daysUntil(listing.endDate);
-  if (days <= 0) return "Ends today";
-  if (days === 1) return "Ends tomorrow";
-  if (days <= 14) return `Ends in ${days} days`;
-  return `Ends ${formatEndDate(listing.endDate)}`;
-}
-
-function formatPrizeValue(value?: number, currency = "USD"): string | null {
-  if (value == null) return null;
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `$${value}`;
-  }
-}
 
 export function ListingCard({
   listing,
@@ -140,6 +107,9 @@ export function ListingCard({
   const won = uiState === "won";
   const skipped = uiState === "skipped";
 
+  const days = daysUntil(listing.endDate);
+  void days;
+
   return (
     <article
       className={cn(
@@ -214,8 +184,13 @@ export function ListingCard({
 
         {/* Prize / title zone */}
         <div className="flex flex-col gap-1">
-          <h3 className="line-clamp-2 text-base font-bold leading-snug text-ink">
-            {listing.title}
+          <h3 className="text-base font-bold leading-snug text-ink">
+            <Link
+              href={`/sweeps/${listing.slug}`}
+              className="line-clamp-2 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {listing.title}
+            </Link>
           </h3>
           {prizeValue && (
             <p className="text-sm font-semibold text-ember">{prizeValue} value</p>
@@ -240,7 +215,7 @@ export function ListingCard({
               <Icon name="location" size={14} className="text-ink/40" />
               <span>
                 {listing.eligibilityCountry}
-                {listing.ageRequirement ? ` \u00b7 ${listing.ageRequirement}+` : ""}
+                {listing.ageRequirement ? ` · ${listing.ageRequirement}+` : ""}
               </span>
             </div>
           )}
