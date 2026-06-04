@@ -196,7 +196,8 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
     }
     pointerIdRef.current = null;
     startRef.current = null;
-    const { x, y } = offset;
+    const x = offset.x;
+    const y = offset.y;
     if (y < -COMMIT_DISTANCE && Math.abs(y) > Math.abs(x)) {
       triggerLeave("enter");
       return;
@@ -251,6 +252,9 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
   const saveStrength = clamp(offset.x / COMMIT_DISTANCE);
   const skipStrength = clamp(-offset.x / COMMIT_DISTANCE);
   const enterStrength = clamp(-offset.y / COMMIT_DISTANCE);
+  const saveOverlayStyle: CSSProperties = { opacity: saveStrength };
+  const skipOverlayStyle: CSSProperties = { opacity: skipStrength };
+  const enterOverlayStyle: CSSProperties = { opacity: enterStrength };
   const visible = listings.slice(index, index + MAX_VISIBLE);
 
   return (
@@ -269,27 +273,27 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
       <div className="relative w-full">
         {visible.map((listing, depth) => {
           const isTop = depth === 0;
-          const layerStyle: CSSProperties = isTop
-            ? {
-                position: "relative",
-                zIndex: MAX_VISIBLE,
-                transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${offset.x * 0.04}deg)`,
-                transition: dragging
-                  ? "none"
-                  : `transform ${reducedMotion ? 0 : leaving ? THROW_MS : SNAP_MS}ms ease-out`,
-                cursor: dragging ? "grabbing" : "grab",
-                touchAction: "none",
-                userSelect: "none",
-              }
-            : {
-                position: "absolute",
-                inset: 0,
-                zIndex: MAX_VISIBLE - depth,
-                transform: `translateY(${depth * 12}px) scale(${1 - depth * 0.05})`,
-                transformOrigin: "top center",
-                transition: reducedMotion ? "none" : `transform ${SNAP_MS}ms ease-out`,
-                pointerEvents: "none",
-              };
+          const topStyle: CSSProperties = {
+            position: "relative",
+            zIndex: MAX_VISIBLE,
+            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${offset.x * 0.04}deg)`,
+            transition: dragging
+              ? "none"
+              : `transform ${reducedMotion ? 0 : leaving ? THROW_MS : SNAP_MS}ms ease-out`,
+            cursor: dragging ? "grabbing" : "grab",
+            touchAction: "none",
+            userSelect: "none",
+          };
+          const behindStyle: CSSProperties = {
+            position: "absolute",
+            inset: 0,
+            zIndex: MAX_VISIBLE - depth,
+            transform: `translateY(${depth * 12}px) scale(${1 - depth * 0.05})`,
+            transformOrigin: "top center",
+            transition: reducedMotion ? "none" : `transform ${SNAP_MS}ms ease-out`,
+            pointerEvents: "none",
+          };
+          const layerStyle = isTop ? topStyle : behindStyle;
           return (
             <div
               key={listing.id}
@@ -300,31 +304,31 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
               onPointerUp={isTop ? onPointerEnd : undefined}
               onPointerCancel={isTop ? onPointerEnd : undefined}
             >
-              {isTop && (
+              {isTop ? (
                 <>
                   <span
-                    style= opacity: saveStrength 
+                    style={saveOverlayStyle}
                     className="pointer-events-none absolute right-4 top-6 z-10 rotate-6 rounded-lg border-2 border-ember bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-ember"
                     aria-hidden
                   >
                     Save
                   </span>
                   <span
-                    style= opacity: skipStrength 
+                    style={skipOverlayStyle}
                     className="pointer-events-none absolute left-4 top-6 z-10 -rotate-6 rounded-lg border-2 border-ink bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-ink"
                     aria-hidden
                   >
                     Skip
                   </span>
                   <span
-                    style= opacity: enterStrength 
+                    style={enterOverlayStyle}
                     className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-lg border-2 border-moss bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-moss"
                     aria-hidden
                   >
                     Enter
                   </span>
                 </>
-              )}
+              ) : null}
               <div className="pointer-events-none select-none">
                 <ListingCard listing={listing} surface="swipe" />
               </div>
