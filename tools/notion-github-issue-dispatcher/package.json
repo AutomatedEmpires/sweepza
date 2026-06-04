@@ -1,0 +1,21 @@
+{
+  "name": "@sweepza/notion-github-issue-dispatcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Notion Worker: dispatches Ready-for-Engineering tasks from Notion into GitHub issues and writes the issue URL back to Notion.",
+  "scripts": {
+    "build": "tsc --outDir dist --rootDir src --noEmit false",
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "deploy": "ntn workers deploy",
+    "exec": "ntn workers exec dispatchTaskToGithub"
+  },
+  "dependencies": {
+    "@notionhq/workers": ">=0.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "typescript": "^5.8.3"
+  }
+}

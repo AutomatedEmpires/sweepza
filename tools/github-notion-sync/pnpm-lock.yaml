@@ -1,0 +1,104 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@notionhq/workers':
+        specifier: '>=0.0.0'
+        version: 0.4.0(@notionhq/client@5.22.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.13
+        version: 24.13.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+packages:
+
+  '@notionhq/client@5.22.0':
+    resolution: {integrity: sha512-lZ3JGBCd6O6MNHWn/58QcUqX1FgmlcODcx/EaUEEpuxLXF5tSi+v29Vzoz8mZ6JgDWDn5pMzzjB69QevYjQQZA==}
+    engines: {node: '>=18'}
+
+  '@notionhq/workers@0.4.0':
+    resolution: {integrity: sha512-+FgL9Xa6qS4EsIN9gVtfwt1rssfk9NIwx7tMS3d4b5Z6Kb5MRFgKLWllav2XCc2Lk94+h05+MvwgOcwgTPJfuw==}
+    engines: {node: '>=22.0.0', npm: '>=10.9.2'}
+    peerDependencies:
+      '@notionhq/client': '>=2.2.15'
+
+  '@types/node@24.13.0':
+    resolution: {integrity: sha512-5vtOqGQr4NJKeEzV441FcOi2MeG9UTWq9LqVLGneDdu4vlX17H8kQ2PA2UmNwCUGPVDj4oBjNhS7ReVEIWJJrg==}
+
+  ajv-formats@3.0.1:
+    resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
+    peerDependencies:
+      ajv: ^8.0.0
+    peerDependenciesMeta:
+      ajv:
+        optional: true
+
+  ajv@8.20.0:
+    resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  fast-deep-equal@3.1.3:
+    resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
+
+  fast-uri@3.1.2:
+    resolution: {integrity: sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ==}
+
+  json-schema-traverse@1.0.0:
+    resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
+
+  require-from-string@2.0.2:
+    resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
+    engines: {node: '>=0.10.0'}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  undici-types@7.18.2:
+    resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+
+snapshots:
+
+  '@notionhq/client@5.22.0': {}
+
+  '@notionhq/workers@0.4.0(@notionhq/client@5.22.0)':
+    dependencies:
+      '@notionhq/client': 5.22.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+
+  '@types/node@24.13.0':
+    dependencies:
+      undici-types: 7.18.2
+
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
+      ajv: 8.20.0
+
+  ajv@8.20.0:
+    dependencies:
+      fast-deep-equal: 3.1.3
+      fast-uri: 3.1.2
+      json-schema-traverse: 1.0.0
+      require-from-string: 2.0.2
+
+  fast-deep-equal@3.1.3: {}
+
+  fast-uri@3.1.2: {}
+
+  json-schema-traverse@1.0.0: {}
+
+  require-from-string@2.0.2: {}
+
+  typescript@5.9.3: {}
+
+  undici-types@7.18.2: {}
