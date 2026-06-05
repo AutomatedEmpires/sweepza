@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
+import { ShellUtilityBar } from "@/components/shell-utility-bar";
 import { SweepzaProviders } from "@/components/sweepza-providers";
 import { ensureCurrentAppUser } from "@/lib/auth";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
@@ -63,7 +64,9 @@ export default async function RootLayout({
           initialSeekerState={initialSeekerState}
           persistenceMode={authUser ? "remote" : "local"}
         >
-          <MobileShell>{children}</MobileShell>
+          <MobileShell utility={<ShellUtilityBar authUser={authUser} />}>
+            {children}
+          </MobileShell>
         </SweepzaProviders>
       </body>
     </html>
