@@ -3,6 +3,12 @@ import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
 import { SeekerStateProvider } from "@/lib/seeker-state";
+import {
+  APP_DESCRIPTION,
+  APP_NAME,
+  APP_TAGLINE,
+  SITE_URL,
+} from "@/lib/site";
 import { MOCK_LISTINGS } from "@/lib/mock/listings";
 import type { SeekerUiState } from "@/lib/types/listing";
 
@@ -18,17 +24,16 @@ const display = Patrick_Hand({
 
 export const metadata: Metadata = {
   title: {
-    default: "Sweepza — Sweepstakes | Simplified",
-    template: "%s · Sweepza",
+    default: `${APP_NAME} — ${APP_TAGLINE}`,
+    template: `%s · ${APP_NAME}`,
   },
-  description:
-    "Sweepza is a fast, photo-first way to discover sweepstakes worth entering.",
-  metadataBase: new URL("https://sweepza.com"),
+  description: APP_DESCRIPTION,
+  metadataBase: SITE_URL,
   openGraph: {
-    title: "Sweepza",
-    description: "Sweepstakes | Simplified",
-    url: "https://sweepza.com",
-    siteName: "Sweepza",
+    title: APP_NAME,
+    description: APP_TAGLINE,
+    url: SITE_URL,
+    siteName: APP_NAME,
     type: "website",
   },
 };

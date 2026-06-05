@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ListingDetail } from "@/components/listing-detail";
 import { getListingBySlug } from "@/lib/db/listings";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,13 @@ export async function generateMetadata({
   return {
     title: listing.title,
     description: listing.shortDescription,
+    alternates: { canonical: `/sweeps/${slug}` },
+    openGraph: {
+      title: listing.title,
+      description: listing.shortDescription,
+      url: new URL(`/sweeps/${slug}`, SITE_URL),
+      type: "article",
+    },
   };
 }
 
