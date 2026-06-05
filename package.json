@@ -13,6 +13,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "validate": "pnpm lint && pnpm typecheck && pnpm build",
+    "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
