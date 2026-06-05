@@ -1,0 +1,58 @@
+name: Backend Task
+description: Request database, API, service, or worker work for Sweepza.
+title: "[backend] <area>: <summary>"
+labels:
+  - status:ready
+body:
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: database | api | service | integration | worker
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source of truth
+      description: Link the Notion canon, decision, or repo doc governing the backend change.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Requested change
+    validations:
+      required: true
+  - type: textarea
+    id: data-impact
+    attributes:
+      label: Data, permissions, or integration impact
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification commands
+      render: bash
+      value: |
+        pnpm lint
+        pnpm typecheck
+        pnpm build
+    validations:
+      required: true
+  - type: dropdown
+    id: approval
+    attributes:
+      label: Founder approval required?
+      options:
+        - No
+        - Yes
+    validations:
+      required: true

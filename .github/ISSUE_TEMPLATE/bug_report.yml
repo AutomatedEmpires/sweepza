@@ -1,0 +1,58 @@
+name: Bug Report
+description: Report a defect with reproduction, expected behavior, and validation.
+title: "[bug] <area>: <summary>"
+labels:
+  - status:ready
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source of truth / affected canon
+    validations:
+      required: false
+  - type: textarea
+    id: verification
+    attributes:
+      label: Validation to prove the fix
+      render: bash
+      value: |
+        pnpm lint
+        pnpm typecheck
+        pnpm build
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - risk:low
+        - risk:medium
+        - risk:high
+        - risk:approval-required
+    validations:
+      required: true
