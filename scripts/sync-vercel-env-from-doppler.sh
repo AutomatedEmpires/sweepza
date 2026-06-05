@@ -14,9 +14,23 @@ require_command() {
   fi
 }
 
+looks_like_placeholder() {
+  local value="$1"
+  [[ "$value" =~ (replace_me|SWEEPZ|YOUR_|PLACEHOLDER|placeholder|dummy|example) ]]
+}
+
 vercel_sensitivity_flag() {
   local key="$1"
   local vercel_env="$2"
+
+  case "$key" in
+    SUPABASE_SERVICE_ROLE_KEY|CLERK_SECRET_KEY|STRIPE_SECRET_KEY|GITHUB_TOKEN)
+      if [ "$vercel_env" != "development" ]; then
+        echo "--sensitive"
+        return 0
+      fi
+      ;;
+  esac
 
   if [ "$key" = "SUPABASE_SERVICE_ROLE_KEY" ] && [ "$vercel_env" != "development" ]; then
     echo "--sensitive"
@@ -45,6 +59,11 @@ upsert_vercel_env() {
 
   if [ -z "$value" ]; then
     echo "Skipping $key for $vercel_env because no value was provided."
+    return 0
+  fi
+
+  if looks_like_placeholder "$value"; then
+    echo "Skipping $key for $vercel_env because the value still looks like a placeholder."
     return 0
   fi
 
@@ -85,19 +104,23 @@ sync_env_group() {
   local vercel_env="$1"
   local doppler_config="$2"
   local base_keys=(
+    NEXT_PUBLIC_APP_URL
     NEXT_PUBLIC_SUPABASE_URL
     NEXT_PUBLIC_SUPABASE_ANON_KEY
     SUPABASE_SERVICE_ROLE_KEY
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+    CLERK_SECRET_KEY
+    STRIPE_SECRET_KEY
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     NEXT_PUBLIC_POSTHOG_HOST
     GITHUB_OWNER
     GITHUB_REPO
+    GITHUB_TOKEN
   )
 
   for key in "${base_keys[@]}"; do
     sync_secret_from_doppler "$key" "$vercel_env" "$doppler_config"
   done
-
-  sync_secret_from_doppler NEXT_PUBLIC_APP_URL "$vercel_env" "$doppler_config"
 }
 
 require_command doppler

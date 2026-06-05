@@ -17,9 +17,14 @@ Do not reuse credentials from `explore-and-earn` or any other AutomatedEmpires v
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+  - `CLERK_SECRET_KEY`
+  - `STRIPE_SECRET_KEY`
+  - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `NEXT_PUBLIC_POSTHOG_HOST`
   - `GITHUB_OWNER`
   - `GITHUB_REPO`
+  - `GITHUB_TOKEN`
 
 ## Sweepza-only Vercel sync
 
@@ -31,30 +36,32 @@ pnpm ops:sync-vercel-env
 
 The script syncs these keys from Doppler into Vercel:
 
+- `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `STRIPE_SECRET_KEY`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_POSTHOG_HOST`
 - `GITHUB_OWNER`
 - `GITHUB_REPO`
-- `NEXT_PUBLIC_APP_URL` when it exists in the matching Doppler config
+- `GITHUB_TOKEN`
+
+The script skips empty values and placeholder-looking values so Sweepza never pushes scaffolding secrets into Vercel by mistake.
 
 ## Remaining provider keys
 
 These still need provider-side provisioning before they can be added to Doppler:
 
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
 - `CLERK_WEBHOOK_SECRET`
-- `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_POSTHOG_KEY`
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `SENTRY_AUTH_TOKEN`
 - `SENTRY_ORG`
 - `SENTRY_PROJECT`
-- `GITHUB_TOKEN`
 - `NOTION_API_TOKEN`
 
 ## WSL commands for Doppler
@@ -227,6 +234,15 @@ vercel deploy --prod --yes --scope jackson-coles-projects-dd76106c
 ```
 
 Until a custom domain is attached in Vercel, keep `prd` `NEXT_PUBLIC_APP_URL` set to `https://sweepza.vercel.app`.
+
+## Local type generation
+
+Sweepza relies on Next.js generated route types under `.next/types`. To keep `pnpm typecheck` deterministic, the repo now generates those types first:
+
+```bash
+pnpm typegen
+pnpm typecheck
+```
 
 If you need to link the local repo to the remote Supabase project for migration pushes, you still need the Sweepza database password:
 
