@@ -1,14 +1,14 @@
 import { WinnerCard } from "@/components/winner-card";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
-import { MOCK_WINNERS } from "@/lib/mock/winners";
+import { getPublishedWinnerWall } from "@/lib/db/winners";
 
 export const metadata = {
   title: "Winners",
   description: "Real Sweepza members sharing the prizes they've won.",
 };
+export const dynamic = "force-dynamic";
 
-export default function WinnersPage() {
-  const posts = MOCK_WINNERS.filter((post) => post.reviewStatus === "published");
+export default async function WinnersPage() {
+  const items = await getPublishedWinnerWall();
 
   return (
     <section className="px-4 pb-8 pt-8">
@@ -19,13 +19,13 @@ export default function WinnersPage() {
         </p>
       </header>
 
-      {posts.length > 0 ? (
+      {items.length > 0 ? (
         <div className="mt-6 space-y-5">
-          {posts.map((post) => (
+          {items.map(({ post, listing }) => (
             <WinnerCard
               key={post.id}
               post={post}
-              listing={MOCK_LISTINGS.find((l) => l.slug === post.listingSlug)}
+              listing={listing}
             />
           ))}
         </div>

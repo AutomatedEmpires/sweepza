@@ -136,6 +136,7 @@ export interface WinnerPostRow {
   listing_id: string | null;
   caption: string | null;
   photo_url: string | null;
+  verified_win: boolean;
   review_status: WinnerReviewStatus;
   created_at: Timestamptz;
   updated_at: Timestamptz;

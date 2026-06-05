@@ -136,6 +136,28 @@ export async function getPublicListings(
   return adaptListings(data ?? [], accessToken);
 }
 
+export async function getPublicListingsByIds(
+  listingIds: string[],
+  accessToken?: string,
+): Promise<Listing[]> {
+  if (listingIds.length === 0) return [];
+
+  const supabase = createServerSupabaseClient(accessToken);
+  const { data, error } = await supabase
+    .from("listing")
+    .select("*")
+    .eq("visibility_status", "public")
+    .eq("lifecycle_status", "active")
+    .in("id", listingIds)
+    .returns<ListingRow[]>();
+
+  if (error) {
+    throw new Error(`getPublicListingsByIds failed: ${error.message}`);
+  }
+
+  return adaptListings(data ?? [], accessToken);
+}
+
 /** Fetch a single listing by slug (RLS still applies). */
 export async function getListingBySlug(
   slug: string,
