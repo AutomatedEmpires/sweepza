@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
+import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
+import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
 export const metadata = { title: "Host" };
 export const dynamic = "force-dynamic";
@@ -39,6 +42,24 @@ export default async function HostPage() {
     : 1;
   const activeListings = listingCounts?.active ?? 0;
   const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
+
+  async function connectBillingAction() {
+    "use server";
+
+    const currentUser = await ensureCurrentAppUser();
+    if (!currentUser?.appUser.is_host) {
+      throw new Error("Host access is required to create a billing profile.");
+    }
+
+    const currentHost = await getHostByAppUserId(currentUser.appUserId);
+    if (!currentHost) {
+      throw new Error("Host profile is missing; billing cannot be initialized.");
+    }
+
+    await ensureStripeCustomerForHost(currentHost, currentUser.appUser);
+    await ensureSubscriptionForHost(currentHost.id);
+    revalidatePath("/host");
+  }
 
   return (
     <section className="px-5 pb-10 pt-8">
@@ -249,6 +270,16 @@ export default async function HostPage() {
                       </dd>
                     </div>
                   </dl>
+                  {!host.stripe_customer_id ? (
+                    <form action={connectBillingAction} className="mt-4">
+                      <button
+                        type="submit"
+                        className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+                      >
+                        Create billing profile
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
 
                 <div className="rounded-card border border-sand bg-white/70 p-4">

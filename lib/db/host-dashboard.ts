@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { getHostByAppUserId } from "./hosts";
 import type { HostRow, ListingRow, SubscriptionRow } from "./types";
 
 type HostListingDashboardRow = Pick<
@@ -45,16 +46,7 @@ export async function getHostDashboardSnapshotForAppUser(
   appUserId: string,
 ): Promise<HostDashboardSnapshot> {
   const supabase = createServiceRoleClient();
-
-  const { data: host, error: hostError } = await supabase
-    .from("host")
-    .select("*")
-    .eq("app_user_id", appUserId)
-    .maybeSingle<HostRow>();
-
-  if (hostError) {
-    throw new Error(`getHostDashboardSnapshotForAppUser host lookup failed: ${hostError.message}`);
-  }
+  const host = await getHostByAppUserId(appUserId);
 
   if (!host) {
     return {
