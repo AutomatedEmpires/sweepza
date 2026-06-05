@@ -2,15 +2,15 @@ import type { Metadata, Viewport } from "next";
 import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
-import { SeekerStateProvider } from "@/lib/seeker-state";
+import { SweepzaProviders } from "@/components/sweepza-providers";
+import { ensureCurrentAppUser } from "@/lib/auth";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import {
   APP_DESCRIPTION,
   APP_NAME,
   APP_TAGLINE,
   SITE_URL,
 } from "@/lib/site";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
-import type { SeekerUiState } from "@/lib/types/listing";
 
 // Hand-drawn marker face for sweeps-card titles and ribbons. Exposed as the
 // `font-display` Tailwind token via the --font-display CSS variable. Body copy
@@ -45,26 +45,26 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-// Seed the seeker-state store from mock data so Discover and Saved share state
-// within a session. Replaced by Supabase-backed state in Lane B.
-const initialSeekerState: Record<string, SeekerUiState> = Object.fromEntries(
-  MOCK_LISTINGS.filter((l) => l.seekerState).map((l) => [
-    l.id,
-    l.seekerState!.primaryUiState,
-  ]),
-);
-
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const authUser = await ensureCurrentAppUser();
+  const initialSeekerState = authUser
+    ? await getSeekerStateSnapshotForAppUser(authUser.appUserId)
+    : { primary: {}, saved: {} };
+
   return (
     <html lang="en" className={display.variable}>
       <body>
-        <SeekerStateProvider initial={initialSeekerState}>
+        <SweepzaProviders
+          clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+          initialSeekerState={initialSeekerState}
+          persistenceMode={authUser ? "remote" : "local"}
+        >
           <MobileShell>{children}</MobileShell>
-        </SeekerStateProvider>
+        </SweepzaProviders>
       </body>
     </html>
   );

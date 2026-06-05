@@ -1,55 +1,103 @@
 import "server-only";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { SeekerUiState } from "./enums";
 import type { ListingSeekerStateRow } from "./types";
 
-export type SeekerStateAction = "viewed" | "saved" | "entered" | "skipped" | "won";
+export interface SeekerStateSnapshot {
+  primary: Record<string, SeekerUiState>;
+  saved: Record<string, boolean>;
+}
 
-const ACTION_TIMESTAMP: Record<SeekerStateAction, keyof ListingSeekerStateRow> = {
-  viewed: "viewed_at",
+const ACTION_TIMESTAMP: Partial<
+  Record<Exclude<SeekerUiState, "none">, keyof ListingSeekerStateRow>
+> = {
   saved: "saved_at",
   entered: "entered_at",
   skipped: "skipped_at",
   won: "won_at",
 };
 
-/** Fetch all seeker-state rows for the signed-in user. */
-export async function getSeekerStates(
+/** Fetch all seeker-state rows for an app user. */
+export async function getSeekerStatesForAppUser(
   appUserId: string,
-  accessToken?: string,
 ): Promise<ListingSeekerStateRow[]> {
-  const supabase = createServerSupabaseClient(accessToken);
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("listing_seeker_state")
     .select("*")
     .eq("app_user_id", appUserId)
+    .order("updated_at", { ascending: false })
     .returns<ListingSeekerStateRow[]>();
-  if (error) throw new Error(`getSeekerStates failed: ${error.message}`);
+  if (error) {
+    throw new Error(`getSeekerStatesForAppUser failed: ${error.message}`);
+  }
   return data ?? [];
 }
 
+export function toSeekerStateSnapshot(
+  rows: ListingSeekerStateRow[],
+): SeekerStateSnapshot {
+  return {
+    primary: Object.fromEntries(
+      rows.map((row) => [row.listing_id, row.primary_ui_state]),
+    ),
+    saved: Object.fromEntries(
+      rows.filter((row) => row.is_saved).map((row) => [row.listing_id, true]),
+    ),
+  };
+}
+
+export async function getSeekerStateSnapshotForAppUser(
+  appUserId: string,
+): Promise<SeekerStateSnapshot> {
+  const rows = await getSeekerStatesForAppUser(appUserId);
+  return toSeekerStateSnapshot(rows);
+}
+
 /**
- * Record a seeker action against a listing. Upserts on (app_user_id, listing_id)
- * and stamps the relevant timestamp + optional computed primary_ui_state.
- * Multiple states may coexist (saved + entered); primary_ui_state drives the card button.
+ * Upsert current seeker state for a listing.
+ *
+ * We intentionally keep this server-controlled for now. Once Clerk -> Supabase
+ * JWT wiring is provisioned, this can move back behind direct RLS-authenticated
+ * writes with the same shape.
  */
-export async function recordSeekerAction(args: {
+export async function updateSeekerState(args: {
   appUserId: string;
   listingId: string;
-  action: SeekerStateAction;
   primaryUiState?: SeekerUiState;
-  accessToken?: string;
+  saved?: boolean;
 }): Promise<void> {
-  const { appUserId, listingId, action, primaryUiState, accessToken } = args;
-  const supabase = createServerSupabaseClient(accessToken);
+  const { appUserId, listingId, primaryUiState, saved } = args;
+  const supabase = createServiceRoleClient();
   const row: Record<string, unknown> = {
     app_user_id: appUserId,
     listing_id: listingId,
-    [ACTION_TIMESTAMP[action]]: new Date().toISOString(),
   };
-  if (primaryUiState) row.primary_ui_state = primaryUiState;
+
+  const now = new Date().toISOString();
+
+  if (primaryUiState !== undefined) {
+    row.primary_ui_state = primaryUiState;
+    if (primaryUiState !== "none") {
+      const timestampColumn = ACTION_TIMESTAMP[primaryUiState];
+      if (timestampColumn) {
+        row[timestampColumn] = now;
+      }
+    }
+    if (primaryUiState === "saved") {
+      row.is_saved = true;
+    }
+  }
+
+  if (saved !== undefined) {
+    row.is_saved = saved;
+    if (saved) {
+      row.saved_at = now;
+    }
+  }
+
   const { error } = await supabase
     .from("listing_seeker_state")
     .upsert(row, { onConflict: "app_user_id,listing_id" });
-  if (error) throw new Error(`recordSeekerAction failed: ${error.message}`);
+  if (error) throw new Error(`updateSeekerState failed: ${error.message}`);
 }

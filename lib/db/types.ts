@@ -121,6 +121,7 @@ export interface ListingSeekerStateRow {
   listing_id: string;
   viewed_at: Timestamptz | null;
   saved_at: Timestamptz | null;
+  is_saved: boolean;
   entered_at: Timestamptz | null;
   skipped_at: Timestamptz | null;
   won_at: Timestamptz | null;
