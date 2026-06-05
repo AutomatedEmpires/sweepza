@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { DiscoverFeed } from "@/components/discover-feed";
 import { Icon } from "@/components/icon";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
+import { getPublicListings } from "@/lib/db/listings";
 
 export const metadata = { title: "Discover" };
+export const dynamic = "force-dynamic";
 
-export default function DiscoverPage() {
+export default async function DiscoverPage() {
+  const listings = await getPublicListings();
+
   return (
     <section className="px-4 pb-8 pt-8">
       <header className="mb-4 flex items-start justify-between gap-3 px-1">
@@ -22,7 +25,7 @@ export default function DiscoverPage() {
           <Icon name="repeat" size={14} /> Swipe
         </Link>
       </header>
-      <DiscoverFeed listings={MOCK_LISTINGS} />
+      <DiscoverFeed listings={listings} />
     </section>
   );
 }

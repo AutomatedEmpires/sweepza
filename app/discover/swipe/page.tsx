@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { SwipeDeck } from "@/components/swipe-deck";
+import { getPublicListings } from "@/lib/db/listings";
 import { isExpired } from "@/lib/listing-badges";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
 
 export const metadata: Metadata = { title: "Swipe" };
+export const dynamic = "force-dynamic";
 
-export default function SwipePage() {
-  const deck = MOCK_LISTINGS.filter((l) => !isExpired(l));
+export default async function SwipePage() {
+  const deck = (await getPublicListings()).filter((listing) => !isExpired(listing));
   return (
     <section className="flex flex-col pt-6">
       <header className="mb-2 flex items-start justify-between gap-3 px-5">

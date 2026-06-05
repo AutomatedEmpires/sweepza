@@ -1,16 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ListingDetail } from "@/components/listing-detail";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
+import { getListingBySlug } from "@/lib/db/listings";
 
-// Lane B will swap this mock lookup for getListingBySlug() against Supabase.
-function findListing(slug: string) {
-  return MOCK_LISTINGS.find((listing) => listing.slug === slug);
-}
-
-export function generateStaticParams() {
-  return MOCK_LISTINGS.map((listing) => ({ slug: listing.slug }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -18,7 +11,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = findListing(slug);
+  const listing = await getListingBySlug(slug);
   if (!listing) return { title: "Sweepstakes not found" };
   return {
     title: listing.title,
@@ -32,7 +25,7 @@ export default async function ListingDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = findListing(slug);
+  const listing = await getListingBySlug(slug);
   if (!listing) notFound();
   return <ListingDetail listing={listing} />;
 }
