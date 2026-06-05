@@ -1,0 +1,55 @@
+name: Feature Request
+description: Propose a product-backed engineering task for Sweepza.
+title: "[feature] <lane>: <summary>"
+labels:
+  - status:ready
+body:
+  - type: input
+    id: lane
+    attributes:
+      label: Lane
+      placeholder: A Foundation | B Data/Auth/Permissions | C Card System | D Seeker Experience | E Host Experience | F Winner Wall | G Billing/Entitlements | H Observability | I QA/Review
+    validations:
+      required: true
+  - type: textarea
+    id: source-of-truth
+    attributes:
+      label: Source of truth
+      description: Link the Notion canon, decision, or repo doc that authorizes this work.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or system problem should this task solve?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification commands
+      render: bash
+      value: |
+        pnpm lint
+        pnpm typecheck
+        pnpm build
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - risk:low
+        - risk:medium
+        - risk:high
+        - risk:approval-required
+    validations:
+      required: true
