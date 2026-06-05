@@ -64,6 +64,16 @@ export default async function HostPage() {
                 ? "Your identity is synced into Sweepza. The next host slice is the listing builder, submission flow, and entitlement-aware host dashboard."
                 : "Your account is synced into Sweepza, but host role access is not enabled on this profile yet."}
             </p>
+            {authUser.appUser.is_admin || authUser.appUser.is_owner ? (
+              <div className="mt-3">
+                <Link
+                  href="/admin/import"
+                  className="inline-flex rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                >
+                  Open admin import
+                </Link>
+              </div>
+            ) : null}
             <dl className="mt-4 grid gap-2 text-sm text-ink/70">
               <div className="flex items-center justify-between gap-3">
                 <dt>Display name</dt>
