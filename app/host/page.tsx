@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
+import { HostProfileForm } from "@/components/host-profile-form";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
@@ -112,30 +113,41 @@ export default async function HostPage() {
             </div>
           </div>
         ) : isHost && !host ? (
-          <div className="rounded-card border border-sand bg-white/70 p-4">
-            <h2 className="text-sm font-semibold text-ink">
-              Host role is enabled, but the host profile is missing
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink/65">
-              Your app user is marked as a host, but Sweepza does not have a
-              matching host row yet. That usually means identity sync landed
-              before host onboarding.
-            </p>
-            <dl className="mt-4 grid gap-2 text-sm text-ink/70">
-              <div className="flex items-center justify-between gap-3">
-                <dt>Display name</dt>
-                <dd className="font-medium text-ink">
-                  {authUser.displayName ?? "Unnamed"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt>Email</dt>
-                <dd className="font-medium text-ink">
-                  {authUser.email ?? "Not available"}
-                </dd>
-              </div>
-            </dl>
-          </div>
+          <>
+            <div className="rounded-card border border-sand bg-white/70 p-4">
+              <h2 className="text-sm font-semibold text-ink">
+                Finish setting up your host profile
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-ink/65">
+                Your account is marked as a host, but Sweepza does not have a
+                host profile for you yet. Create one below to unlock listing
+                submission and your host dashboard.
+              </p>
+              <dl className="mt-4 grid gap-2 text-sm text-ink/70">
+                <div className="flex items-center justify-between gap-3">
+                  <dt>Signed in as</dt>
+                  <dd className="font-medium text-ink">
+                    {authUser.displayName ?? "Unnamed"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>Email</dt>
+                  <dd className="font-medium text-ink">
+                    {authUser.email ?? "Not available"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <HostProfileForm
+              mode="create"
+              initialProfile=
+                display_name: authUser.displayName ?? "",
+                website_url: null,
+                short_description: null,
+                logo_url: null,
+              
+            />
+          </>
         ) : (
           <>
             <div className="rounded-card border border-sand bg-white/70 p-4">
@@ -148,12 +160,18 @@ export default async function HostPage() {
                   : "Your account is synced into Sweepza, but host role access is not enabled on this profile yet."}
               </p>
               {authUser.appUser.is_admin || authUser.appUser.is_owner ? (
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href="/admin/import"
                     className="inline-flex rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
                   >
                     Open admin import
+                  </Link>
+                  <Link
+                    href="/admin/review"
+                    className="inline-flex rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                  >
+                    Open review queue
                   </Link>
                 </div>
               ) : null}
@@ -286,6 +304,16 @@ export default async function HostPage() {
                     </form>
                   ) : null}
                 </div>
+
+                <HostProfileForm
+                  mode="edit"
+                  initialProfile=
+                    display_name: host.display_name,
+                    website_url: host.website_url,
+                    short_description: host.short_description,
+                    logo_url: host.logo_url,
+                  
+                />
 
                 <div className="rounded-card border border-sand bg-white/70 p-4">
                   <div className="flex items-center justify-between gap-3">
