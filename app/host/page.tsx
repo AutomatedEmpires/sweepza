@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
+import { HostProfileForm } from "@/components/host-profile-form";
 import {
   getMaxAdditionalListings,
   HOST_BASELINE_PLAN,
   isBillingConfigured,
   MAX_ACTIVE_LISTINGS,
 } from "@/lib/billing/plans";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
@@ -53,7 +54,8 @@ export default async function HostPage({
   const listingCounts = dashboard?.counts;
   const recentListings = dashboard?.recentListings ?? [];
   const listingAllowance = subscription
-    ? subscription.included_active_listings + subscription.purchased_additional_listings
+    ? subscription.included_active_listings +
+      subscription.purchased_additional_listings
     : 1;
   const activeListings = listingCounts?.active ?? 0;
   const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
@@ -61,9 +63,10 @@ export default async function HostPage({
   const billingConfigured = isBillingConfigured();
   const baselineIncluded = HOST_BASELINE_PLAN.includedActiveListings;
   const maxAdditional = getMaxAdditionalListings();
-  const [categories, tags] = authUser && isHost && host
-    ? await Promise.all([getActiveCategories(), getActiveTags()])
-    : [[], []];
+  const [categories, tags] =
+    authUser && isHost && host
+      ? await Promise.all([getActiveCategories(), getActiveTags()])
+      : [[], []];
 
   async function connectBillingAction() {
     "use server";
@@ -110,6 +113,23 @@ export default async function HostPage({
 
     redirect(session.url);
   }
+
+  const createProfileInitialValues = authUser
+    ? {
+        display_name: authUser.displayName ?? "",
+        website_url: null,
+        short_description: null,
+        logo_url: null,
+      }
+    : null;
+  const editProfileInitialValues = host
+    ? {
+        display_name: host.display_name,
+        website_url: host.website_url,
+        short_description: host.short_description,
+        logo_url: host.logo_url,
+      }
+    : null;
 
   return (
     <section className="px-5 pb-10 pt-8">
@@ -168,30 +188,37 @@ export default async function HostPage({
             </div>
           </div>
         ) : isHost && !host ? (
-          <div className="rounded-card border border-sand bg-white/70 p-4">
-            <h2 className="text-sm font-semibold text-ink">
-              Host role is enabled, but the host profile is missing
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink/65">
-              Your app user is marked as a host, but Sweepza does not have a
-              matching host row yet. That usually means identity sync landed
-              before host onboarding.
-            </p>
-            <dl className="mt-4 grid gap-2 text-sm text-ink/70">
-              <div className="flex items-center justify-between gap-3">
-                <dt>Display name</dt>
-                <dd className="font-medium text-ink">
-                  {authUser.displayName ?? "Unnamed"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt>Email</dt>
-                <dd className="font-medium text-ink">
-                  {authUser.email ?? "Not available"}
-                </dd>
-              </div>
-            </dl>
-          </div>
+          <>
+            <div className="rounded-card border border-sand bg-white/70 p-4">
+              <h2 className="text-sm font-semibold text-ink">
+                Finish setting up your host profile
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-ink/65">
+                Your account is marked as a host, but Sweepza does not have a
+                host profile for you yet. Create one below to unlock listing
+                submission and your host dashboard.
+              </p>
+              <dl className="mt-4 grid gap-2 text-sm text-ink/70">
+                <div className="flex items-center justify-between gap-3">
+                  <dt>Signed in as</dt>
+                  <dd className="font-medium text-ink">
+                    {authUser.displayName ?? "Unnamed"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>Email</dt>
+                  <dd className="font-medium text-ink">
+                    {authUser.email ?? "Not available"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <HostProfileForm
+              mode="create"
+              initialProfile={createProfileInitialValues}
+            />
+          </>
         ) : (
           <>
             <div className="rounded-card border border-sand bg-white/70 p-4">
@@ -204,12 +231,18 @@ export default async function HostPage({
                   : "Your account is synced into Sweepza, but host role access is not enabled on this profile yet."}
               </p>
               {authUser.appUser.is_admin || authUser.appUser.is_owner ? (
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href="/admin/import"
                     className="inline-flex rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
                   >
                     Open admin import
+                  </Link>
+                  <Link
+                    href="/admin/review"
+                    className="inline-flex rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                  >
+                    Open review queue
                   </Link>
                 </div>
               ) : null}
@@ -255,7 +288,9 @@ export default async function HostPage({
                       Plan status
                     </p>
                     <p className="mt-2 text-3xl font-display text-ink">
-                      {subscription ? formatSubscriptionStatus(subscription.status) : "No plan"}
+                      {subscription
+                        ? formatSubscriptionStatus(subscription.status)
+                        : "No plan"}
                     </p>
                     <p className="mt-1 text-sm text-ink/60">
                       Allowance: {listingAllowance} active listing
@@ -294,7 +329,8 @@ export default async function HostPage({
                         {host.display_name}
                       </h2>
                       <p className="mt-1 text-sm text-ink/65">
-                        Verification: {formatVerificationStatus(host.verification_status)}
+                        Verification:{" "}
+                        {formatVerificationStatus(host.verification_status)}
                       </p>
                     </div>
                     {host.website_url ? (
@@ -343,6 +379,11 @@ export default async function HostPage({
                   ) : null}
                 </div>
 
+                <HostProfileForm
+                  mode="edit"
+                  initialProfile={editProfileInitialValues}
+                />
+
                 <div className="rounded-card border border-sand bg-white/70 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -356,7 +397,9 @@ export default async function HostPage({
                       </p>
                     </div>
                     <span className="shrink-0 rounded-full bg-ink/5 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink/60">
-                      {subscription ? formatSubscriptionStatus(subscription.status) : "No plan"}
+                      {subscription
+                        ? formatSubscriptionStatus(subscription.status)
+                        : "No plan"}
                     </span>
                   </div>
 
@@ -371,7 +414,8 @@ export default async function HostPage({
                     <div className="flex items-center justify-between gap-3">
                       <dt>Included with plan</dt>
                       <dd className="font-medium text-ink">
-                        {subscription?.included_active_listings ?? baselineIncluded}
+                        {subscription?.included_active_listings ??
+                          baselineIncluded}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -382,7 +426,9 @@ export default async function HostPage({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <dt>Remaining active slots</dt>
-                      <dd className="font-medium text-ink">{listingSlotsRemaining}</dd>
+                      <dd className="font-medium text-ink">
+                        {listingSlotsRemaining}
+                      </dd>
                     </div>
                   </dl>
 
@@ -393,11 +439,14 @@ export default async function HostPage({
                     </p>
                   ) : planActive ? (
                     <p className="mt-4 text-sm leading-relaxed text-ink/55">
-                      Need to change capacity? Contact Sweepza support for now —
-                      self-serve plan changes are not enabled yet.
+                      Need to change capacity? Contact Sweepza support for now.
+                      Self-serve plan changes are not enabled yet.
                     </p>
                   ) : (
-                    <form action={startCheckoutAction} className="mt-4 flex flex-col gap-3">
+                    <form
+                      action={startCheckoutAction}
+                      className="mt-4 flex flex-col gap-3"
+                    >
                       <label className="flex flex-col gap-1 text-sm text-ink/70">
                         <span className="font-medium text-ink">
                           Extra active listings
@@ -468,8 +517,8 @@ export default async function HostPage({
                     </div>
                   ) : (
                     <p className="mt-3 text-sm leading-relaxed text-ink/60">
-                      No listings are connected to this host yet. The next app
-                      slice is the host listing builder and submission flow.
+                      No listings are connected to this host yet. Create your
+                      first draft from the submission form below.
                     </p>
                   )}
                 </div>
