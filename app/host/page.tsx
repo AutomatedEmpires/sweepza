@@ -7,6 +7,7 @@ import {
   getMaxAdditionalListings,
   HOST_BASELINE_PLAN,
   isBillingConfigured,
+  MAX_ACTIVE_LISTINGS,
 } from "@/lib/billing/plans";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
@@ -411,8 +412,8 @@ export default async function HostPage({
                         />
                         <span className="text-xs text-ink/50">
                           Baseline plan includes {baselineIncluded}. Add up to{" "}
-                          {maxAdditional} more ({MAX_PLAN_LABEL} active listings
-                          max).
+                          {maxAdditional} more ({MAX_ACTIVE_LISTINGS} active
+                          listings max).
                         </span>
                       </label>
                       <button
