@@ -22,7 +22,10 @@ export interface HostCheckoutSession {
   sessionId: string;
 }
 
-function getAppBaseUrl(): string {
+// Returns the app base URL (without a trailing slash) used for Stripe redirect
+// targets. Exported so other Stripe flows (e.g. the billing portal) can reuse
+// the same resolution and error messaging.
+export function getAppBaseUrl(): string {
   const url = env.NEXT_PUBLIC_APP_URL;
   if (!url) {
     throw new Error(
