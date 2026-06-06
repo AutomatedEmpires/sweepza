@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
 import { HostProfileForm } from "@/components/host-profile-form";
+import type { HostProfileFormValues } from "@/components/host-profile-form";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
@@ -48,6 +49,22 @@ export default async function HostPage() {
   const [categories, tags] = authUser && isHost && host
     ? await Promise.all([getActiveCategories(), getActiveTags()])
     : [[], []];
+
+  const onboardingProfile: HostProfileFormValues = {
+    display_name: authUser?.displayName ?? "",
+    website_url: null,
+    short_description: null,
+    logo_url: null,
+  };
+
+  const hostProfileValues: HostProfileFormValues | null = host
+    ? {
+        display_name: host.display_name,
+        website_url: host.website_url,
+        short_description: host.short_description,
+        logo_url: host.logo_url,
+      }
+    : null;
 
   async function connectBillingAction() {
     "use server";
@@ -138,15 +155,7 @@ export default async function HostPage() {
                 </div>
               </dl>
             </div>
-            <HostProfileForm
-              mode="create"
-              initialProfile=
-                display_name: authUser.displayName ?? "",
-                website_url: null,
-                short_description: null,
-                logo_url: null,
-              
-            />
+            <HostProfileForm mode="create" initialProfile={onboardingProfile} />
           </>
         ) : (
           <>
@@ -305,15 +314,9 @@ export default async function HostPage() {
                   ) : null}
                 </div>
 
-                <HostProfileForm
-                  mode="edit"
-                  initialProfile=
-                    display_name: host.display_name,
-                    website_url: host.website_url,
-                    short_description: host.short_description,
-                    logo_url: host.logo_url,
-                  
-                />
+                {hostProfileValues ? (
+                  <HostProfileForm mode="edit" initialProfile={hostProfileValues} />
+                ) : null}
 
                 <div className="rounded-card border border-sand bg-white/70 p-4">
                   <div className="flex items-center justify-between gap-3">
