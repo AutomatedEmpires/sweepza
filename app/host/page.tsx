@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
 import { HostProfileForm } from "@/components/host-profile-form";
 import type { HostProfileFormValues } from "@/components/host-profile-form";
+import { computeHostEntitlement } from "@/lib/billing/entitlements";
 import {
   getMaxAdditionalListings,
   HOST_BASELINE_PLAN,
@@ -15,6 +16,7 @@ import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
+import { createHostBillingPortalSession } from "@/lib/stripe/portal";
 import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
 export const metadata = { title: "Host" };
@@ -54,13 +56,12 @@ export default async function HostPage({
   const subscription = dashboard?.subscription ?? null;
   const listingCounts = dashboard?.counts;
   const recentListings = dashboard?.recentListings ?? [];
-  const listingAllowance = subscription
-    ? subscription.included_active_listings +
-      subscription.purchased_additional_listings
-    : 1;
   const activeListings = listingCounts?.active ?? 0;
-  const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
-  const planActive = subscription?.status === "active";
+  const entitlement = computeHostEntitlement(subscription, activeListings);
+  const listingAllowance = entitlement.effectiveAllowance;
+  const listingSlotsRemaining = entitlement.remainingActiveSlots;
+  const planActive = entitlement.planActive;
+  const canManageBilling = Boolean(host?.stripe_customer_id);
   const billingConfigured = isBillingConfigured();
   const baselineIncluded = HOST_BASELINE_PLAN.includedActiveListings;
   const maxAdditional = getMaxAdditionalListings();
@@ -126,6 +127,27 @@ export default async function HostPage({
       host: currentHost,
       appUser: currentUser.appUser,
       additionalListings,
+    });
+
+    redirect(session.url);
+  }
+
+  async function manageBillingAction() {
+    "use server";
+
+    const currentUser = await ensureCurrentAppUser();
+    if (!currentUser?.appUser.is_host) {
+      throw new Error("Host access is required to manage billing.");
+    }
+
+    const currentHost = await getHostByAppUserId(currentUser.appUserId);
+    if (!currentHost) {
+      throw new Error("Host profile is missing; billing cannot be managed.");
+    }
+
+    const session = await createHostBillingPortalSession({
+      host: currentHost,
+      appUser: currentUser.appUser,
     });
 
     redirect(session.url);
@@ -398,6 +420,23 @@ export default async function HostPage({
                     </span>
                   </div>
 
+                  {entitlement.requiresAttention ? (
+                    <div className="mt-4 rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
+                      Your subscription needs attention (status:{" "}
+                      {formatSubscriptionStatus(entitlement.status)}). Your
+                      listing capacity is still active for now &mdash; update
+                      your billing details to avoid losing it.
+                    </div>
+                  ) : null}
+
+                  {entitlement.isOverLimit ? (
+                    <div className="mt-4 rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
+                      You have {activeListings} active listings but your plan
+                      allows {listingAllowance}. New listings can&apos;t go live
+                      until you add capacity or some listings end.
+                    </div>
+                  ) : null}
+
                   <dl className="mt-4 grid gap-2 text-sm text-ink/70">
                     <div className="flex items-center justify-between gap-3">
                       <dt>Listing allowance</dt>
@@ -409,14 +448,18 @@ export default async function HostPage({
                     <div className="flex items-center justify-between gap-3">
                       <dt>Included with plan</dt>
                       <dd className="font-medium text-ink">
-                        {subscription?.included_active_listings ??
-                          baselineIncluded}
+                        {entitlement.isEntitled
+                          ? subscription?.included_active_listings ??
+                            baselineIncluded
+                          : 0}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <dt>Extra capacity purchased</dt>
                       <dd className="font-medium text-ink">
-                        {subscription?.purchased_additional_listings ?? 0}
+                        {entitlement.isEntitled
+                          ? subscription?.purchased_additional_listings ?? 0
+                          : 0}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -427,6 +470,17 @@ export default async function HostPage({
                     </div>
                   </dl>
 
+                  {canManageBilling ? (
+                    <form action={manageBillingAction} className="mt-4">
+                      <button
+                        type="submit"
+                        className="rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                      >
+                        Manage billing
+                      </button>
+                    </form>
+                  ) : null}
+
                   {!billingConfigured ? (
                     <p className="mt-4 text-sm leading-relaxed text-ink/55">
                       Plan checkout is not configured in this environment yet.
@@ -434,8 +488,8 @@ export default async function HostPage({
                     </p>
                   ) : planActive ? (
                     <p className="mt-4 text-sm leading-relaxed text-ink/55">
-                      Need to change capacity? Contact Sweepza support for now.
-                      Self-serve plan changes are not enabled yet.
+                      Use Manage billing to update your payment method, change
+                      capacity, or cancel through the secure Stripe portal.
                     </p>
                   ) : (
                     <form

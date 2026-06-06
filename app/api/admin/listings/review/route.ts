@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import {
+  assertHostCanActivateListing,
+  computeHostEntitlement,
+  ListingQuotaError,
+} from "@/lib/billing/entitlements";
+import {
+  countActiveListingsForHost,
+  getLatestSubscriptionForHost,
+} from "@/lib/db/hosts";
 import { getReviewListingById } from "@/lib/db/listing-review";
 import { listingReviewSchema } from "@/lib/listing-review-schema";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -55,6 +64,38 @@ export async function POST(request: Request) {
   }
 
   if (action === "approve") {
+    // Approving a host listing is the real activation gate. Enforce the host's
+    // status-aware active-listing allowance here, before flipping it live, so
+    // reviewers get a clear quota error instead of a raw DB trigger failure.
+    // The enforce_active_listing_cap DB trigger remains the hard backstop.
+    if (listing.host_id && listing.lifecycle_status !== "active") {
+      const [subscription, activeListings] = await Promise.all([
+        getLatestSubscriptionForHost(listing.host_id),
+        countActiveListingsForHost(listing.host_id, listing.id),
+      ]);
+      const entitlement = computeHostEntitlement(subscription, activeListings);
+
+      try {
+        assertHostCanActivateListing(entitlement);
+      } catch (error) {
+        if (error instanceof ListingQuotaError) {
+          return NextResponse.json(
+            {
+              error: error.message,
+              quota: {
+                status: entitlement.status,
+                allowance: entitlement.effectiveAllowance,
+                activeListings: entitlement.activeListingCount,
+                remaining: entitlement.remainingActiveSlots,
+              },
+            },
+            { status: 422 },
+          );
+        }
+        throw error;
+      }
+    }
+
     updates.lifecycle_status = "active";
     updates.visibility_status = "public";
     updates.published_at = listing.published_at ?? new Date().toISOString();

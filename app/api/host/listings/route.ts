@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { getHostByAppUserId } from "@/lib/db/hosts";
+import { computeHostEntitlement } from "@/lib/billing/entitlements";
+import {
+  countActiveListingsForHost,
+  getHostByAppUserId,
+  getLatestSubscriptionForHost,
+} from "@/lib/db/hosts";
 import { hostListingSubmissionSchema } from "@/lib/host-listing-schema";
 import { makeUniqueListingSlug } from "@/lib/slug";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -44,6 +49,9 @@ export async function POST(request: Request) {
   const slug = await makeUniqueListingSlug(input.title);
   const supabase = createServiceRoleClient();
 
+  // New host listings are always created as private drafts, so creation itself
+  // is never blocked by quota. We still compute the host's entitlement so the
+  // response can warn when this draft cannot go live under the current plan.
   const { data: listing, error: listingError } = await supabase
     .from("listing")
     .insert({
@@ -99,10 +107,29 @@ export async function POST(request: Request) {
     }
   }
 
+  const [subscription, activeListings] = await Promise.all([
+    getLatestSubscriptionForHost(host.id),
+    countActiveListingsForHost(host.id),
+  ]);
+  const entitlement = computeHostEntitlement(subscription, activeListings);
+
+  const notice = entitlement.canActivateListing
+    ? null
+    : entitlement.effectiveAllowance === 0
+      ? "Saved as a draft. Start a host plan to publish active listings."
+      : "Saved as a draft. You are at your active-listing limit, so this can't go live until a slot frees up or you add capacity.";
+
   return NextResponse.json({
     ok: true,
     id: listing.id,
     slug: listing.slug,
     url: `/sweeps/${listing.slug}`,
+    notice,
+    quota: {
+      status: entitlement.status,
+      allowance: entitlement.effectiveAllowance,
+      activeListings: entitlement.activeListingCount,
+      remaining: entitlement.remainingActiveSlots,
+    },
   });
 }

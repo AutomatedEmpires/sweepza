@@ -123,3 +123,52 @@ export async function ensureSubscriptionForHost(
 
   return data;
 }
+
+// Returns the most recent subscription row for a host, or null if none exists.
+// Mirrors the ordering used by ensureSubscriptionForHost so callers see the
+// same "latest" row that webhook syncing updates.
+export async function getLatestSubscriptionForHost(
+  hostId: string,
+): Promise<SubscriptionRow | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("subscription")
+    .select("*")
+    .eq("host_id", hostId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .returns<SubscriptionRow[]>();
+
+  if (error) {
+    throw new Error(`getLatestSubscriptionForHost failed: ${error.message}`);
+  }
+
+  return data?.[0] ?? null;
+}
+
+// Counts how many listings are currently active for a host. Pass
+// excludeListingId to ignore a specific listing (e.g. when re-evaluating the
+// listing that is being approved so it is not double-counted).
+export async function countActiveListingsForHost(
+  hostId: string,
+  excludeListingId?: string,
+): Promise<number> {
+  const supabase = createServiceRoleClient();
+  let query = supabase
+    .from("listing")
+    .select("id", { count: "exact", head: true })
+    .eq("host_id", hostId)
+    .eq("lifecycle_status", "active");
+
+  if (excludeListingId) {
+    query = query.neq("id", excludeListingId);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    throw new Error(`countActiveListingsForHost failed: ${error.message}`);
+  }
+
+  return count ?? 0;
+}

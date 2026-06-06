@@ -25,6 +25,7 @@ export function HostListingSubmissionForm({
     error?: string;
     slug?: string;
     url?: string;
+    notice?: string;
   }>({});
 
   function submit(formData: FormData) {
@@ -64,7 +65,7 @@ export function HostListingSubmissionForm({
         });
 
         const body = (await response.json().catch(() => null)) as
-          | { error?: string; slug?: string; url?: string }
+          | { error?: string; slug?: string; url?: string; notice?: string }
           | null;
 
         if (!response.ok) {
@@ -75,6 +76,7 @@ export function HostListingSubmissionForm({
         setResult({
           slug: body?.slug,
           url: body?.url,
+          notice: body?.notice ?? undefined,
         });
       } catch (error) {
         setResult({
@@ -289,6 +291,12 @@ export function HostListingSubmissionForm({
             {result.slug}
           </a>
         </div>
+      ) : null}
+
+      {result.notice ? (
+        <p className="rounded-xl border border-sand bg-cream px-3 py-2 text-sm text-ink/70">
+          {result.notice}
+        </p>
       ) : null}
     </form>
   );
