@@ -131,21 +131,6 @@ export default async function HostPage({
     redirect(session.url);
   }
 
-  const onboardingProfile: HostProfileFormValues = {
-    display_name: authUser?.displayName ?? "",
-    website_url: null,
-    short_description: null,
-    logo_url: null,
-  };
-  const hostProfileValues: HostProfileFormValues | null = host
-    ? {
-        display_name: host.display_name,
-        website_url: host.website_url,
-        short_description: host.short_description,
-        logo_url: host.logo_url,
-      }
-    : null;
-
   return (
     <section className="px-5 pb-10 pt-8">
       <div className="flex flex-col gap-4">
