@@ -1,10 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
+import {
+  getMaxAdditionalListings,
+  HOST_BASELINE_PLAN,
+  isBillingConfigured,
+} from "@/lib/billing/plans";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
+import { createHostCheckoutSession } from "@/lib/stripe/checkout";
 import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
 export const metadata = { title: "Host" };
@@ -28,9 +35,14 @@ function formatListingDate(date: string | null): string {
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
-export default async function HostPage() {
+export default async function HostPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string }>;
+}) {
   const authUser = await ensureCurrentAppUser();
   const clerkConfigured = isClerkConfigured();
+  const checkoutStatus = (await searchParams)?.checkout ?? null;
   const isHost = authUser?.appUser.is_host ?? false;
   const dashboard = authUser
     ? await getHostDashboardSnapshotForAppUser(authUser.appUserId)
@@ -44,6 +56,10 @@ export default async function HostPage() {
     : 1;
   const activeListings = listingCounts?.active ?? 0;
   const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
+  const planActive = subscription?.status === "active";
+  const billingConfigured = isBillingConfigured();
+  const baselineIncluded = HOST_BASELINE_PLAN.includedActiveListings;
+  const maxAdditional = getMaxAdditionalListings();
   const [categories, tags] = authUser && isHost && host
     ? await Promise.all([getActiveCategories(), getActiveTags()])
     : [[], []];
@@ -66,6 +82,34 @@ export default async function HostPage() {
     revalidatePath("/host");
   }
 
+  async function startCheckoutAction(formData: FormData) {
+    "use server";
+
+    const currentUser = await ensureCurrentAppUser();
+    if (!currentUser?.appUser.is_host) {
+      throw new Error("Host access is required to start a plan.");
+    }
+
+    const currentHost = await getHostByAppUserId(currentUser.appUserId);
+    if (!currentHost) {
+      throw new Error("Host profile is missing; checkout cannot start.");
+    }
+
+    const rawAdditional = formData.get("additional_listings");
+    const additionalListings =
+      typeof rawAdditional === "string"
+        ? Number.parseInt(rawAdditional, 10) || 0
+        : 0;
+
+    const session = await createHostCheckoutSession({
+      host: currentHost,
+      appUser: currentUser.appUser,
+      additionalListings,
+    });
+
+    redirect(session.url);
+  }
+
   return (
     <section className="px-5 pb-10 pt-8">
       <div className="flex flex-col gap-4">
@@ -76,6 +120,17 @@ export default async function HostPage() {
             on what is live in Discover.
           </p>
         </header>
+
+        {checkoutStatus === "success" ? (
+          <div className="rounded-card border border-moss/30 bg-moss/10 p-4 text-sm text-ink/75">
+            Thanks! Your plan is activating. Listing entitlements update
+            automatically once Stripe confirms the subscription.
+          </div>
+        ) : checkoutStatus === "cancelled" ? (
+          <div className="rounded-card border border-sand bg-white/70 p-4 text-sm text-ink/70">
+            Checkout was cancelled. No changes were made to your plan.
+          </div>
+        ) : null}
 
         {!clerkConfigured ? (
           <div className="rounded-card border border-sand bg-white/70 p-4">
@@ -285,6 +340,91 @@ export default async function HostPage() {
                       </button>
                     </form>
                   ) : null}
+                </div>
+
+                <div className="rounded-card border border-sand bg-white/70 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-sm font-semibold text-ink">
+                        Billing &amp; plan
+                      </h2>
+                      <p className="mt-1 text-sm text-ink/65">
+                        {planActive
+                          ? "Your host plan is active. The capacity below reflects your current entitlement."
+                          : "Start the baseline host plan to unlock active listing capacity."}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-ink/5 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink/60">
+                      {subscription ? formatSubscriptionStatus(subscription.status) : "No plan"}
+                    </span>
+                  </div>
+
+                  <dl className="mt-4 grid gap-2 text-sm text-ink/70">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Listing allowance</dt>
+                      <dd className="font-medium text-ink">
+                        {listingAllowance} active listing
+                        {listingAllowance === 1 ? "" : "s"}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Included with plan</dt>
+                      <dd className="font-medium text-ink">
+                        {subscription?.included_active_listings ?? baselineIncluded}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Extra capacity purchased</dt>
+                      <dd className="font-medium text-ink">
+                        {subscription?.purchased_additional_listings ?? 0}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Remaining active slots</dt>
+                      <dd className="font-medium text-ink">{listingSlotsRemaining}</dd>
+                    </div>
+                  </dl>
+
+                  {!billingConfigured ? (
+                    <p className="mt-4 text-sm leading-relaxed text-ink/55">
+                      Plan checkout is not configured in this environment yet.
+                      Set the Stripe price IDs to enable purchases.
+                    </p>
+                  ) : planActive ? (
+                    <p className="mt-4 text-sm leading-relaxed text-ink/55">
+                      Need to change capacity? Contact Sweepza support for now —
+                      self-serve plan changes are not enabled yet.
+                    </p>
+                  ) : (
+                    <form action={startCheckoutAction} className="mt-4 flex flex-col gap-3">
+                      <label className="flex flex-col gap-1 text-sm text-ink/70">
+                        <span className="font-medium text-ink">
+                          Extra active listings
+                        </span>
+                        <input
+                          type="number"
+                          name="additional_listings"
+                          min={0}
+                          max={maxAdditional}
+                          defaultValue={0}
+                          className="w-28 rounded-xl border border-sand bg-cream px-3 py-2 text-ink"
+                        />
+                        <span className="text-xs text-ink/50">
+                          Baseline plan includes {baselineIncluded}. Add up to{" "}
+                          {maxAdditional} more ({MAX_PLAN_LABEL} active listings
+                          max).
+                        </span>
+                      </label>
+                      <button
+                        type="submit"
+                        className="self-start rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+                      >
+                        {subscription && subscription.status !== "no_plan"
+                          ? "Restart host plan"
+                          : "Start host plan"}
+                      </button>
+                    </form>
+                  )}
                 </div>
 
                 <div className="rounded-card border border-sand bg-white/70 p-4">
