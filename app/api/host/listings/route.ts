@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { adminListingImportSchema } from "@/lib/admin-listing-schema";
+import { getHostByAppUserId } from "@/lib/db/hosts";
+import { hostListingSubmissionSchema } from "@/lib/host-listing-schema";
 import { makeUniqueListingSlug } from "@/lib/slug";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -19,11 +20,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!authUser.appUser.is_admin && !authUser.appUser.is_owner) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!authUser.appUser.is_host) {
+    return NextResponse.json({ error: "Host access required." }, { status: 403 });
   }
 
-  const parsed = adminListingImportSchema.safeParse(await request.json());
+  const host = await getHostByAppUserId(authUser.appUserId);
+  if (!host) {
+    return NextResponse.json(
+      { error: "Host profile is missing for this account." },
+      { status: 409 },
+    );
+  }
+
+  const parsed = hostListingSubmissionSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
@@ -53,15 +62,16 @@ export async function POST(request: Request) {
       end_date: input.endDate,
       entry_frequency: input.entryFrequency,
       eligibility_country: input.eligibilityCountry,
-      source_type: "owner_seeded",
-      public_source_label: input.sourceLabel,
-      created_by_role: "owner",
+      source_type: "host_submitted",
+      public_source_label: "host_submitted",
+      created_by_role: "host",
       created_by_user_id: authUser.appUserId,
+      host_id: host.id,
       sponsor_name: input.sponsorName ?? null,
-      lifecycle_status: input.publish ? "active" : "draft",
-      visibility_status: input.publish ? "public" : "private",
-      listing_verification_status: input.verified ? "verified" : "reviewed",
-      published_at: input.publish ? new Date().toISOString() : null,
+      lifecycle_status: "draft",
+      visibility_status: "private",
+      listing_verification_status: "unreviewed",
+      published_at: null,
     })
     .select("id, slug")
     .single<{ id: string; slug: string }>();

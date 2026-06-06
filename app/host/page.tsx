@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
+import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
 import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
@@ -42,6 +44,9 @@ export default async function HostPage() {
     : 1;
   const activeListings = listingCounts?.active ?? 0;
   const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
+  const [categories, tags] = authUser && isHost && host
+    ? await Promise.all([getActiveCategories(), getActiveTags()])
+    : [[], []];
 
   async function connectBillingAction() {
     "use server";
@@ -327,6 +332,8 @@ export default async function HostPage() {
                     </p>
                   )}
                 </div>
+
+                <HostListingSubmissionForm categories={categories} tags={tags} />
               </>
             ) : null}
           </>
