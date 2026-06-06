@@ -2,18 +2,14 @@
 
 This file is binding for every contributor, human or AI (Copilot, Claude, Codex). Read it before writing code.
 
-## Machine & runtime (cross-app standard)
+## The machine & runtime (pinned — do not drift)
 
-All AutomatedEmpires apps are built on ONE machine; assume exactly:
-- Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code
-- Working path: `/home/jackson/automatedempires/ventures/sweepza`
-- 16 GB RAM. **One agent at a time** — no parallel heavy builds or long-running watchers.
+Sweepza is one app in the AutomatedEmpires venture system; **Explore&Earn (E&E) is the reference implementation**. All apps share one machine, one runtime, and one integration spine so an agent moving between repos reads one contract.
 
-Runtime is pinned (do not drift): Node **24.16.0** (`.nvmrc`), pnpm **10.12.4** (`packageManager`), TypeScript end-to-end. Any version change requires a dated decision in the locked canon.
-
-Integration spine (locked, cross-app): Doppler (secrets) · Vercel (hosting) · Supabase Postgres + PostGIS · **Clerk** (auth) · **Mapbox** (maps) · Stripe (payments) · Cloudinary (media) · PostHog + Sentry (observability) · Streamline (single icon system). Do not introduce alternates without a dated decision.
-
-CI (`.github/workflows/ci.yml`) runs typecheck + lint + build on every PR; keep it green.
+- **Machine:** Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code. Working path `/home/jackson/automatedempires/ventures/sweepza`. 16 GB RAM — **one agent at a time**; do not assume parallel heavy builds or long-running watchers.
+- **Runtime (pinned):** Node **24.16.0** (`.nvmrc`) · pnpm **10.12.4** (`packageManager`) · TypeScript end-to-end. Any version change requires a dated decision in the locked Notion canon.
+- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary · Observability = PostHog + Sentry · Icons = Streamline · Email = Resend.
+- **CI & agent routing:** CI runs through the org reusable workflow (`.github/workflows/ci.yml` → `AutomatedEmpires/.github` reusable-ci). Agent routing (build-task router, PR agent router/dispatch) mirrors E&E. Notion decides product truth; this repo decides implementation truth.
 
 ## Source of truth
 
