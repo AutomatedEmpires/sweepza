@@ -4,10 +4,11 @@ import type { WinnerPost } from "@/lib/mock/winners";
 import type { Listing } from "@/lib/types/listing";
 import { createServiceRoleClient, createServerSupabaseClient } from "@/lib/supabase/server";
 import { toWinnerPost } from "./adapters";
-import { getPublicListingsByIds } from "./listings";
+import { adaptListingRows } from "./listings";
 import type { ReactionType } from "./enums";
 import type {
   AppUserRow,
+  ListingRow,
   WinnerPostRow,
   WinnerReactionRow,
 } from "./types";
@@ -15,6 +16,26 @@ import type {
 export interface WinnerWallItem {
   post: WinnerPost;
   listing?: Listing;
+}
+
+async function getWinnerWallListings(
+  listingIds: string[],
+): Promise<Listing[]> {
+  if (listingIds.length === 0) return [];
+
+  const serviceRole = createServiceRoleClient();
+  const { data, error } = await serviceRole
+    .from("listing")
+    .select("*")
+    .eq("visibility_status", "public")
+    .in("id", listingIds)
+    .returns<ListingRow[]>();
+
+  if (error) {
+    throw new Error(`getWinnerWallListings failed: ${error.message}`);
+  }
+
+  return adaptListingRows(data ?? []);
 }
 
 export async function getPublishedWinnerWall(
@@ -48,7 +69,7 @@ export async function getPublishedWinnerWall(
       .select("id, display_name")
       .in("id", winnerUserIds)
       .returns<Pick<AppUserRow, "id" | "display_name">[]>(),
-    getPublicListingsByIds(listingIds),
+    getWinnerWallListings(listingIds),
     serviceRole
       .from("winner_reaction")
       .select("*")

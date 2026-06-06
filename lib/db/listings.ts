@@ -28,7 +28,7 @@ function getTagLabel(tag: ListingTagLabelRow["tag"]): string | undefined {
   return Array.isArray(tag) ? tag[0]?.label : tag.label;
 }
 
-async function adaptListings(
+export async function adaptListingRows(
   rows: ListingRow[],
   accessToken?: string,
 ): Promise<Listing[]> {
@@ -133,7 +133,7 @@ export async function getPublicListings(
     .returns<ListingRow[]>();
 
   if (error) throw new Error(`getPublicListings failed: ${error.message}`);
-  return adaptListings(data ?? [], accessToken);
+  return adaptListingRows(data ?? [], accessToken);
 }
 
 export async function getPublicListingsByIds(
@@ -155,7 +155,7 @@ export async function getPublicListingsByIds(
     throw new Error(`getPublicListingsByIds failed: ${error.message}`);
   }
 
-  return adaptListings(data ?? [], accessToken);
+  return adaptListingRows(data ?? [], accessToken);
 }
 
 /** Fetch a single listing by slug (RLS still applies). */
@@ -173,6 +173,6 @@ export async function getListingBySlug(
     .maybeSingle<ListingRow>();
   if (error) throw new Error(`getListingBySlug failed: ${error.message}`);
   if (!data) return null;
-  const [listing] = await adaptListings([data], accessToken);
+  const [listing] = await adaptListingRows([data], accessToken);
   return listing ?? null;
 }
