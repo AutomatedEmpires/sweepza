@@ -121,7 +121,7 @@ export function AdminReviewQueue({
                   {listing.title}
                 </p>
                 <p className="mt-1 text-xs text-ink/55">
-                  {listing.host_display_name ?? "Unknown host"} \u00b7 Ends{" "}
+                  {listing.host_display_name ?? "Unknown host"}{" \u00b7 "}Ends{" "}
                   {formatDate(listing.end_date)}
                 </p>
               </div>
