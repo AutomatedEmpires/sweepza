@@ -13,6 +13,8 @@ Sweepza is one app in the AutomatedEmpires venture system; **Explore&Earn (E&E) 
 
 ## Source of truth
 
+**Doctrine: Notion decides and builds. GitHub reviews and ships. Figma shows. Everything else runs.** The bulk of the build — specs, data model, copy — is authored in the locked Notion canon first; this repo validates, reviews, and ships it.
+
 The **locked Notion canon** is authoritative. This repo implements it; it does not redefine it. Where code and canon disagree, the canon wins. The canonical specs are: Locked Product Doctrine, Audit Response & Decision Locks, Canonical Listing Object, Canonical Data Model & RLS, Listing States & Quality Gate, Trust/Verification & Badge Naming, Billing & Entitlements, Analytics Event Dictionary, Notification Matrix, Legal & Disclosure Registry, and Controlled Dictionaries & Taxonomy Governance.
 
 ## Core rule (no exceptions)
