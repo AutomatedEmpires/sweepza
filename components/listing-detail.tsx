@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
+import { ListingReportButton } from "@/components/listing-report-button";
 import { track } from "@/lib/analytics";
 import {
   SOURCE_LABEL_TEXT,
@@ -42,7 +43,15 @@ function countdownLabel(listing: Listing): string {
   return `${days} days left`;
 }
 
-export function ListingDetail({ listing }: { listing: Listing }) {
+export function ListingDetail({
+  listing,
+  clerkConfigured,
+  isSignedIn,
+}: {
+  listing: Listing;
+  clerkConfigured: boolean;
+  isSignedIn: boolean;
+}) {
   const store = useSeekerState();
   const expired = isExpired(listing);
   const initialState: SeekerUiState =
@@ -52,7 +61,6 @@ export function ListingDetail({ listing }: { listing: Listing }) {
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [hostOpen, setHostOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [reported, setReported] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -270,19 +278,11 @@ export function ListingDetail({ listing }: { listing: Listing }) {
             <Icon name="bookmark" size={20} />
           </button>
 
-          {/* Flag / report */}
-          <button
-            type="button"
-            onClick={() => setReported((r) => !r)}
-            aria-pressed={reported}
-            aria-label={reported ? "Reported" : "Report listing"}
-            className={cn(
-              "absolute right-3 top-16 grid h-10 w-10 place-items-center rounded-full shadow-sm backdrop-blur transition",
-              reported ? "bg-ember text-cream" : "bg-cream/90 text-ink/70",
-            )}
-          >
-            <Icon name="flag" size={18} />
-          </button>
+          <ListingReportButton
+            listingId={listing.id}
+            clerkConfigured={clerkConfigured}
+            isSignedIn={isSignedIn}
+          />
 
           {/* Urgency / trust badges */}
           {badges.length > 0 && (

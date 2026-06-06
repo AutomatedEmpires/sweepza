@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { ListingDetail } from "@/components/listing-detail";
 import { getListingBySlug } from "@/lib/db/listings";
 import { SITE_URL } from "@/lib/site";
@@ -35,5 +36,16 @@ export default async function ListingDetailPage({
   const { slug } = await params;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
-  return <ListingDetail listing={listing} />;
+  const [authUser, clerkConfigured] = await Promise.all([
+    ensureCurrentAppUser(),
+    Promise.resolve(isClerkConfigured()),
+  ]);
+
+  return (
+    <ListingDetail
+      listing={listing}
+      clerkConfigured={clerkConfigured}
+      isSignedIn={Boolean(authUser)}
+    />
+  );
 }
