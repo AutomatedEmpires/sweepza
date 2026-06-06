@@ -2,6 +2,19 @@
 
 This file is binding for every contributor, human or AI (Copilot, Claude, Codex). Read it before writing code.
 
+## Machine & runtime (cross-app standard)
+
+All AutomatedEmpires apps are built on ONE machine; assume exactly:
+- Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code
+- Working path: `/home/jackson/automatedempires/ventures/sweepza`
+- 16 GB RAM. **One agent at a time** — no parallel heavy builds or long-running watchers.
+
+Runtime is pinned (do not drift): Node **24.16.0** (`.nvmrc`), pnpm **10.12.4** (`packageManager`), TypeScript end-to-end. Any version change requires a dated decision in the locked canon.
+
+Integration spine (locked, cross-app): Doppler (secrets) · Vercel (hosting) · Supabase Postgres + PostGIS · **Clerk** (auth) · **Mapbox** (maps) · Stripe (payments) · Cloudinary (media) · PostHog + Sentry (observability) · Streamline (single icon system). Do not introduce alternates without a dated decision.
+
+CI (`.github/workflows/ci.yml`) runs typecheck + lint + build on every PR; keep it green.
+
 ## Source of truth
 
 The **locked Notion canon** is authoritative. This repo implements it; it does not redefine it. Where code and canon disagree, the canon wins. The canonical specs are: Locked Product Doctrine, Audit Response & Decision Locks, Canonical Listing Object, Canonical Data Model & RLS, Listing States & Quality Gate, Trust/Verification & Badge Naming, Billing & Entitlements, Analytics Event Dictionary, Notification Matrix, Legal & Disclosure Registry, and Controlled Dictionaries & Taxonomy Governance.
