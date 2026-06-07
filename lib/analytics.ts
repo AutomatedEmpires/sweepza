@@ -13,6 +13,8 @@ export type AnalyticsEvent =
   | "listing_shared"
   | "discover_feed_loaded"
   | "filter_applied"
+  | "search_performed"
+  | "search_results_shown"
   | "winner_post_created"
   | "winner_post_published"
   | "winner_post_reacted"
