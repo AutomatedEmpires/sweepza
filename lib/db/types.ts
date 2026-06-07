@@ -105,6 +105,8 @@ export interface ListingRow {
   duplicate_status: DuplicateStatus;
   listing_verification_status: ListingVerificationStatus;
   is_featured: boolean;
+  review_notes_internal: string | null;
+  review_notes: string | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
   published_at: Timestamptz | null;
@@ -214,6 +216,10 @@ export interface NotificationPrefRow {
   email_enabled: boolean;
   in_app_enabled: boolean;
   push_enabled: boolean;
+  email_on_listing_approved: boolean;
+  email_on_listing_held: boolean;
+  email_on_listing_expiring_soon: boolean;
+  email_on_new_reaction: boolean;
   updated_at: Timestamptz;
 }
 

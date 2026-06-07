@@ -18,6 +18,21 @@ export const hostListingSubmissionSchema = z.object({
   tagCodes: z.array(z.string()).max(12).default([]),
 });
 
+// Host-editable fields for the draft/held edit flow. Admin-only fields
+// (moderation_status, verification_status, is_featured, source_label) are
+// intentionally excluded.
+export const hostListingEditSchema = z.object({
+  title: z.string().trim().min(5).max(70),
+  short_description: z.string().trim().min(10).max(140),
+  prize_name: z.string().trim().min(3).max(120),
+  prize_value: z.coerce.number().nonnegative().nullable().optional(),
+  entry_url: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.string().trim().url().nullable().optional(),
+  ),
+});
+
 export type HostListingSubmissionInput = z.infer<
   typeof hostListingSubmissionSchema
 >;
+export type HostListingEditInput = z.infer<typeof hostListingEditSchema>;

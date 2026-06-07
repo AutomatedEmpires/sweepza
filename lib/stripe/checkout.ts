@@ -104,3 +104,23 @@ export async function createHostCheckoutSession(
 
   return { url: session.url, sessionId: session.id };
 }
+
+// Creates a Stripe Customer Portal session so a host can self-manage their
+// subscription (payment method, cancellation, invoices). Uses the shared
+// Stripe SDK client.
+export async function createStripePortalSession(args: {
+  customerId: string;
+  returnUrl?: string;
+}): Promise<string> {
+  const stripe = createStripeServerClient();
+  const session = await stripe.billingPortal.sessions.create({
+    customer: args.customerId,
+    return_url: args.returnUrl ?? `${getAppBaseUrl()}/host`,
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe did not return a billing portal URL.");
+  }
+
+  return session.url;
+}
