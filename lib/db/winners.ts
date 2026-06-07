@@ -68,7 +68,6 @@ export async function getPublishedWinnerPosts(
       ...toWinnerPost(row, {
         winnerDisplayName,
         listingSlug,
-        verifiedWin: false,
         reactions: reactionCounts.get(row.id) ?? {},
       }),
       // augment
@@ -118,6 +117,35 @@ export async function listPendingWinnerPostsForModeration(): Promise<WinnerPostR
     .returns<WinnerPostRow[]>();
   if (error) throw new Error(`listPendingWinnerPostsForModeration failed: ${error.message}`);
   return data ?? [];
+}
+
+export async function toggleWinnerReaction(args: {
+  winnerPostId: string;
+  appUserId: string;
+  reactionType: ReactionType;
+}): Promise<Partial<Record<ReactionType, number>>> {
+  const supabase = createServiceRoleClient();
+
+  const { data: existing } = await supabase
+    .from("winner_reaction")
+    .select("id")
+    .eq("winner_post_id", args.winnerPostId)
+    .eq("app_user_id", args.appUserId)
+    .eq("reaction_type", args.reactionType)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("winner_reaction").delete().eq("id", existing.id);
+  } else {
+    await supabase.from("winner_reaction").insert({
+      winner_post_id: args.winnerPostId,
+      app_user_id: args.appUserId,
+      reaction_type: args.reactionType,
+    });
+  }
+
+  const counts = await getWinnerReactionCounts([args.winnerPostId]);
+  return counts.get(args.winnerPostId) ?? {};
 }
 
 export async function updateWinnerPostReviewStatus(args: {

@@ -1,0 +1,45 @@
+import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { toggleWinnerReaction } from "@/lib/db/winners";
+import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
+
+const reactionSchema = z.object({
+  reactionType: z.enum(REACTION_TYPES),
+});
+
+export const dynamic = "force-dynamic";
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ winnerPostId: string }> },
+) {
+  if (!isClerkConfigured()) {
+    return NextResponse.json(
+      { error: "Clerk is not configured for this environment." },
+      { status: 503 },
+    );
+  }
+
+  const authUser = await ensureCurrentAppUser();
+  if (!authUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { winnerPostId } = await context.params;
+  const parsed = reactionSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid payload", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const reactions = await toggleWinnerReaction({
+    winnerPostId,
+    appUserId: authUser.appUserId,
+    reactionType: parsed.data.reactionType as ReactionType,
+  });
+
+  return NextResponse.json({ ok: true, reactions });
+}

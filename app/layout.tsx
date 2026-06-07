@@ -3,9 +3,16 @@ import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
 import { ObservabilityProviders } from "@/components/observability-providers";
-import { SeekerStateProvider } from "@/lib/seeker-state";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
-import type { SeekerUiState } from "@/lib/types/listing";
+import { ShellUtilityBar } from "@/components/shell-utility-bar";
+import { SweepzaProviders } from "@/components/sweepza-providers";
+import { ensureCurrentAppUser } from "@/lib/auth";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
+import {
+  APP_DESCRIPTION,
+  APP_NAME,
+  APP_TAGLINE,
+  SITE_URL,
+} from "@/lib/site";
 
 const display = Patrick_Hand({
   weight: "400",
@@ -16,17 +23,16 @@ const display = Patrick_Hand({
 
 export const metadata: Metadata = {
   title: {
-    default: "Sweepza — Sweepstakes | Simplified",
-    template: "%s · Sweepza",
+    default: `${APP_NAME} — ${APP_TAGLINE}`,
+    template: `%s · ${APP_NAME}`,
   },
-  description:
-    "Sweepza is a fast, photo-first way to discover sweepstakes worth entering.",
-  metadataBase: new URL("https://sweepza.com"),
+  description: APP_DESCRIPTION,
+  metadataBase: SITE_URL,
   openGraph: {
-    title: "Sweepza",
-    description: "Sweepstakes | Simplified",
-    url: "https://sweepza.com",
-    siteName: "Sweepza",
+    title: APP_NAME,
+    description: APP_TAGLINE,
+    url: SITE_URL,
+    siteName: APP_NAME,
     type: "website",
   },
 };
@@ -38,25 +44,29 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-const initialSeekerState: Record<string, SeekerUiState> = Object.fromEntries(
-  MOCK_LISTINGS.filter((l) => l.seekerState).map((l) => [
-    l.id,
-    l.seekerState!.primaryUiState,
-  ]),
-);
-
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const authUser = await ensureCurrentAppUser();
+  const initialSeekerState = authUser
+    ? await getSeekerStateSnapshotForAppUser(authUser.appUserId)
+    : { primary: {}, saved: {} };
+
   return (
     <html lang="en" className={display.variable}>
       <body>
         <ObservabilityProviders>
-          <SeekerStateProvider initial={initialSeekerState}>
-            <MobileShell>{children}</MobileShell>
-          </SeekerStateProvider>
+          <SweepzaProviders
+            clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+            initialSeekerState={initialSeekerState}
+            persistenceMode={authUser ? "remote" : "local"}
+          >
+            <MobileShell utility={<ShellUtilityBar authUser={authUser} />}>
+              {children}
+            </MobileShell>
+          </SweepzaProviders>
         </ObservabilityProviders>
       </body>
     </html>
