@@ -26,6 +26,17 @@ export function SeekerDashboard({ listings }: { listings: Listing[] }) {
     );
   }, [listings, store, tab]);
 
+  const tabCounts = useMemo<Record<DashboardTab, number>>(() => {
+    if (!store) return { saved: 0, entered: 0, skipped: 0 };
+    return {
+      saved: listings.filter((l) => store.isSaved(l.id)).length,
+      entered: listings.filter((l) => store.getState(l.id) === "entered")
+        .length,
+      skipped: listings.filter((l) => store.getState(l.id) === "skipped")
+        .length,
+    };
+  }, [listings, store]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
@@ -35,6 +46,7 @@ export function SeekerDashboard({ listings }: { listings: Listing[] }) {
             type="button"
             onClick={() => setTab(t.id)}
             aria-pressed={tab === t.id}
+            aria-label={`${t.label}, ${tabCounts[t.id]} items`}
             className={cn(
               "flex-1 rounded-full px-3 py-2 text-sm font-semibold transition",
               tab === t.id
@@ -42,7 +54,7 @@ export function SeekerDashboard({ listings }: { listings: Listing[] }) {
                 : "border border-sand bg-white text-ink/60",
             )}
           >
-            {t.label}
+            {t.label} ({tabCounts[t.id]})
           </button>
         ))}
       </div>

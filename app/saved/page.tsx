@@ -1,6 +1,8 @@
 import { SeekerDashboard } from "@/components/seeker-dashboard";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { getPublicListings } from "@/lib/db/listings";
+import { getPublicListingsByIds } from "@/lib/db/listings";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
+import type { Listing } from "@/lib/types/listing";
 import Link from "next/link";
 
 export const metadata = { title: "Saved" };
@@ -9,7 +11,28 @@ export const dynamic = "force-dynamic";
 export default async function SavedPage() {
   const authUser = await ensureCurrentAppUser();
   const clerkConfigured = isClerkConfigured();
-  const listings = await getPublicListings({ limit: 100 });
+
+  // Authenticated users: fetch ONLY the listings they actually have seeker
+  // state for. The root layout already seeds SeekerStateProvider with this
+  // user's server snapshot (persistenceMode="remote"), so the dashboard can
+  // filter correctly on the first server-rendered paint — no flash of all
+  // listings and no client refetch.
+  //
+  // Unauthenticated users: fetch nothing. They only have local state and see
+  // the sign-in prompt over an empty dashboard shell.
+  let listings: Listing[] = [];
+  if (authUser) {
+    const snapshot = await getSeekerStateSnapshotForAppUser(authUser.appUserId);
+    const listingIds = Array.from(
+      new Set([
+        ...Object.keys(snapshot.primary),
+        ...Object.keys(snapshot.saved),
+      ]),
+    );
+    // No tracked listings -> render the empty state without a DB round-trip.
+    listings =
+      listingIds.length > 0 ? await getPublicListingsByIds(listingIds) : [];
+  }
 
   return (
     <section className="px-4 pb-8 pt-8">
