@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
+import { ObservabilityProviders } from "@/components/observability-providers";
 import { ShellUtilityBar } from "@/components/shell-utility-bar";
 import { SweepzaProviders } from "@/components/sweepza-providers";
 import { ensureCurrentAppUser } from "@/lib/auth";
@@ -13,9 +14,6 @@ import {
   SITE_URL,
 } from "@/lib/site";
 
-// Hand-drawn marker face for sweeps-card titles and ribbons. Exposed as the
-// `font-display` Tailwind token via the --font-display CSS variable. Body copy
-// continues to use the system sans stack.
 const display = Patrick_Hand({
   weight: "400",
   subsets: ["latin"],
@@ -59,15 +57,17 @@ export default async function RootLayout({
   return (
     <html lang="en" className={display.variable}>
       <body>
-        <SweepzaProviders
-          clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-          initialSeekerState={initialSeekerState}
-          persistenceMode={authUser ? "remote" : "local"}
-        >
-          <MobileShell utility={<ShellUtilityBar authUser={authUser} />}>
-            {children}
-          </MobileShell>
-        </SweepzaProviders>
+        <ObservabilityProviders>
+          <SweepzaProviders
+            clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+            initialSeekerState={initialSeekerState}
+            persistenceMode={authUser ? "remote" : "local"}
+          >
+            <MobileShell utility={<ShellUtilityBar authUser={authUser} />}>
+              {children}
+            </MobileShell>
+          </SweepzaProviders>
+        </ObservabilityProviders>
       </body>
     </html>
   );

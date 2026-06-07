@@ -1,176 +1,161 @@
 import "server-only";
 
-import type { WinnerPost } from "@/lib/mock/winners";
-import type { Listing } from "@/lib/types/listing";
-import { createServiceRoleClient, createServerSupabaseClient } from "@/lib/supabase/server";
-import { aggregateReactions, toWinnerPost } from "./adapters";
-import { adaptListingRows } from "./listings";
-import type { ReactionType } from "./enums";
-import type {
-  AppUserRow,
-  ListingRow,
-  WinnerPostRow,
-  WinnerReactionRow,
-} from "./types";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
+import type { ReactionType, WinnerReviewStatus } from "@/lib/db/enums";
+import type { WinnerPost } from "@/lib/types/winner";
+import type { AppUserRow, ListingRow, WinnerPostRow, WinnerReactionRow } from "@/lib/db/types";
+import { toWinnerPost } from "@/lib/db/adapters";
 
-export interface WinnerWallItem {
-  post: WinnerPost;
-  listing?: Listing;
+export type WinnerFeedCursor = { createdAt: string; id: string };
+
+export interface GetPublishedWinnerPostsArgs {
+  limit?: number;
+  cursor?: WinnerFeedCursor;
 }
 
-async function getWinnerWallListings(
-  listingIds: string[],
-): Promise<Listing[]> {
-  if (listingIds.length === 0) return [];
+type WinnerPostJoinRow = WinnerPostRow & {
+  app_user: Pick<AppUserRow, "display_name" | "cover_image_url"> | null;
+  listing: Pick<ListingRow, "slug" | "title" | "prize_value"> | null;
+};
 
-  const serviceRole = createServiceRoleClient();
-  const { data, error } = await serviceRole
-    .from("listing")
-    .select("*")
-    .eq("visibility_status", "public")
-    .eq("lifecycle_status", "active")
-    .in("id", listingIds)
-    .returns<ListingRow[]>();
+export async function getPublishedWinnerPosts(
+  args: GetPublishedWinnerPostsArgs = {},
+): Promise<{ posts: WinnerPost[]; nextCursor: WinnerFeedCursor | null }> {
+  const supabase = createServerSupabaseClient();
+  const limit = args.limit ?? 20;
 
-  if (error) {
-    throw new Error(`getWinnerWallListings failed: ${error.message}`);
+  let base = supabase
+    .from("winner_post")
+    .select(
+      [
+        "id",
+        "app_user_id",
+        "listing_id",
+        "caption",
+        "photo_url",
+        "review_status",
+        "created_at",
+        "updated_at",
+        "app_user:app_user(display_name, cover_image_url)",
+        "listing:listing(slug, title, prize_value)",
+      ].join(","),
+    )
+    .eq("review_status", "published" satisfies WinnerReviewStatus)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+
+  if (args.cursor) {
+    // Cursor as (created_at, id) tuple — applied before limit/returns.
+    base = base.or(
+      `created_at.lt.${args.cursor.createdAt},and(created_at.eq.${args.cursor.createdAt},id.lt.${args.cursor.id})`,
+    );
   }
 
-  return adaptListingRows(data ?? []);
+  const { data, error } = await base.limit(limit + 1).returns<WinnerPostJoinRow[]>();
+  if (error) throw new Error(`getPublishedWinnerPosts failed: ${error.message}`);
+  const rows = data ?? [];
+
+  const pageRows = rows.slice(0, limit);
+  const reactionCounts = await getWinnerReactionCounts(
+    pageRows.map((row) => row.id),
+  );
+
+  const posts = pageRows.map((row) => {
+    const winnerDisplayName = row.app_user?.display_name ?? "Sweepza member";
+    const listingSlug = row.listing?.slug ?? "";
+
+    return {
+      ...toWinnerPost(row, {
+        winnerDisplayName,
+        listingSlug,
+        reactions: reactionCounts.get(row.id) ?? {},
+      }),
+      // augment
+      winnerAvatarUrl: row.app_user?.cover_image_url ?? undefined,
+      listingTitle: row.listing?.title ?? undefined,
+      listingPrizeValue: row.listing?.prize_value ?? null,
+    } satisfies WinnerPost;
+  });
+
+  const next = rows.length > limit ? rows[limit] : null;
+  const nextCursor = next ? { createdAt: next.created_at, id: next.id } : null;
+
+  return { posts, nextCursor };
 }
 
-export async function getPublishedWinnerWall(
-  limit = 20,
-): Promise<WinnerWallItem[]> {
+export async function getWinnerReactionCounts(
+  winnerPostIds: string[],
+): Promise<Map<string, Partial<Record<ReactionType, number>>>> {
+  const map = new Map<string, Partial<Record<ReactionType, number>>>();
+  if (winnerPostIds.length === 0) return map;
+
   const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("winner_reaction")
+    .select("winner_post_id, reaction_type")
+    .in("winner_post_id", winnerPostIds)
+    .returns<Pick<WinnerReactionRow, "winner_post_id" | "reaction_type">[]>();
+
+  if (error) throw new Error(`getWinnerReactionCounts failed: ${error.message}`);
+
+  for (const row of data ?? []) {
+    const counts = map.get(row.winner_post_id) ?? {};
+    counts[row.reaction_type] = (counts[row.reaction_type] ?? 0) + 1;
+    map.set(row.winner_post_id, counts);
+  }
+
+  return map;
+}
+
+export async function listPendingWinnerPostsForModeration(): Promise<WinnerPostRow[]> {
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("winner_post")
     .select("*")
-    .eq("review_status", "published")
-    .order("created_at", { ascending: false })
-    .limit(limit)
+    .in("review_status", ["submitted", "pending_review"])
+    .order("created_at", { ascending: true })
     .returns<WinnerPostRow[]>();
-
-  if (error) {
-    throw new Error(`getPublishedWinnerWall failed: ${error.message}`);
-  }
-
-  const rows = data ?? [];
-  if (rows.length === 0) return [];
-
-  const winnerUserIds = [...new Set(rows.map((row) => row.app_user_id))];
-  const listingIds = [...new Set(rows.flatMap((row) => (row.listing_id ? [row.listing_id] : [])))];
-  const postIds = rows.map((row) => row.id);
-
-  const serviceRole = createServiceRoleClient();
-
-  const [usersResult, listingsResult, reactionsResult] = await Promise.all([
-    serviceRole
-      .from("app_user")
-      .select("id, display_name")
-      .in("id", winnerUserIds)
-      .returns<Pick<AppUserRow, "id" | "display_name">[]>(),
-    getWinnerWallListings(listingIds),
-    serviceRole
-      .from("winner_reaction")
-      .select("*")
-      .in("winner_post_id", postIds)
-      .returns<WinnerReactionRow[]>(),
-  ]);
-
-  if (usersResult.error) {
-    throw new Error(`getPublishedWinnerWall user lookup failed: ${usersResult.error.message}`);
-  }
-  if (reactionsResult.error) {
-    throw new Error(`getPublishedWinnerWall reaction lookup failed: ${reactionsResult.error.message}`);
-  }
-
-  const usersById = new Map(
-    (usersResult.data ?? []).map((user) => [user.id, user.display_name]),
-  );
-  const listingsById = new Map(
-    listingsResult.map((listing) => [listing.id, listing]),
-  );
-  const reactionsByWinnerPostId = new Map<string, WinnerReactionRow[]>();
-
-  for (const reaction of reactionsResult.data ?? []) {
-    const bucket = reactionsByWinnerPostId.get(reaction.winner_post_id);
-    if (bucket) {
-      bucket.push(reaction);
-    } else {
-      reactionsByWinnerPostId.set(reaction.winner_post_id, [reaction]);
-    }
-  }
-
-  return rows.map((row) => {
-    const listing = row.listing_id ? listingsById.get(row.listing_id) : undefined;
-    const listingSlug = listing?.slug ?? "";
-    const winnerDisplayName = usersById.get(row.app_user_id) ?? "Sweepza Member";
-
-    return {
-      post: toWinnerPost(row, {
-        winnerDisplayName,
-        listingSlug,
-        reactions: reactionsByWinnerPostId.get(row.id) ?? [],
-      }),
-      listing,
-    };
-  });
+  if (error) throw new Error(`listPendingWinnerPostsForModeration failed: ${error.message}`);
+  return data ?? [];
 }
-
 
 export async function toggleWinnerReaction(args: {
   winnerPostId: string;
   appUserId: string;
   reactionType: ReactionType;
 }): Promise<Partial<Record<ReactionType, number>>> {
-  const { winnerPostId, appUserId, reactionType } = args;
   const supabase = createServiceRoleClient();
 
-  const { data: existing, error: existingError } = await supabase
+  const { data: existing } = await supabase
     .from("winner_reaction")
     .select("id")
-    .eq("winner_post_id", winnerPostId)
-    .eq("app_user_id", appUserId)
-    .eq("reaction_type", reactionType)
-    .maybeSingle<{ id: string }>();
+    .eq("winner_post_id", args.winnerPostId)
+    .eq("app_user_id", args.appUserId)
+    .eq("reaction_type", args.reactionType)
+    .maybeSingle();
 
-  if (existingError) {
-    throw new Error(`toggleWinnerReaction read failed: ${existingError.message}`);
-  }
-
-  if (existing?.id) {
-    const { error } = await supabase
-      .from("winner_reaction")
-      .delete()
-      .eq("id", existing.id);
-
-    if (error) {
-      throw new Error(`toggleWinnerReaction delete failed: ${error.message}`);
-    }
+  if (existing) {
+    await supabase.from("winner_reaction").delete().eq("id", existing.id);
   } else {
-    const { error } = await supabase
-      .from("winner_reaction")
-      .insert({
-        winner_post_id: winnerPostId,
-        app_user_id: appUserId,
-        reaction_type: reactionType,
-      });
-
-    if (error) {
-      throw new Error(`toggleWinnerReaction insert failed: ${error.message}`);
-    }
+    await supabase.from("winner_reaction").insert({
+      winner_post_id: args.winnerPostId,
+      app_user_id: args.appUserId,
+      reaction_type: args.reactionType,
+    });
   }
 
-  const { data, error } = await supabase
-    .from("winner_reaction")
-    .select("*")
-    .eq("winner_post_id", winnerPostId)
-    .returns<WinnerReactionRow[]>();
+  const counts = await getWinnerReactionCounts([args.winnerPostId]);
+  return counts.get(args.winnerPostId) ?? {};
+}
 
-  if (error) {
-    throw new Error(`toggleWinnerReaction recount failed: ${error.message}`);
-  }
-
-  return aggregateReactions(data ?? []);
+export async function updateWinnerPostReviewStatus(args: {
+  winnerPostId: string;
+  reviewStatus: WinnerReviewStatus;
+}): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from("winner_post")
+    .update({ review_status: args.reviewStatus })
+    .eq("id", args.winnerPostId);
+  if (error) throw new Error(`updateWinnerPostReviewStatus failed: ${error.message}`);
 }
