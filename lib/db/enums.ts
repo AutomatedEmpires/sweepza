@@ -2,14 +2,14 @@
 // Keep in lockstep with the DB; `pnpm db:types` can regenerate once a project exists.
 
 export const LIFECYCLE_STATUSES = [
-  "draft", "pending_review", "active", "paused", "expired", "archived", "rejected",
+  "draft", "pending_review", "active", "paused", "expired", "archived", "rejected", "held", "inactive",
 ] as const;
 export type LifecycleStatus = (typeof LIFECYCLE_STATUSES)[number];
 
-export const VISIBILITY_STATUSES = ["public", "private", "hidden"] as const;
+export const VISIBILITY_STATUSES = ["public", "private", "hidden", "unlisted"] as const;
 export type VisibilityStatus = (typeof VISIBILITY_STATUSES)[number];
 
-export const MODERATION_STATUSES = ["clear", "flagged", "under_review", "action_taken"] as const;
+export const MODERATION_STATUSES = ["clear", "flagged", "under_review", "action_taken", "submitted", "held", "rejected"] as const;
 export type ModerationStatus = (typeof MODERATION_STATUSES)[number];
 
 export const DUPLICATE_STATUSES = ["clear", "suspected", "confirmed"] as const;
@@ -66,7 +66,7 @@ export type ReportAiSeverity = (typeof REPORT_AI_SEVERITIES)[number];
 export const CLAIM_STATUSES = ["unclaimed", "requested", "approved", "rejected"] as const;
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
-export const SUBSCRIPTION_STATUSES = ["no_plan", "active", "grace", "past_due", "canceled"] as const;
+export const SUBSCRIPTION_STATUSES = ["no_plan", "active", "trialing", "grace", "past_due", "canceled"] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export const BOOST_TYPES = ["boost", "featured"] as const;
