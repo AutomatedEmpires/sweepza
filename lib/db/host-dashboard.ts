@@ -1,12 +1,10 @@
 import "server-only";
 
 import Stripe from "stripe";
+import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { ListingRow, NotificationPrefRow, SubscriptionRow } from "@/lib/db/types";
-
-// NOTE: This repo currently does not include Clerk wiring; the "host identity"
-// is derived purely from the Supabase JWT via RLS helpers.
 
 export async function getHostIdentity(accessToken?: string): Promise<{ appUserId: string; hostId: string }> {
   const supabase = createServerSupabaseClient(accessToken);
@@ -20,31 +18,9 @@ export async function getHostIdentity(accessToken?: string): Promise<{ appUserId
   return { hostId: host.id, appUserId: host.app_user_id };
 }
 
-function listingGroups(rows: ListingRow[]) {
-  const groups: Record<string, ListingRow[]> = {
-    active: [],
-    pending_review: [],
-    held_rejected: [],
-    expired: [],
-  };
-
-  for (const row of rows) {
-    if (row.lifecycle_status === "active") groups.active.push(row);
-    else if (row.lifecycle_status === "pending_review") groups.pending_review.push(row);
-    else if (row.lifecycle_status === "expired") groups.expired.push(row);
-    else if (row.lifecycle_status === "rejected" || row.lifecycle_status === "paused") {
-      groups.held_rejected.push(row);
-    } else {
-      // Draft + anything else stays visible under pending_review for now.
-      groups.pending_review.push(row);
-    }
-  }
-
-  return groups;
-}
-
 async function getHostListings(accessToken?: string): Promise<ListingRow[]> {
   const supabase = createServerSupabaseClient(accessToken);
+  // RLS limits this to current_host_id() listings.
   const { data, error } = await supabase
     .from("listing")
     .select("*")
@@ -55,29 +31,27 @@ async function getHostListings(accessToken?: string): Promise<ListingRow[]> {
   return data ?? [];
 }
 
-async function getEntryCounts(listingIds: string[], accessToken?: string): Promise<Map<string, number>> {
-  if (listingIds.length === 0) return new Map();
+type HostListingStatsRow = {
+  listing_id: string;
+  view_count: number;
+  save_count: number;
+  enter_count: number;
+  entries_this_week: number;
+  entries_last_week: number;
+};
 
-  // listing_seeker_state is row-owner only by RLS. To preserve that, we keep this
-  // as a best-effort call: it will return 0 unless an admin/owner is viewing.
+async function getHostListingStats(hostId: string, accessToken?: string): Promise<HostListingStatsRow[]> {
   const supabase = createServerSupabaseClient(accessToken);
-  const { data, error } = await supabase
-    .from("listing_seeker_state")
-    .select("listing_id, entered_at")
-    .in("listing_id", listingIds)
-    .not("entered_at", "is", null);
-
-  if (error) return new Map();
-  const counts = new Map<string, number>();
-  for (const row of (data ?? []) as Array<{ listing_id: string }>) {
-    counts.set(row.listing_id, (counts.get(row.listing_id) ?? 0) + 1);
-  }
-  return counts;
+  const { data, error } = await supabase.rpc("host_listing_stats", { host_id_in: hostId });
+  if (error) throw new Error(`host_listing_stats RPC failed: ${error.message}`);
+  return (data ?? []) as HostListingStatsRow[];
 }
 
 export async function submitForReview(listingId: string) {
   const supabase = createServerSupabaseClient();
 
+  // Canonical enums do not include moderation_status='submitted'. Use
+  // lifecycle_status='pending_review' to represent submission.
   const { error } = await supabase
     .from("listing")
     .update({ lifecycle_status: "pending_review" })
@@ -88,6 +62,8 @@ export async function submitForReview(listingId: string) {
 
 export async function deactivateListing(listingId: string) {
   const supabase = createServerSupabaseClient();
+
+  // Canonical enums do not include inactive/unlisted; use paused+hidden.
   const { error } = await supabase
     .from("listing")
     .update({ lifecycle_status: "paused", visibility_status: "hidden" })
@@ -98,7 +74,9 @@ export async function deactivateListing(listingId: string) {
 
 export async function getHostListingsSnapshot() {
   const listings = await getHostListings();
-  const counts = await getEntryCounts(listings.map((l) => l.id));
+  const identity = await getHostIdentity();
+  const stats = await getHostListingStats(identity.hostId).catch(() => [] as HostListingStatsRow[]);
+  const statsByListingId = new Map(stats.map((row) => [row.listing_id, row]));
 
   const enriched = listings.map((l) => ({
     id: l.id,
@@ -107,14 +85,16 @@ export async function getHostListingsSnapshot() {
     endDate: l.end_date,
     lifecycleStatus: l.lifecycle_status,
     reviewNotes: (l as unknown as { review_notes?: string | null }).review_notes ?? null,
-    entryCount: counts.get(l.id) ?? 0,
+    entryCount: statsByListingId.get(l.id)?.enter_count ?? 0,
     submitForReviewAction: async () => {
       "use server";
       await submitForReview(l.id);
+      redirect("/host/listings");
     },
     deactivateAction: async () => {
       "use server";
       await deactivateListing(l.id);
+      redirect("/host/listings");
     },
   }));
 
@@ -161,8 +141,6 @@ export async function editHostListing(formData: FormData) {
   if (prize_value_raw && Number.isNaN(prize_value)) throw new Error("Prize value must be a number.");
 
   const supabase = createServerSupabaseClient();
-
-  // Load current row to confirm status and avoid privileged-field writes.
   const current = await getHostListingForEdit(listingId);
 
   const updates: Partial<ListingRow> & Record<string, unknown> = {
@@ -173,19 +151,20 @@ export async function editHostListing(formData: FormData) {
     entry_url: entry_url || null,
   };
 
-  // If it was "held" (mapped to paused), return to draft.
+  // If it was held (represented by paused), return to draft so it re-enters review.
   if (current.lifecycle_status === "paused") updates.lifecycle_status = "draft";
 
   const { error } = await supabase.from("listing").update(updates).eq("id", listingId);
   if (error) throw new Error(`editHostListing failed: ${error.message}`);
+
+  redirect("/host/listings");
 }
 
 export async function getHostAnalytics() {
-  const supabase = createServerSupabaseClient();
+  const identity = await getHostIdentity();
   const listings = await getHostListings();
-  const listingIds = listings.map((l) => l.id);
 
-  if (listingIds.length === 0) {
+  if (listings.length === 0) {
     return {
       totalSaves: 0,
       totalEnters: 0,
@@ -197,71 +176,32 @@ export async function getHostAnalytics() {
     };
   }
 
-  // NOTE: listing_seeker_state is row-owner-only; this will only work for admin/owner.
-  const { data, error } = await supabase
-    .from("listing_seeker_state")
-    .select("listing_id, viewed_at, saved_at, entered_at")
-    .in("listing_id", listingIds);
-
-  if (error) {
-    // Return empty stats rather than failing the host dashboard.
-    return {
-      totalSaves: 0,
-      totalEnters: 0,
-      entriesThisWeek: 0,
-      entriesLastWeek: 0,
-      entriesWeekDeltaPct: null as number | null,
-      topListing: null as null | { title: string; enterCount: number },
-      perListing: [] as Array<{ listingId: string; title: string; viewCount: number; enterCount: number; conversionRatePct: number }>,
-    };
-  }
-
-  const rows = (data ?? []) as Array<{ listing_id: string; viewed_at: string | null; saved_at: string | null; entered_at: string | null }>;
-
-  const totals = { saves: 0, enters: 0 };
-  const byListing = new Map<string, { views: number; enters: number }>();
-  for (const row of rows) {
-    if (row.saved_at) totals.saves += 1;
-    if (row.entered_at) totals.enters += 1;
-    const agg = byListing.get(row.listing_id) ?? { views: 0, enters: 0 };
-    if (row.viewed_at) agg.views += 1;
-    if (row.entered_at) agg.enters += 1;
-    byListing.set(row.listing_id, agg);
-  }
-
-  const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  startOfWeek.setHours(0, 0, 0, 0);
-  const startOfLastWeek = new Date(startOfWeek);
-  startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-
-  let thisWeek = 0;
-  let lastWeek = 0;
-  for (const row of rows) {
-    if (!row.entered_at) continue;
-    const t = new Date(row.entered_at).getTime();
-    if (t >= startOfWeek.getTime()) thisWeek += 1;
-    else if (t >= startOfLastWeek.getTime()) lastWeek += 1;
-  }
-
-  const entriesWeekDeltaPct = lastWeek === 0 ? null : Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+  const stats = await getHostListingStats(identity.hostId);
+  const statsById = new Map(stats.map((row) => [row.listing_id, row]));
 
   const perListing = listings.map((l) => {
-    const agg = byListing.get(l.id) ?? { views: 0, enters: 0 };
-    const conversionRatePct = agg.views === 0 ? 0 : Math.round((agg.enters / agg.views) * 100);
-    return { listingId: l.id, title: l.title, viewCount: agg.views, enterCount: agg.enters, conversionRatePct };
+    const row = statsById.get(l.id);
+    const views = row?.view_count ?? 0;
+    const enters = row?.enter_count ?? 0;
+    const conversionRatePct = views === 0 ? 0 : Math.round((enters / views) * 100);
+    return { listingId: l.id, title: l.title, viewCount: views, enterCount: enters, conversionRatePct };
   });
 
-  const topListing = [...perListing].sort((a, b) => b.enterCount - a.enterCount)[0];
+  const totalSaves = stats.reduce((sum, row) => sum + (row.save_count ?? 0), 0);
+  const totalEnters = stats.reduce((sum, row) => sum + (row.enter_count ?? 0), 0);
+  const entriesThisWeek = stats.reduce((sum, row) => sum + (row.entries_this_week ?? 0), 0);
+  const entriesLastWeek = stats.reduce((sum, row) => sum + (row.entries_last_week ?? 0), 0);
+  const entriesWeekDeltaPct = entriesLastWeek === 0 ? null : Math.round(((entriesThisWeek - entriesLastWeek) / entriesLastWeek) * 100);
+
+  const top = [...perListing].sort((a, b) => b.enterCount - a.enterCount)[0];
 
   return {
-    totalSaves: totals.saves,
-    totalEnters: totals.enters,
-    entriesThisWeek: thisWeek,
-    entriesLastWeek: lastWeek,
+    totalSaves,
+    totalEnters,
+    entriesThisWeek,
+    entriesLastWeek,
     entriesWeekDeltaPct,
-    topListing: topListing ? { title: topListing.title, enterCount: topListing.enterCount } : null,
+    topListing: top ? { title: top.title, enterCount: top.enterCount } : null,
     perListing,
   };
 }
@@ -313,6 +253,8 @@ export async function updateNotificationPrefs(formData: FormData) {
 
   const { error } = await supabase.from("notification_pref").upsert(row);
   if (error) throw new Error(`updateNotificationPrefs failed: ${error.message}`);
+
+  redirect("/host/notifications");
 }
 
 export async function updateHostProfile(args: { logo_url: string | null }) {
@@ -401,8 +343,5 @@ export async function createStripePortalSession() {
     return_url: `${env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/host`,
   });
 
-  // Server Actions cannot return redirects directly when invoked as a <form action>,
-  // so we throw a redirect-like response via Next.
-  // eslint-disable-next-line @typescript-eslint/only-throw-error
-  throw NextResponse.redirect(session.url, { status: 303 });
+  redirect(session.url);
 }
