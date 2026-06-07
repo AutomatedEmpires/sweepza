@@ -50,7 +50,7 @@ export default async function SearchPage({
 
   const countLabel =
     q && listings.length > 0
-      ? `${listings.length} sweepstakes matching "${q}"`
+      ? `${listings.length} sweepstakes matching “${q}”`
       : `${listings.length} sweepstakes`;
 
   return (
@@ -68,7 +68,7 @@ export default async function SearchPage({
         <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-sand bg-white/60 px-6 py-12 text-center">
           <p className="text-sm font-medium text-ink">No sweepstakes found</p>
           <p className="text-xs text-ink/55">
-            Nothing matches "{q}". Try fewer words, a different host name, or a broader category.
+            Nothing matches &ldquo;{q}&rdquo;. Try fewer words, a different host name, or a broader category.
           </p>
         </div>
       ) : listings.length === 0 ? (
