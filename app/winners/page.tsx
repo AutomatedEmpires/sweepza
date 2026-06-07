@@ -1,31 +1,45 @@
 import { WinnerCard } from "@/components/winner-card";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
-import { MOCK_WINNERS } from "@/lib/mock/winners";
+import Link from "next/link";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { getPublishedWinnerWall } from "@/lib/db/winners";
 
 export const metadata = {
   title: "Winners",
   description: "Real Sweepza members sharing the prizes they've won.",
 };
+export const dynamic = "force-dynamic";
 
-export default function WinnersPage() {
-  const posts = MOCK_WINNERS.filter((post) => post.reviewStatus === "published");
+export default async function WinnersPage() {
+  const authUser = await ensureCurrentAppUser();
+  const clerkConfigured = isClerkConfigured();
+  const items = await getPublishedWinnerWall();
 
   return (
     <section className="px-4 pb-8 pt-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-ink">Winner Wall</h1>
-        <p className="text-sm text-ink/60">
-          Real members, real wins. Every post is a sweep someone found and entered right here.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-ink">Winner Wall</h1>
+          <p className="text-sm text-ink/60">
+            Real members, real wins. Every post is a sweep someone found and entered right here.
+          </p>
+        </div>
+        {clerkConfigured ? (
+          <Link
+            href={authUser ? "/winners/new" : "/sign-in"}
+            className="inline-flex shrink-0 rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+          >
+            Share your win
+          </Link>
+        ) : null}
       </header>
 
-      {posts.length > 0 ? (
+      {items.length > 0 ? (
         <div className="mt-6 space-y-5">
-          {posts.map((post) => (
+          {items.map(({ post, listing }) => (
             <WinnerCard
               key={post.id}
               post={post}
-              listing={MOCK_LISTINGS.find((l) => l.slug === post.listingSlug)}
+              listing={listing}
             />
           ))}
         </div>
@@ -35,6 +49,16 @@ export default function WinnersPage() {
           <p className="mt-1 text-sm text-ink/55">
             Be the first — when you win a sweep you found here, share it with the community.
           </p>
+          {clerkConfigured ? (
+            <div className="mt-4">
+              <Link
+                href={authUser ? "/winners/new" : "/sign-in"}
+                className="inline-flex rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+              >
+                Share your win
+              </Link>
+            </div>
+          ) : null}
         </div>
       )}
     </section>

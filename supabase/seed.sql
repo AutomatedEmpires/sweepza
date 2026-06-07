@@ -7,6 +7,12 @@ insert into app_user (id, clerk_user_id, email, display_name, is_owner, is_admin
 values ('00000000-0000-0000-0000-000000000001', 'dev_owner', 'jackson@automatedempires.com', 'Sweepza Owner', true, true, false, true)
 on conflict (clerk_user_id) do nothing;
 
+insert into app_user (id, clerk_user_id, email, display_name, is_owner, is_admin, is_host, is_seeker)
+values
+  ('00000000-0000-0000-0000-000000000011', 'dev_winner_marisol', 'marisol@example.com', 'Marisol R.', false, false, false, true),
+  ('00000000-0000-0000-0000-000000000012', 'dev_winner_devin', 'devin@example.com', 'Devin K.', false, false, false, true)
+on conflict (clerk_user_id) do nothing;
+
 insert into listing (
   id, slug, title, short_description, prize_name, prize_value, prize_currency, prize_category,
   main_image_url, image_source_type, entry_url, official_rules_url, end_date, entry_frequency,
@@ -56,3 +62,41 @@ set
   visibility_status = excluded.visibility_status,
   listing_verification_status = excluded.listing_verification_status,
   published_at = excluded.published_at;
+
+insert into winner_post (
+  id, app_user_id, listing_id, caption, photo_url, verified_win, review_status, created_at
+) values
+(
+  '00000000-0000-0000-0000-0000000000b1',
+  '00000000-0000-0000-0000-000000000011',
+  '00000000-0000-0000-0000-0000000000a1',
+  'Still cannot believe it. I entered every day on my coffee break and the cash prize finally hit.',
+  null,
+  true,
+  'published',
+  now() - interval '8 days'
+),
+(
+  '00000000-0000-0000-0000-0000000000b2',
+  '00000000-0000-0000-0000-000000000012',
+  '00000000-0000-0000-0000-0000000000a2',
+  'Flights booked. Sweepza kept this listing easy to trust and easy to revisit before it closed.',
+  null,
+  false,
+  'published',
+  now() - interval '4 days'
+)
+on conflict (id) do update
+set
+  caption = excluded.caption,
+  verified_win = excluded.verified_win,
+  review_status = excluded.review_status,
+  created_at = excluded.created_at;
+
+insert into winner_reaction (id, winner_post_id, app_user_id, reaction_type, created_at)
+values
+  ('00000000-0000-0000-0000-000000000c11', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-000000000001', 'congrats', now() - interval '7 days'),
+  ('00000000-0000-0000-0000-000000000c12', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-000000000012', 'celebration', now() - interval '7 days'),
+  ('00000000-0000-0000-0000-000000000c21', '00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-000000000001', 'awesome', now() - interval '3 days'),
+  ('00000000-0000-0000-0000-000000000c22', '00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-000000000011', 'nice_win', now() - interval '3 days')
+on conflict (winner_post_id, app_user_id, reaction_type) do nothing;

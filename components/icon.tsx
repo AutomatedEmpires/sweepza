@@ -22,7 +22,9 @@ export type IconName =
   | "flag"
   | "info"
   | "send"
-  | "rules";
+  | "rules"
+  | "search"
+  | "filter";
 
 const GLYPHS: Record<IconName, ReactNode> = {
   calendar: (
@@ -93,6 +95,13 @@ const GLYPHS: Record<IconName, ReactNode> = {
       <path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3" />
     </>
   ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M16.5 16.5L21 21" />
+    </>
+  ),
+  filter: <path d="M4 5h16l-6 7.5V19l-4-2v-4.5z" />,
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name"> {

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { ListingDetail } from "@/components/listing-detail";
 import { getListingBySlug } from "@/lib/db/listings";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,13 @@ export async function generateMetadata({
   return {
     title: listing.title,
     description: listing.shortDescription,
+    alternates: { canonical: `/sweeps/${slug}` },
+    openGraph: {
+      title: listing.title,
+      description: listing.shortDescription,
+      url: new URL(`/sweeps/${slug}`, SITE_URL),
+      type: "article",
+    },
   };
 }
 
@@ -27,5 +36,14 @@ export default async function ListingDetailPage({
   const { slug } = await params;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
-  return <ListingDetail listing={listing} />;
+  const [authUser] = await Promise.all([ensureCurrentAppUser()]);
+  const clerkConfigured = isClerkConfigured();
+
+  return (
+    <ListingDetail
+      listing={listing}
+      clerkConfigured={clerkConfigured}
+      isSignedIn={Boolean(authUser)}
+    />
+  );
 }
