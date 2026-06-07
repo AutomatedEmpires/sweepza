@@ -17,7 +17,7 @@ Copy `.env.example` to `.env.local` and fill in values as each lane comes online
 
 ## Build pipeline
 
-Every change follows: **Spec → Acceptance Criteria → Branch → Implementation → PR → Review (Copilot / Claude / Codex + CI) → squash-merge → deploy**. Nothing lands on `main` without a PR and a green quality gate. See `AGENTS.md`.
+Every change follows: **Spec → Acceptance Criteria → Branch → Implementation → PR → Review (Claude / Copilot + CI) → squash-merge → deploy**. Nothing lands on `main` without a PR and a green quality gate. See `AGENTS.md`.
 
 ## Status
 

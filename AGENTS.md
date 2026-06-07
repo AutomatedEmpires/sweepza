@@ -1,6 +1,6 @@
 # Sweepza — Agent & Contributor Guide
 
-This file is binding for every contributor, human or AI (Copilot, Claude, Codex). Read it before writing code.
+This file is binding for every contributor, human or AI (Copilot or Claude). Read it before writing code.
 
 ## Source of truth
 
@@ -14,7 +14,7 @@ No one codes from vague ideas. Every slice moves through:
 
 - One feature branch per slice: `feat/<lane>/<slug>` (e.g. `feat/card-system/listing-card`).
 - Open a PR against `main`. Reference the issue and its acceptance criteria.
-- Nothing merges to `main` without a PR + at least one independent review (Copilot/Claude/Codex) + green CI. The builder is not the sole approver.
+- Nothing merges to `main` without a PR + at least one independent review (**Claude** primary, **Copilot** secondary) + green CI. The builder is not the sole approver. **Codex was retired 2026-06-06.**
 - Squash-merge only. Merged branches are auto-deleted.
 
 ## Architectural law
