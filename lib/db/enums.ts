@@ -78,5 +78,5 @@ export type BoostStatus = (typeof BOOST_STATUSES)[number];
 export const NOTIFICATION_CHANNELS = ["in_app", "email"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
-export const NOTIFICATION_STATUSES = ["queued", "sent", "delivered", "read", "suppressed", "failed"] as const;
+export const NOTIFICATION_STATUSES = ["queued", "sent", "delivered", "read", "suppressed", "failed", "skipped"] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];

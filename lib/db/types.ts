@@ -230,5 +230,6 @@ export interface NotificationLogRow {
   channel: NotificationChannel;
   status: NotificationStatus;
   sent_at: Timestamptz | null;
+  metadata: Record<string, unknown> | null;
   created_at: Timestamptz;
 }

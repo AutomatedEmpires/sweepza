@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getReviewListingById } from "@/lib/db/listing-review";
+import { sendHostNotification } from "@/lib/email/notifications";
+import { env } from "@/lib/env";
 import { listingReviewSchema } from "@/lib/listing-review-schema";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+function listingUrlFor(slug: string): string {
+  const base = env.NEXT_PUBLIC_APP_URL ?? "https://sweepza.com";
+  return `${base.replace(/\/$/, "")}/sweeps/${slug}`;
+}
 
 export async function POST(request: Request) {
   if (!isClerkConfigured()) {
@@ -65,7 +72,7 @@ export async function POST(request: Request) {
     updates.lifecycle_status = "rejected";
     updates.visibility_status = "private";
   } else {
-    // keep_pending
+    // keep_pending (hold)
     updates.lifecycle_status = "pending_review";
     updates.visibility_status = "private";
   }
@@ -92,6 +99,50 @@ export async function POST(request: Request) {
       { error: `Review update failed: ${error.message}` },
       { status: 422 },
     );
+  }
+
+  // Fire transactional email for approve (live) / keep_pending (held).
+  // Email delivery must never block or fail the review action.
+  if (
+    listing.host_id &&
+    (action === "approve" || action === "keep_pending")
+  ) {
+    try {
+      let hostName = "there";
+      const { data: host } = await supabase
+        .from("host")
+        .select("display_name")
+        .eq("id", listing.host_id)
+        .maybeSingle<{ display_name: string | null }>();
+      if (host?.display_name) {
+        hostName = host.display_name;
+      }
+
+      if (action === "approve") {
+        await sendHostNotification({
+          hostId: listing.host_id,
+          type: "listing_approved",
+          payload: {
+            hostName,
+            listingTitle: listing.title,
+            listingUrl: listingUrlFor(listing.slug),
+          },
+        });
+      } else {
+        await sendHostNotification({
+          hostId: listing.host_id,
+          type: "listing_held",
+          payload: {
+            hostName,
+            listingTitle: listing.title,
+            reviewNotes: reviewNotes ?? "",
+          },
+        });
+      }
+    } catch (notifyError) {
+      // eslint-disable-next-line no-console
+      console.error("listing review notification failed", notifyError);
+    }
   }
 
   return NextResponse.json({ ok: true, action, listing: data });
