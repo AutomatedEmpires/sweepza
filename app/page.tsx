@@ -206,9 +206,25 @@ export default async function HomePage() {
       </section>
 
       {/* Footer microcopy */}
-      <p className="px-5 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
-        No purchase necessary · See official rules
-      </p>
+      <div className="flex flex-col gap-2 px-5 pb-2">
+        <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+          No purchase necessary · See official rules
+        </p>
+        <nav
+          aria-label="Footer"
+          className="flex items-center justify-center gap-4 text-xs font-medium text-ink/50"
+        >
+          <Link href="/about" className="transition hover:text-ink">
+            About
+          </Link>
+          <Link href="/privacy" className="transition hover:text-ink">
+            Privacy
+          </Link>
+          <Link href="/terms" className="transition hover:text-ink">
+            Terms
+          </Link>
+        </nav>
+      </div>
     </div>
   );
 }

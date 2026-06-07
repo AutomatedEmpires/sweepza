@@ -166,12 +166,6 @@ export interface WinnerPostAdapterContext {
   winnerDisplayName: string;
   /** Slug of the attached listing (resolved from listing_id). */
   listingSlug: string;
-  /**
-   * Whether Sweepza has verified the win (drives the trust pill). The
-   * winner_post row has no verified flag yet; callers derive this (e.g. from an
-   * admin verification signal) until a column is added. Defaults to false.
-   */
-  verifiedWin?: boolean;
   /** Either raw reaction rows (aggregated here) or pre-aggregated counts. */
   reactions?: WinnerReactionRow[] | Partial<Record<ReactionType, number>>;
 }
@@ -190,7 +184,7 @@ export function toWinnerPost(
     caption: row.caption ?? "",
     photoUrl: opt(row.photo_url),
     listingSlug: ctx.listingSlug,
-    verifiedWin: ctx.verifiedWin ?? false,
+    verifiedWin: row.verified_win,
     reviewStatus: row.review_status,
     reactions,
     createdAt: row.created_at,
