@@ -1,14 +1,21 @@
 import { WinnerCard } from "@/components/winner-card";
-import { MOCK_LISTINGS } from "@/lib/mock/listings";
-import { MOCK_WINNERS } from "@/lib/mock/winners";
+import { getPublishedWinnerPosts } from "@/lib/db/winners";
+import { getPublicListings } from "@/lib/db/listings";
 
 export const metadata = {
   title: "Winners",
   description: "Real Sweepza members sharing the prizes they've won.",
 };
 
-export default function WinnersPage() {
-  const posts = MOCK_WINNERS.filter((post) => post.reviewStatus === "published");
+export default async function WinnersPage() {
+  const [{ posts }] = await Promise.all([
+    getPublishedWinnerPosts({ limit: 20 }),
+  ]);
+
+  // WinnerCard expects a Listing. Fetch the attached listings via existing DB layer.
+  // (Small N+1 avoided by the adapter above, but this keeps changes minimal).
+  const listings = await getPublicListings({ limit: 50 });
+  const listingsBySlug = new Map(listings.map((l) => [l.slug, l]));
 
   return (
     <section className="px-4 pb-8 pt-8">
@@ -25,7 +32,7 @@ export default function WinnersPage() {
             <WinnerCard
               key={post.id}
               post={post}
-              listing={MOCK_LISTINGS.find((l) => l.slug === post.listingSlug)}
+              listing={listingsBySlug.get(post.listingSlug)}
             />
           ))}
         </div>
