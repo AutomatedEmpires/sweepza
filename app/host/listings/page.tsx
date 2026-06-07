@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getHostListingsSnapshot } from "@/lib/db/host-dashboard";
-import { formatCurrency } from "@/lib/listing-format";
+import { formatPrizeValue } from "@/lib/listing-format";
 
 export const metadata = { title: "Host Listings" };
 
@@ -48,16 +48,16 @@ export default async function HostListingsPage() {
                       <div className="min-w-0">
                         <h3 className="truncate text-sm font-semibold text-ink">{l.title}</h3>
                         <p className="mt-1 text-xs text-ink/60">
-                          {l.prizeValue ? formatCurrency(l.prizeValue) : "—"} · Ends {l.endDate ?? "—"} · Entries {l.entryCount}
+                          {formatPrizeValue(l.prizeValue ?? undefined) ?? "—"} · Ends {l.endDate ?? "—"} · Entries {l.entryCount}
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-ink/5 px-2 py-1 text-[11px] font-medium text-ink/70">
-                        {l.lifecycleStatus}
+                        {l.moderationStatus}
                       </span>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {(l.lifecycleStatus === "draft" || l.lifecycleStatus === "rejected") && (
+                      {l.lifecycleStatus === "draft" && (
                         <form action={l.submitForReviewAction}>
                           <button className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">
                             Submit for review
@@ -73,7 +73,7 @@ export default async function HostListingsPage() {
                         </form>
                       )}
 
-                      {(l.lifecycleStatus === "draft" || l.lifecycleStatus === "pending_review" || l.lifecycleStatus === "rejected") && (
+                      {(l.lifecycleStatus === "draft" || l.moderationStatus === "held" || l.lifecycleStatus === "held") && (
                         <Link
                           className="rounded-lg border border-ink/15 bg-white px-3 py-2 text-xs font-semibold text-ink"
                           href={`/host/listings/${l.id}/edit`}
@@ -82,7 +82,7 @@ export default async function HostListingsPage() {
                         </Link>
                       )}
 
-                      {l.reviewNotes ? (
+                      {(l.moderationStatus === "held" || l.moderationStatus === "rejected" || l.lifecycleStatus === "held" || l.lifecycleStatus === "rejected") && l.reviewNotes ? (
                         <details className="w-full rounded-lg border border-ink/10 bg-ink/[0.02] px-3 py-2">
                           <summary className="cursor-pointer text-xs font-semibold text-ink">Review notes</summary>
                           <p className="mt-2 text-xs text-ink/70">{l.reviewNotes}</p>

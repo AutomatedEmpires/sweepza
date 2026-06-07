@@ -1,6 +1,5 @@
 import "server-only";
 
-import Stripe from "stripe";
 import { env } from "@/lib/env";
 
 export async function createStripePortalSession(args: {
@@ -9,10 +8,25 @@ export async function createStripePortalSession(args: {
 }): Promise<string> {
   if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe not configured.");
 
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
-  const session = await stripe.billingPortal.sessions.create({
+  const body = new URLSearchParams({
     customer: args.customerId,
     return_url: args.returnUrl ?? `${env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/host`,
   });
-  return session.url;
+
+  const response = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const payload = (await response.json()) as { url?: string; error?: { message?: string } };
+  if (!response.ok || !payload.url) {
+    throw new Error(payload.error?.message ?? "Failed to create Stripe portal session.");
+  }
+
+  return payload.url;
 }

@@ -1,28 +1,35 @@
--- Add host-visible review notes and create host logo storage bucket.
+-- Complete host-experience schema additions.
+
+alter type lifecycle_status add value if not exists 'held';
+alter type lifecycle_status add value if not exists 'inactive';
+alter type visibility_status add value if not exists 'unlisted';
+alter type moderation_status add value if not exists 'submitted';
+alter type moderation_status add value if not exists 'held';
+alter type moderation_status add value if not exists 'rejected';
+alter type subscription_status add value if not exists 'trialing';
 
 alter table listing add column if not exists review_notes text;
+alter table notification_pref add column if not exists email_on_listing_approved boolean not null default true;
+alter table notification_pref add column if not exists email_on_listing_held boolean not null default true;
+alter table notification_pref add column if not exists email_on_listing_expiring_soon boolean not null default true;
+alter table notification_pref add column if not exists email_on_new_reaction boolean not null default true;
 
--- Storage bucket for host logos.
 insert into storage.buckets (id, name, public)
 values ('host-logos', 'host-logos', true)
 on conflict (id) do nothing;
 
--- Storage policies: host can write to host-logos/{hostId}/...
-create policy if not exists "host_logo_read" on storage.objects for select
-  using (bucket_id = 'host-logos');
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'host_logo_read') then
+    create policy "host_logo_read" on storage.objects for select using (bucket_id = 'host-logos');
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'host_logo_write_own') then
+    create policy "host_logo_write_own" on storage.objects for all
+      using (bucket_id = 'host-logos' and (split_part(name, '/', 1)) = (current_host_id()::text))
+      with check (bucket_id = 'host-logos' and (split_part(name, '/', 1)) = (current_host_id()::text));
+  end if;
+end $$;
 
-create policy if not exists "host_logo_write_own" on storage.objects for all
-  using (
-    bucket_id = 'host-logos'
-    and (split_part(name, '/', 1)) = (current_host_id()::text)
-  )
-  with check (
-    bucket_id = 'host-logos'
-    and (split_part(name, '/', 1)) = (current_host_id()::text)
-  );
-
--- Host analytics RPC: SECURITY DEFINER so it can aggregate seeker-state rows
--- (which are row-owner-only) for a host's own listings.
 create or replace function host_listing_stats(host_id_in uuid)
 returns table (
   listing_id uuid,
@@ -34,7 +41,10 @@ returns table (
 )
 language sql stable security definer set search_path = public, pg_temp as $$
   with host_listings as (
-    select id from listing where host_id = host_id_in
+    select id
+    from listing
+    where host_id = host_id_in
+      and (host_id_in = current_host_id() or is_admin() or is_owner())
   ),
   base as (
     select
@@ -42,7 +52,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
       count(*) filter (where s.viewed_at is not null) as view_count,
       count(*) filter (where s.saved_at is not null) as save_count,
       count(*) filter (where s.entered_at is not null) as enter_count,
-      count(*) filter (where s.entered_at >= (date_trunc('week', now()) - interval '0 day')) as entries_this_week,
+      count(*) filter (where s.entered_at >= date_trunc('week', now())) as entries_this_week,
       count(*) filter (where s.entered_at >= (date_trunc('week', now()) - interval '7 day') and s.entered_at < date_trunc('week', now())) as entries_last_week
     from listing_seeker_state s
     join host_listings l on l.id = s.listing_id

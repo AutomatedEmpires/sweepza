@@ -1,9 +1,9 @@
 import "server-only";
 
-import Stripe from "stripe";
 import { redirect } from "next/navigation";
-import { env } from "@/lib/env";
+import { createStripePortalSession as createStripePortalUrl } from "@/lib/stripe/checkout";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { hostListingSchema } from "@/lib/host-listing-schema";
 import type { ListingRow, NotificationPrefRow, SubscriptionRow } from "@/lib/db/types";
 
 export async function getHostIdentity(accessToken?: string): Promise<{ appUserId: string; hostId: string }> {
@@ -20,7 +20,6 @@ export async function getHostIdentity(accessToken?: string): Promise<{ appUserId
 
 async function getHostListings(accessToken?: string): Promise<ListingRow[]> {
   const supabase = createServerSupabaseClient(accessToken);
-  // RLS limits this to current_host_id() listings.
   const { data, error } = await supabase
     .from("listing")
     .select("*")
@@ -49,12 +48,11 @@ async function getHostListingStats(hostId: string, accessToken?: string): Promis
 
 export async function submitForReview(listingId: string) {
   const supabase = createServerSupabaseClient();
+  await getHostListingForOwnedAction(listingId);
 
-  // Canonical enums do not include moderation_status='submitted'. Use
-  // lifecycle_status='pending_review' to represent submission.
   const { error } = await supabase
     .from("listing")
-    .update({ lifecycle_status: "pending_review" })
+    .update({ lifecycle_status: "pending_review", moderation_status: "submitted" })
     .eq("id", listingId);
 
   if (error) throw new Error(`submitForReview failed: ${error.message}`);
@@ -62,11 +60,11 @@ export async function submitForReview(listingId: string) {
 
 export async function deactivateListing(listingId: string) {
   const supabase = createServerSupabaseClient();
+  await getHostListingForOwnedAction(listingId);
 
-  // Canonical enums do not include inactive/unlisted; use paused+hidden.
   const { error } = await supabase
     .from("listing")
-    .update({ lifecycle_status: "paused", visibility_status: "hidden" })
+    .update({ lifecycle_status: "inactive", visibility_status: "unlisted" })
     .eq("id", listingId);
 
   if (error) throw new Error(`deactivateListing failed: ${error.message}`);
@@ -84,7 +82,8 @@ export async function getHostListingsSnapshot() {
     prizeValue: l.prize_value,
     endDate: l.end_date,
     lifecycleStatus: l.lifecycle_status,
-    reviewNotes: (l as unknown as { review_notes?: string | null }).review_notes ?? null,
+    moderationStatus: l.moderation_status,
+    reviewNotes: l.review_notes,
     entryCount: statsByListingId.get(l.id)?.enter_count ?? 0,
     submitForReviewAction: async () => {
       "use server";
@@ -102,26 +101,31 @@ export async function getHostListingsSnapshot() {
     groups: {
       active: enriched.filter((l) => l.lifecycleStatus === "active"),
       pending_review: enriched.filter((l) => l.lifecycleStatus === "pending_review" || l.lifecycleStatus === "draft"),
-      held_rejected: enriched.filter((l) => l.lifecycleStatus === "paused" || l.lifecycleStatus === "rejected"),
+      held_rejected: enriched.filter((l) => l.lifecycleStatus === "held" || l.lifecycleStatus === "rejected" || l.moderationStatus === "held" || l.moderationStatus === "rejected"),
       expired: enriched.filter((l) => l.lifecycleStatus === "expired"),
     },
   };
 }
 
-export async function getHostListingForEdit(listingId: string): Promise<ListingRow> {
+async function getHostListingForOwnedAction(listingId: string): Promise<ListingRow> {
+  const identity = await getHostIdentity();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("listing")
     .select("*")
     .eq("id", listingId)
+    .eq("host_id", identity.hostId)
     .single<ListingRow>();
 
-  if (error) throw new Error(`getHostListingForEdit failed: ${error.message}`);
+  if (error) throw new Error(`Host listing lookup failed: ${error.message}`);
+  return data;
+}
 
-  if (!(data.lifecycle_status === "draft" || data.lifecycle_status === "paused")) {
+export async function getHostListingForEdit(listingId: string): Promise<ListingRow> {
+  const data = await getHostListingForOwnedAction(listingId);
+  if (!(data.lifecycle_status === "draft" || data.moderation_status === "held" || data.lifecycle_status === "held")) {
     throw new Error("Listing is not editable.");
   }
-
   return data;
 }
 
@@ -131,28 +135,29 @@ export async function editHostListing(formData: FormData) {
   const listingId = String(formData.get("listingId") ?? "");
   if (!listingId) throw new Error("Missing listingId");
 
-  const title = String(formData.get("title") ?? "");
-  const short_description = String(formData.get("short_description") ?? "");
-  const prize_name = String(formData.get("prize_name") ?? "");
-  const prize_value_raw = String(formData.get("prize_value") ?? "");
-  const entry_url = String(formData.get("entry_url") ?? "");
-
-  const prize_value = prize_value_raw ? Number(prize_value_raw) : null;
-  if (prize_value_raw && Number.isNaN(prize_value)) throw new Error("Prize value must be a number.");
+  const parsed = hostListingSchema.parse({
+    title: formData.get("title"),
+    short_description: formData.get("short_description"),
+    prize_name: formData.get("prize_name"),
+    prize_value: String(formData.get("prize_value") ?? "") === "" ? null : formData.get("prize_value"),
+    entry_url: String(formData.get("entry_url") ?? "") || null,
+  });
 
   const supabase = createServerSupabaseClient();
   const current = await getHostListingForEdit(listingId);
 
-  const updates: Partial<ListingRow> & Record<string, unknown> = {
-    title,
-    short_description,
-    prize_name,
-    prize_value,
-    entry_url: entry_url || null,
+  const updates: Record<string, unknown> = {
+    title: parsed.title,
+    short_description: parsed.short_description,
+    prize_name: parsed.prize_name,
+    prize_value: parsed.prize_value ?? null,
+    entry_url: parsed.entry_url || null,
   };
 
-  // If it was held (represented by paused), return to draft so it re-enters review.
-  if (current.lifecycle_status === "paused") updates.lifecycle_status = "draft";
+  if (current.moderation_status === "held" || current.lifecycle_status === "held") {
+    updates.moderation_status = "draft";
+    updates.lifecycle_status = "draft";
+  }
 
   const { error } = await supabase.from("listing").update(updates).eq("id", listingId);
   if (error) throw new Error(`editHostListing failed: ${error.message}`);
@@ -217,43 +222,50 @@ export async function getNotificationPrefs(): Promise<NotificationPrefRow> {
 
   if (error) throw new Error(`getNotificationPrefs failed: ${error.message}`);
 
-  return (
-    data ?? {
-      app_user_id: appUserId,
-      ends_today: true,
-      ends_soon: true,
-      new_listings: true,
-      saved_listing_ending: true,
-      winner_wall_reactions: true,
-      winner_wall_verification: true,
-      weekly_roundup: true,
-      featured_sweeps: false,
-      email_enabled: true,
-      in_app_enabled: true,
-      push_enabled: false,
-      updated_at: new Date().toISOString(),
-    }
-  );
+  return {
+    app_user_id: appUserId,
+    ends_today: data?.ends_today ?? true,
+    ends_soon: data?.ends_soon ?? true,
+    new_listings: data?.new_listings ?? true,
+    saved_listing_ending: data?.saved_listing_ending ?? true,
+    winner_wall_reactions: data?.winner_wall_reactions ?? true,
+    winner_wall_verification: data?.winner_wall_verification ?? true,
+    weekly_roundup: data?.weekly_roundup ?? true,
+    featured_sweeps: data?.featured_sweeps ?? false,
+    email_enabled: data?.email_enabled ?? true,
+    in_app_enabled: data?.in_app_enabled ?? true,
+    push_enabled: data?.push_enabled ?? false,
+    email_on_listing_approved: data?.email_on_listing_approved ?? true,
+    email_on_listing_held: data?.email_on_listing_held ?? true,
+    email_on_listing_expiring_soon: data?.email_on_listing_expiring_soon ?? true,
+    email_on_new_reaction: data?.email_on_new_reaction ?? true,
+    updated_at: data?.updated_at ?? new Date().toISOString(),
+  };
+}
+
+export async function saveNotificationPrefs(prefs: {
+  email_on_listing_approved: boolean;
+  email_on_listing_held: boolean;
+  email_on_listing_expiring_soon: boolean;
+  email_on_new_reaction: boolean;
+}) {
+  const { appUserId } = await getHostIdentity();
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.from("notification_pref").upsert({
+    app_user_id: appUserId,
+    ...prefs,
+  });
+  if (error) throw new Error(`saveNotificationPrefs failed: ${error.message}`);
 }
 
 export async function updateNotificationPrefs(formData: FormData) {
   "use server";
-  const { appUserId } = await getHostIdentity();
-  const supabase = createServerSupabaseClient();
-
-  const toBool = (name: string) => Boolean(formData.get(name));
-  const row: Partial<NotificationPrefRow> & { app_user_id: string } = {
-    app_user_id: appUserId,
-    ends_today: toBool("ends_today"),
-    ends_soon: toBool("ends_soon"),
-    saved_listing_ending: toBool("saved_listing_ending"),
-    winner_wall_reactions: toBool("winner_wall_reactions"),
-    weekly_roundup: toBool("weekly_roundup"),
-  };
-
-  const { error } = await supabase.from("notification_pref").upsert(row);
-  if (error) throw new Error(`updateNotificationPrefs failed: ${error.message}`);
-
+  await saveNotificationPrefs({
+    email_on_listing_approved: Boolean(formData.get("email_on_listing_approved")),
+    email_on_listing_held: Boolean(formData.get("email_on_listing_held")),
+    email_on_listing_expiring_soon: Boolean(formData.get("email_on_listing_expiring_soon")),
+    email_on_new_reaction: Boolean(formData.get("email_on_new_reaction")),
+  });
   redirect("/host/notifications");
 }
 
@@ -264,6 +276,7 @@ export async function updateHostProfile(args: { logo_url: string | null }) {
   if (args.logo_url) {
     const isUrl = /^https?:\/\//.test(args.logo_url);
     if (!isUrl) throw new Error("logo_url must be an absolute URL");
+    if (!args.logo_url.includes("/host-logos/")) throw new Error("Logo must come from the host-logos bucket.");
   }
 
   const { error } = await supabase
@@ -297,12 +310,12 @@ export async function getHostBillingSnapshot() {
     activeCountTask,
   ]);
 
-  const includedActiveListings = subscription?.included_active_listings ?? 1;
+  const includedActiveListings = (subscription?.included_active_listings ?? 1) + (subscription?.purchased_additional_listings ?? 0);
   const status = subscription?.status ?? "no_plan";
   const statusLabel =
     status === "active"
       ? "Active"
-      : status === "grace"
+      : status === "trialing" || status === "grace"
         ? "Trialing"
         : status === "past_due"
           ? "Past Due"
@@ -321,9 +334,7 @@ export async function getHostBillingSnapshot() {
   };
 }
 
-export async function createStripePortalSession() {
-  "use server";
-
+export async function createHostBillingPortalUrl() {
   const identity = await getHostIdentity();
   const supabase = createServerSupabaseClient();
   const { data: host, error } = await supabase
@@ -335,13 +346,10 @@ export async function createStripePortalSession() {
   if (error) throw new Error(`createStripePortalSession host lookup failed: ${error.message}`);
   if (!host.stripe_customer_id) throw new Error("No Stripe customer on file.");
 
-  if (!env.STRIPE_SECRET_KEY) throw new Error("Stripe not configured.");
+  return createStripePortalUrl({ customerId: host.stripe_customer_id });
+}
 
-  const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
-  const session = await stripe.billingPortal.sessions.create({
-    customer: host.stripe_customer_id,
-    return_url: `${env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/host`,
-  });
-
-  redirect(session.url);
+export async function createStripePortalSession() {
+  "use server";
+  redirect(await createHostBillingPortalUrl());
 }
