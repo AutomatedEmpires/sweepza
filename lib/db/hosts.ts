@@ -1,5 +1,6 @@
 import "server-only";
 
+import { HOST_BASELINE_PLAN } from "@/lib/billing/plans";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { HostRow, SubscriptionRow } from "./types";
 
@@ -113,7 +114,12 @@ export async function ensureSubscriptionForHost(
 
   const { data, error } = await supabase
     .from("subscription")
-    .insert({ host_id: hostId })
+    .insert({
+      host_id: hostId,
+      included_active_listings: HOST_BASELINE_PLAN.includedActiveListings,
+      purchased_additional_listings: 0,
+      max_active_listings: HOST_BASELINE_PLAN.includedActiveListings,
+    })
     .select("*")
     .single<SubscriptionRow>();
 

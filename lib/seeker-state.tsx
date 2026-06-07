@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -113,16 +114,21 @@ export function SeekerStateProvider({
     initial.primary,
   );
   const [saved, setSaved] = useState<Record<string, boolean>>(initial.saved);
+  // Tracks whether the initial localStorage read has completed so the write
+  // effect doesn't overwrite storage with empty state before hydration.
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
     const snapshot = readLocalSnapshot();
     setPrimary(snapshot.primary);
     setSaved(snapshot.saved);
+    hydratedRef.current = true;
   }, [persistenceMode]);
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
+    if (!hydratedRef.current) return;
     writeLocalSnapshot({ primary, saved });
   }, [primary, saved, persistenceMode]);
 

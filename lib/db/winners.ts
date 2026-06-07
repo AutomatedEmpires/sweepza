@@ -3,7 +3,7 @@ import "server-only";
 import type { WinnerPost } from "@/lib/mock/winners";
 import type { Listing } from "@/lib/types/listing";
 import { createServiceRoleClient, createServerSupabaseClient } from "@/lib/supabase/server";
-import { toWinnerPost } from "./adapters";
+import { aggregateReactions, toWinnerPost } from "./adapters";
 import { adaptListingRows } from "./listings";
 import type { ReactionType } from "./enums";
 import type {
@@ -28,6 +28,7 @@ async function getWinnerWallListings(
     .from("listing")
     .select("*")
     .eq("visibility_status", "public")
+    .eq("lifecycle_status", "active")
     .in("id", listingIds)
     .returns<ListingRow[]>();
 
@@ -117,15 +118,6 @@ export async function getPublishedWinnerWall(
   });
 }
 
-function countReactions(
-  rows: WinnerReactionRow[],
-): Partial<Record<ReactionType, number>> {
-  const counts: Partial<Record<ReactionType, number>> = {};
-  for (const row of rows) {
-    counts[row.reaction_type] = (counts[row.reaction_type] ?? 0) + 1;
-  }
-  return counts;
-}
 
 export async function toggleWinnerReaction(args: {
   winnerPostId: string;
@@ -180,5 +172,5 @@ export async function toggleWinnerReaction(args: {
     throw new Error(`toggleWinnerReaction recount failed: ${error.message}`);
   }
 
-  return countReactions(data ?? []);
+  return aggregateReactions(data ?? []);
 }

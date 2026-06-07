@@ -32,11 +32,7 @@ vercel_sensitivity_flag() {
       ;;
   esac
 
-  if [ "$key" = "SUPABASE_SERVICE_ROLE_KEY" ] && [ "$vercel_env" != "development" ]; then
-    echo "--sensitive"
-  else
-    echo "--no-sensitive"
-  fi
+  echo "--no-sensitive"
 }
 
 read_project_field() {

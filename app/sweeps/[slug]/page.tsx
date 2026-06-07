@@ -36,10 +36,8 @@ export default async function ListingDetailPage({
   const { slug } = await params;
   const listing = await getListingBySlug(slug);
   if (!listing) notFound();
-  const [authUser, clerkConfigured] = await Promise.all([
-    ensureCurrentAppUser(),
-    Promise.resolve(isClerkConfigured()),
-  ]);
+  const [authUser] = await Promise.all([ensureCurrentAppUser()]);
+  const clerkConfigured = isClerkConfigured();
 
   return (
     <ListingDetail
