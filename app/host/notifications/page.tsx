@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getNotificationPrefs, updateNotificationPrefs } from "@/lib/db/host-dashboard";
+import { getNotificationPrefs } from "@/lib/db/host-dashboard";
+import { updateNotificationPrefsAction } from "./actions";
 
 export const metadata = { title: "Host Notifications" };
 
@@ -14,7 +15,6 @@ function PrefToggle({ name, label, defaultChecked }: { name: string; label: stri
 
 export default async function HostNotificationsPage() {
   const prefs = await getNotificationPrefs();
-
   return (
     <section className="px-5 pt-10">
       <header className="flex items-start justify-between gap-4">
@@ -24,8 +24,7 @@ export default async function HostNotificationsPage() {
         </div>
         <Link className="text-sm font-medium text-accent" href="/host">Back</Link>
       </header>
-
-      <form action={updateNotificationPrefs} className="mt-6 grid gap-3">
+      <form action={updateNotificationPrefsAction} className="mt-6 grid gap-3">
         <PrefToggle name="email_on_listing_approved" label="Listing approved" defaultChecked={prefs.email_on_listing_approved} />
         <PrefToggle name="email_on_listing_held" label="Listing held for review" defaultChecked={prefs.email_on_listing_held} />
         <PrefToggle name="email_on_listing_expiring_soon" label="Listing expiring soon" defaultChecked={prefs.email_on_listing_expiring_soon} />
