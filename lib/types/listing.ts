@@ -32,7 +32,9 @@ export type LifecycleStatus =
   | "paused"
   | "expired"
   | "archived"
-  | "rejected";
+  | "rejected"
+  | "held"
+  | "inactive";
 
 export type HostVerificationStatus =
   | "none"
