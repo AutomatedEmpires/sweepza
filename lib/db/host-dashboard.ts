@@ -91,8 +91,6 @@ export async function getHostListingsSnapshot() {
     moderationStatus: l.moderation_status,
     reviewNotes: l.review_notes,
     entryCount: statsByListingId.get(l.id)?.enter_count ?? 0,
-    submitForReviewAction: async () => { "use server"; await submitForReview(l.id); redirect("/host/listings"); },
-    deactivateAction: async () => { "use server"; await deactivateListing(l.id); redirect("/host/listings"); },
   }));
 
   return {
@@ -111,9 +109,7 @@ export async function getHostListingForEdit(listingId: string): Promise<ListingR
   return data;
 }
 
-export async function editHostListing(formData: FormData) {
-  "use server";
-
+export async function saveHostListingEdit(formData: FormData) {
   const listingId = String(formData.get("listingId") ?? "");
   if (!listingId) throw new Error("Missing listingId");
   const parsed = hostListingSchema.parse({
@@ -139,7 +135,12 @@ export async function editHostListing(formData: FormData) {
   }
 
   const { error } = await supabase.from("listing").update(updates).eq("id", listingId);
-  if (error) throw new Error(`editHostListing failed: ${error.message}`);
+  if (error) throw new Error(`saveHostListingEdit failed: ${error.message}`);
+}
+
+export async function editHostListing(formData: FormData) {
+  "use server";
+  await saveHostListingEdit(formData);
   redirect("/host/listings");
 }
 
