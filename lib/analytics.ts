@@ -1,7 +1,8 @@
-// Analytics stub aligned to "Sweepza — Analytics Event Dictionary [CANONICAL]".
+// Analytics aligned to "Sweepza — Analytics Event Dictionary [CANONICAL]".
 // Event names use object_action snake_case and MUST match the dictionary.
-// No transport yet — Lane H wires PostHog. Keep PII out of properties
-// (never send emails/photos).
+// Keep PII out of properties (never send emails/photos).
+
+import { capture } from "@/lib/posthog/client";
 
 export type AnalyticsEvent =
   | "listing_viewed"
@@ -11,7 +12,15 @@ export type AnalyticsEvent =
   | "listing_skipped"
   | "listing_shared"
   | "discover_feed_loaded"
-  | "filter_applied";
+  | "filter_applied"
+  | "search_performed"
+  | "search_results_shown"
+  | "winner_post_created"
+  | "winner_post_published"
+  | "winner_post_reacted"
+  | "winner_submission_started"
+  | "winner_submission_completed"
+  | "winner_submission_failed";
 
 export type AnalyticsValue =
   | string
@@ -23,14 +32,10 @@ export type AnalyticsValue =
 
 export type AnalyticsProps = Record<string, AnalyticsValue>;
 
-/**
- * Records a product event. Today this only logs in development; Lane H will
- * forward to PostHog. Base props (role, session_id) are added once auth exists.
- */
 export function track(event: AnalyticsEvent, props: AnalyticsProps = {}): void {
   if (process.env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
     console.debug(`[analytics] ${event}`, props);
   }
-  // Lane H: posthog.capture(event, props)
+  capture(event, props);
 }

@@ -6,8 +6,17 @@ import { getPublicListings } from "@/lib/db/listings";
 export const metadata = { title: "Discover" };
 export const dynamic = "force-dynamic";
 
-export default async function DiscoverPage() {
-  const listings = await getPublicListings();
+export default async function DiscoverPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ q?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const q = typeof params?.q === "string" ? params.q.trim() : "";
+
+  const listings = await getPublicListings({
+    searchQuery: q || undefined,
+  });
 
   return (
     <section className="px-4 pb-8 pt-8">

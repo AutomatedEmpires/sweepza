@@ -10,6 +10,8 @@ export interface DiscoverFilters {
   entryFrequencies?: EntryFrequency[];
   verifiedOnly?: boolean;
   limit?: number;
+  /** Full-text search query (websearch syntax) */
+  searchQuery?: string;
 }
 
 interface ListingTagLabelRow {
@@ -126,6 +128,14 @@ export async function getPublicListings(
   }
   if (filters.entryFrequencies?.length) query = query.in("entry_frequency", filters.entryFrequencies);
   if (filters.verifiedOnly) query = query.eq("listing_verification_status", "verified");
+
+  const searchQuery = filters.searchQuery?.trim();
+  if (searchQuery) {
+    query = query.textSearch("search_vector", searchQuery, {
+      type: "websearch",
+      config: "english",
+    });
+  }
 
   const { data, error } = await query
     .order("published_at", { ascending: false })

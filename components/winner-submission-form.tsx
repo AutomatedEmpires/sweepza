@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { track } from "@/lib/analytics";
 
 export interface WinnerListingOption {
   id: string;
@@ -8,140 +9,95 @@ export interface WinnerListingOption {
   endDate?: string;
 }
 
-function formatOptionDate(date: string | undefined): string {
-  if (!date) return "";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${date}T00:00:00Z`));
-}
-
-export function WinnerSubmissionForm({
-  listings,
-}: {
+export function WinnerSubmissionForm(props: {
   listings: WinnerListingOption[];
 }) {
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<{ error?: string; success?: string }>({});
+  const [listingId, setListingId] = useState(props.listings[0]?.id ?? "");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [caption, setCaption] = useState("");
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
-  function submit(formData: FormData) {
-    const listingId = String(formData.get("listingId") ?? "").trim();
-    const payload = {
-      listingId: listingId || null,
-      caption: String(formData.get("caption") ?? ""),
-      photoUrl: String(formData.get("photoUrl") ?? "").trim() || null,
-    };
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
 
-    startTransition(async () => {
-      setResult({});
+    track("winner_submission_started", { listing_id: listingId || null });
+    setStatus("submitting");
 
-      try {
-        const response = await fetch("/api/winners", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    try {
+      const res = await fetch("/api/winners", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listingId: listingId || undefined, photoUrl, caption }),
+      });
+      if (!res.ok) throw new Error("Submission failed");
 
-        const body = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
+      setStatus("success");
+      track("winner_submission_completed", { listing_id: listingId || null });
+    } catch {
+      setStatus("error");
+      track("winner_submission_failed", { listing_id: listingId || null, error_type: "network" });
+    }
+  }
 
-        if (!response.ok) {
-          setResult({ error: body?.error ?? `Submission failed (${response.status})` });
-          return;
-        }
-
-        setResult({
-          success:
-            "Your win was submitted for review. It will appear on the Winner Wall once Sweepza approves it.",
-        });
-      } catch (error) {
-        setResult({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Winner submission failed.",
-        });
-      }
-    });
+  if (status === "success") {
+    return (
+      <div className="rounded-card border border-sand bg-cream p-4 text-sm text-ink/70">
+        <p className="font-semibold text-ink">Submitted</p>
+        <p className="mt-1">Your post is pending review. Once approved, it will appear on the Winner Wall.</p>
+      </div>
+    );
   }
 
   return (
-    <form
-      action={submit}
-      className="flex flex-col gap-4 rounded-card border border-sand bg-white/80 p-4"
-    >
+    <form onSubmit={onSubmit} className="space-y-3 rounded-card border border-sand bg-white p-4">
+      {props.listings.length > 0 ? (
+        <div>
+          <label className="text-xs font-medium text-ink/60">Sweepstakes you entered</label>
+          <select
+            value={listingId}
+            onChange={(e) => setListingId(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+          >
+            <option value="">— Select one —</option>
+            {props.listings.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div>
-        <h1 className="text-2xl font-semibold text-ink">Share your win</h1>
-        <p className="mt-1 text-sm leading-relaxed text-ink/60">
-          Post a real prize you won through Sweepza. Submissions are reviewed before they go public.
-        </p>
-      </div>
-
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-ink">Sweep listing</span>
-        <select
-          name="listingId"
-          defaultValue=""
-          className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-        >
-          <option value="">Choose a listing you entered</option>
-          {listings.map((listing) => (
-            <option key={listing.id} value={listing.id}>
-              {listing.title}
-              {listing.endDate ? ` · Ended ${formatOptionDate(listing.endDate)}` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-ink">Caption</span>
-        <textarea
-          name="caption"
-          required
-          rows={5}
-          maxLength={1000}
-          className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-          placeholder="Tell the community what you won and how it landed."
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-ink">Photo URL</span>
+        <label className="text-xs font-medium text-ink/60">Photo URL</label>
         <input
-          name="photoUrl"
-          type="url"
-          className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-          placeholder="Optional photo of the prize or confirmation"
+          value={photoUrl}
+          onChange={(e) => setPhotoUrl(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+          placeholder="https://..."
+          inputMode="url"
         />
-      </label>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? "Submitting..." : "Submit winner post"}
-        </button>
-        <p className="text-xs text-ink/50">
-          Verified-win status is applied later during review.
-        </p>
       </div>
-
-      {result.error ? (
-        <p className="rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
-          {result.error}
-        </p>
+      <div>
+        <label className="text-xs font-medium text-ink/60">Caption</label>
+        <textarea
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+          maxLength={500}
+          rows={4}
+          placeholder="Won this!"
+        />
+      </div>
+      {status === "error" ? (
+        <p className="text-xs text-red-600">Something went wrong. Try again.</p>
       ) : null}
-
-      {result.success ? (
-        <p className="rounded-xl border border-moss/30 bg-moss/10 px-3 py-2 text-sm text-moss">
-          {result.success}
-        </p>
-      ) : null}
+      <button
+        type="submit"
+        disabled={status === "submitting"}
+        className="w-full rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-cream disabled:opacity-60"
+      >
+        {status === "submitting" ? "Submitting…" : "Submit win"}
+      </button>
     </form>
   );
 }

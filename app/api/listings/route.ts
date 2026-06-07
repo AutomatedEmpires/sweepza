@@ -4,7 +4,6 @@ import {
   FILTER_CHIPS,
   SORT_OPTIONS,
   filterListings,
-  searchListings,
   sortListings,
   type FilterChipId,
   type SortId,
@@ -46,7 +45,7 @@ export async function GET(request: NextRequest) {
     ? (rawSort as SortId)
     : "recommended";
 
-  const query = searchParams.get("q")?.trim() ?? "";
+  const q = searchParams.get("q")?.trim() ?? "";
   const verifiedOnly = searchParams.get("verifiedOnly") === "true";
 
   const parsedLimit = Number(searchParams.get("limit") ?? "30");
@@ -59,17 +58,17 @@ export async function GET(request: NextRequest) {
     entryFrequencies: entryFrequencies.length > 0 ? entryFrequencies : undefined,
     verifiedOnly,
     limit,
+    searchQuery: q || undefined,
   });
 
   listings = filterListings(listings, chips);
-  listings = searchListings(listings, query);
   listings = sortListings(listings, sort);
 
   return NextResponse.json({
     data: listings,
     meta: {
       count: listings.length,
-      query,
+      query: q,
       sort,
       filters: {
         categories,
