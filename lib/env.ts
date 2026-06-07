@@ -25,6 +25,8 @@ const schema = z.object({
   GITHUB_OWNER: z.string().optional(),
   GITHUB_REPO: z.string().optional(),
   NOTION_API_TOKEN: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().optional(),
 });
 
 export const env = schema.parse(process.env);
