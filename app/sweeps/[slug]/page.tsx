@@ -92,20 +92,18 @@ export default async function ListingDetailPage({
 
   const canonicalUrl = new URL(`/sweeps/${listing.slug}`, SITE_URL).toString();
   const jsonLd = buildListingJsonLd(listing, canonicalUrl);
+  // Safe: jsonLd is built server-side from DB-sourced fields via JSON.stringify.
+  // No user-controllable string is inserted as raw HTML.
+  const jsonLdHtml = { __html: jsonLd };
 
   const [authUser] = await Promise.all([ensureCurrentAppUser()]);
   const clerkConfigured = isClerkConfigured();
 
   return (
     <>
-      {/*
-        Safe: `jsonLd` is generated entirely server-side from database-sourced
-        fields serialised through JSON.stringify. No user-controllable string is
-        inserted as raw HTML.
-      */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML= __html: jsonLd 
+        dangerouslySetInnerHTML={jsonLdHtml}
       />
       <ListingDetail
         listing={listing}
