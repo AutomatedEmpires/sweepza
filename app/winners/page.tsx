@@ -1,7 +1,7 @@
 import { WinnerCard } from "@/components/winner-card";
 import Link from "next/link";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { getPublishedWinnerWall } from "@/lib/db/winners";
+import { getPublishedWinnerPosts } from "@/lib/db/winners";
 
 export const metadata = {
   title: "Winners",
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function WinnersPage() {
   const authUser = await ensureCurrentAppUser();
   const clerkConfigured = isClerkConfigured();
-  const items = await getPublishedWinnerWall();
+  const { posts } = await getPublishedWinnerPosts({ limit: 20 });
 
   return (
     <section className="px-4 pb-8 pt-8">
@@ -33,14 +33,10 @@ export default async function WinnersPage() {
         ) : null}
       </header>
 
-      {items.length > 0 ? (
+      {posts.length > 0 ? (
         <div className="mt-6 space-y-5">
-          {items.map(({ post, listing }) => (
-            <WinnerCard
-              key={post.id}
-              post={post}
-              listing={listing}
-            />
+          {posts.map((post) => (
+            <WinnerCard key={post.id} post={post} />
           ))}
         </div>
       ) : (

@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-// Central environment contract. Values are optional during early lanes so the
-// Phase 1 shell builds without secrets. Tighten per-lane as integrations land.
 const schema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().optional(),

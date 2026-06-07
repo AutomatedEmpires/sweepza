@@ -97,7 +97,12 @@ export function WinnerCard({
           </Link>
         ) : null}
 
-        <WinnerReactionBar winnerPostId={post.id} reactions={post.reactions} />
+        <WinnerReactionBar
+          winnerPostId={post.id}
+          initialCounts={post.reactions ?? {}}
+          isAuthenticated={false}
+          onUnauthenticated={() => undefined}
+        />
       </div>
     </article>
   );

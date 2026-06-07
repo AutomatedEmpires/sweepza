@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { WinnerPostRow } from "@/lib/db/types";
+import type { ReactionType } from "@/lib/db/enums";
 
-// NOTE: Clerk auth wiring is Lane B. For now we require an access token header.
 function getAccessToken(req: Request): string | null {
   const auth = req.headers.get("authorization");
   if (!auth) return null;
@@ -13,37 +12,31 @@ function getAccessToken(req: Request): string | null {
   return token;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const accessToken = getAccessToken(req);
     if (!accessToken) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
 
-    const body = (await req.json()) as {
-      listingId?: string;
-      photoUrl?: string;
-      caption?: string;
-    };
+    const { id } = await ctx.params;
+    const body = (await req.json()) as { reactionType: ReactionType };
 
     const supabase = createServerSupabaseClient(accessToken);
-
-    const { data, error } = await supabase
-      .from("winner_post")
-      .insert({
-        listing_id: body.listingId ?? null,
-        photo_url: body.photoUrl ?? null,
-        caption: body.caption ?? null,
-        review_status: "submitted",
-      })
-      .select("*")
-      .single<WinnerPostRow>();
+    const { error } = await supabase.from("winner_reaction").insert({
+      winner_post_id: id,
+      reaction_type: body.reactionType,
+    });
 
     if (error) {
+      // Unique constraint means user already reacted; treat as success.
+      if (error.code === "23505") {
+        return NextResponse.json({ ok: true }, { status: 200 });
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ id: data.id }, { status: 201 });
+    return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
     Sentry.captureException(err);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
