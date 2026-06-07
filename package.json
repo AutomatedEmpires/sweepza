@@ -11,16 +11,20 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "typegen": "next typegen",
+    "typecheck": "pnpm typegen && tsc --noEmit",
     "validate": "pnpm lint && pnpm typecheck && pnpm build",
+    "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.4.3",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^22.2.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

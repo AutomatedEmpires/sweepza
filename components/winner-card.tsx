@@ -1,17 +1,11 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/icon";
-import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
+import { type ReactionType } from "@/lib/db/enums";
+import { WinnerReactionBar } from "@/components/winner-reaction-bar";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
 import type { WinnerPost } from "@/lib/mock/winners";
 import type { Listing } from "@/lib/types/listing";
-
-const REACTION_LABEL: Record<ReactionType, string> = {
-  congrats: "Congrats",
-  awesome: "Awesome",
-  nice_win: "Nice win",
-  celebration: "Celebration",
-};
 
 export function WinnerCard({
   post,
@@ -24,12 +18,6 @@ export function WinnerCard({
     post.photoUrl ?? listing?.mainImageUrl ?? listing?.categoryFallbackImageUrl;
   const altText =
     listing?.imageAltText ?? `${post.winnerDisplayName}'s winning prize photo`;
-
-  const reactionEntries = REACTION_TYPES.map((type) => ({
-    type,
-    count: post.reactions[type] ?? 0,
-  })).filter((entry) => entry.count > 0);
-  const totalReactions = reactionEntries.reduce((sum, e) => sum + e.count, 0);
 
   return (
     <article className="overflow-hidden rounded-card border border-sand bg-white">
@@ -109,20 +97,7 @@ export function WinnerCard({
           </Link>
         ) : null}
 
-        {reactionEntries.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            {reactionEntries.map((entry) => (
-              <span
-                key={entry.type}
-                className="inline-flex items-center gap-1 rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink/70"
-              >
-                {REACTION_LABEL[entry.type]}
-                <span className="text-ink/50">{entry.count}</span>
-              </span>
-            ))}
-            <span className="text-xs text-ink/40">{totalReactions} reactions</span>
-          </div>
-        ) : null}
+        <WinnerReactionBar winnerPostId={post.id} reactions={post.reactions} />
       </div>
     </article>
   );
