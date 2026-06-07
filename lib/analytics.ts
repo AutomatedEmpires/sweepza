@@ -11,7 +11,9 @@ export type AnalyticsEvent =
   | "listing_skipped"
   | "listing_shared"
   | "discover_feed_loaded"
-  | "filter_applied";
+  | "filter_applied"
+  | "search_performed"
+  | "search_results_shown";
 
 export type AnalyticsValue =
   | string
