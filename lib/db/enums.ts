@@ -9,7 +9,7 @@ export type LifecycleStatus = (typeof LIFECYCLE_STATUSES)[number];
 export const VISIBILITY_STATUSES = ["public", "private", "hidden", "unlisted"] as const;
 export type VisibilityStatus = (typeof VISIBILITY_STATUSES)[number];
 
-export const MODERATION_STATUSES = ["clear", "flagged", "under_review", "action_taken", "submitted", "held", "rejected"] as const;
+export const MODERATION_STATUSES = ["draft", "clear", "flagged", "under_review", "action_taken", "submitted", "held", "rejected"] as const;
 export type ModerationStatus = (typeof MODERATION_STATUSES)[number];
 
 export const DUPLICATE_STATUSES = ["clear", "suspected", "confirmed"] as const;
