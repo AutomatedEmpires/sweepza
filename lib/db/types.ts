@@ -214,6 +214,10 @@ export interface NotificationPrefRow {
   email_enabled: boolean;
   in_app_enabled: boolean;
   push_enabled: boolean;
+  email_on_listing_approved: boolean;
+  email_on_listing_held: boolean;
+  email_on_listing_expiring_soon: boolean;
+  email_on_new_reaction: boolean;
   updated_at: Timestamptz;
 }
 
@@ -224,5 +228,6 @@ export interface NotificationLogRow {
   channel: NotificationChannel;
   status: NotificationStatus;
   sent_at: Timestamptz | null;
+  metadata: Record<string, unknown> | null;
   created_at: Timestamptz;
 }
