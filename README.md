@@ -1,6 +1,6 @@
 # Sweepza
 
-**Sweepstakes | Simplified.** A fast, photo-first, mobile-first way to discover sweepstakes worth entering, and a lightweight tool for hosts to post them.
+**A photo-first sweepstakes discovery app.** Visual browse, fast entry, transparent odds.
 
 - **Domain:** sweepza.com
 - **Stack:** Next.js (App Router) + React + TypeScript, Supabase (Postgres + RLS + Storage), Clerk (auth), Stripe (billing), PostHog (analytics), Vercel (hosting).

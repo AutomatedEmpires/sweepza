@@ -12,7 +12,7 @@ const STEPS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: "gift",
     title: "Discover",
-    body: "A photo-first feed of sweepstakes worth your time — tag-driven, no noise.",
+    body: "Browse sweepstakes visually with a photo-first discovery feed.",
   },
   {
     icon: "send",
@@ -67,12 +67,12 @@ export default async function HomePage() {
           Sweepza
         </p>
         <h1 className="mt-2 font-display text-4xl leading-[1.05] text-ink">
-          Sweepstakes,
+          Photo-first
           <br />
-          simplified.
+          discovery.
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-ink/70">
-          Discover sweepstakes worth entering — photo-first, tag-driven, no noise.
+          Discover sweepstakes with visual browse, fast entry, and transparent odds.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <Link

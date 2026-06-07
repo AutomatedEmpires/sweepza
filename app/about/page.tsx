@@ -1,7 +1,7 @@
 export const metadata = {
   title: "About",
   description:
-    "Learn what Sweepza is, what it does, and how it approaches sweepstakes discovery.",
+    "Learn how Sweepza approaches photo-first sweepstakes discovery with visual browse, fast entry, and transparent odds.",
 };
 
 export default function AboutPage() {
@@ -13,13 +13,12 @@ export default function AboutPage() {
             About Sweepza
           </p>
           <h1 className="font-display text-4xl leading-tight text-ink">
-            Sweepstakes, simplified.
+            Photo-first sweepstakes discovery.
           </h1>
           <p className="text-sm leading-relaxed text-ink/70">
-            Sweepza is building a cleaner, faster way to discover legitimate
-            sweepstakes worth entering. The product is mobile-first, photo-first,
-            and designed to keep seekers focused on real opportunities instead of
-            noisy lists.
+            Sweepza is a photo-first sweepstakes discovery app built around
+            visual browse, fast entry, and transparent odds. It keeps seekers
+            focused on real opportunities instead of noisy lists.
           </p>
         </header>
 
@@ -27,9 +26,9 @@ export default function AboutPage() {
           <section className="rounded-card border border-sand bg-white/70 p-4">
             <h2 className="text-lg font-semibold text-ink">What Sweepza does</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
-              Sweepza helps people browse active sweepstakes, compare them quickly,
-              and tap through to the official entry experience. It does not replace
-              the sponsor’s rules or entry flow.
+              Sweepza helps people browse active sweepstakes visually, compare
+              them quickly, and tap through to the official entry experience. It
+              does not replace the sponsor’s rules or entry flow.
             </p>
           </section>
 
