@@ -28,11 +28,12 @@ function ListingCardSkeleton() {
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const params = await searchParams;
   const parsed = SearchParamsSchema.safeParse({
-    q: typeof searchParams?.q === "string" ? searchParams.q : undefined,
-    category: typeof searchParams?.category === "string" ? searchParams.category : undefined,
+    q: typeof params?.q === "string" ? params.q : undefined,
+    category: typeof params?.category === "string" ? params.category : undefined,
   });
 
   const q = parsed.success ? parsed.data.q?.trim() : undefined;

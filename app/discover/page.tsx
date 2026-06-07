@@ -9,9 +9,10 @@ export const dynamic = "force-dynamic";
 export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams?: { q?: string | string[] };
+  searchParams?: Promise<{ q?: string | string[] }>;
 }) {
-  const q = typeof searchParams?.q === "string" ? searchParams.q.trim() : "";
+  const params = await searchParams;
+  const q = typeof params?.q === "string" ? params.q.trim() : "";
 
   const listings = await getPublicListings({
     searchQuery: q || undefined,
