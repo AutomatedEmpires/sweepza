@@ -167,14 +167,16 @@ jobs:
 
             const rawResponse = await response.text();
             const compactResponse = rawResponse.replace(/\s+/g, ' ').trim();
-            const responseSnippet = compactResponse.slice(0, 280);
 
             if (!response.ok) {
+              if (compactResponse) {
+                core.info(`Webhook response preview: ${compactResponse.slice(0, 500)}`);
+              }
               await createIssueComment([
                 `### ${route.label} dispatch failed`,
                 '',
                 `Webhook returned HTTP ${response.status}.`,
-                responseSnippet ? `Response: ${responseSnippet}` : null,
+                'See workflow logs for the webhook response preview.',
                 '',
                 `Source: ${payload.comment_url || pull.html_url}`,
               ].filter(Boolean).join('\n'));
