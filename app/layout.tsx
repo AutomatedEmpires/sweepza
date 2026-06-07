@@ -2,13 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Patrick_Hand } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
+import { ObservabilityProviders } from "@/components/observability-providers";
 import { SeekerStateProvider } from "@/lib/seeker-state";
 import { MOCK_LISTINGS } from "@/lib/mock/listings";
 import type { SeekerUiState } from "@/lib/types/listing";
 
-// Hand-drawn marker face for sweeps-card titles and ribbons. Exposed as the
-// `font-display` Tailwind token via the --font-display CSS variable. Body copy
-// continues to use the system sans stack.
 const display = Patrick_Hand({
   weight: "400",
   subsets: ["latin"],
@@ -40,8 +38,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-// Seed the seeker-state store from mock data so Discover and Saved share state
-// within a session. Replaced by Supabase-backed state in Lane B.
 const initialSeekerState: Record<string, SeekerUiState> = Object.fromEntries(
   MOCK_LISTINGS.filter((l) => l.seekerState).map((l) => [
     l.id,
@@ -57,9 +53,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={display.variable}>
       <body>
-        <SeekerStateProvider initial={initialSeekerState}>
-          <MobileShell>{children}</MobileShell>
-        </SeekerStateProvider>
+        <ObservabilityProviders>
+          <SeekerStateProvider initial={initialSeekerState}>
+            <MobileShell>{children}</MobileShell>
+          </SeekerStateProvider>
+        </ObservabilityProviders>
       </body>
     </html>
   );
