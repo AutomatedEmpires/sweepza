@@ -105,6 +105,8 @@ export interface ListingRow {
   duplicate_status: DuplicateStatus;
   listing_verification_status: ListingVerificationStatus;
   is_featured: boolean;
+  review_notes_internal: string | null;
+  review_notes: string | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
   published_at: Timestamptz | null;
