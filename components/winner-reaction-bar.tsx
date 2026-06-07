@@ -1,73 +1,69 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
+import { useMemo, useState } from "react";
 
-const REACTION_LABEL: Record<ReactionType, string> = {
+import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
+import { track } from "@/lib/analytics";
+
+const LABEL: Record<ReactionType, string> = {
   congrats: "Congrats",
   awesome: "Awesome",
   nice_win: "Nice win",
-  celebration: "Celebrate",
+  celebration: "Celebration",
 };
 
-export function WinnerReactionBar({
-  winnerPostId,
-  reactions,
-}: {
+export function WinnerReactionBar(props: {
   winnerPostId: string;
-  reactions: Partial<Record<ReactionType, number>>;
+  initialCounts: Partial<Record<ReactionType, number>>;
+  isAuthenticated: boolean;
+  onUnauthenticated: () => void;
 }) {
-  const [counts, setCounts] = useState(reactions);
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const [counts, setCounts] = useState(props.initialCounts);
+  const [pending, setPending] = useState<ReactionType | null>(null);
 
-  function onReact(reactionType: ReactionType) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        const response = await fetch(`/api/winners/${winnerPostId}/reactions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reactionType }),
-        });
+  const total = useMemo(
+    () => REACTION_TYPES.reduce((sum, t) => sum + (counts[t] ?? 0), 0),
+    [counts],
+  );
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            setError("Sign in to react.");
-            return;
-          }
+  async function react(type: ReactionType) {
+    if (!props.isAuthenticated) {
+      props.onUnauthenticated();
+      return;
+    }
 
-          const body = await response.json().catch(() => null);
-          throw new Error(body?.error ?? `Request failed (${response.status})`);
-        }
+    setPending(type);
+    setCounts((prev) => ({ ...prev, [type]: (prev[type] ?? 0) + 1 }));
 
-        const body = (await response.json()) as {
-          reactions: Partial<Record<ReactionType, number>>;
-        };
-        setCounts(body.reactions);
-      } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "Reaction failed.");
-      }
-    });
+    try {
+      const res = await fetch(`/api/winners/${props.winnerPostId}/reactions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reactionType: type }),
+      });
+      if (!res.ok) throw new Error("Failed to react");
+      track("winner_post_reacted", { winner_post_id: props.winnerPostId, reaction_type: type });
+    } catch {
+      setCounts((prev) => ({ ...prev, [type]: Math.max(0, (prev[type] ?? 1) - 1) }));
+    } finally {
+      setPending(null);
+    }
   }
 
   return (
-    <div className="flex flex-col gap-2 pt-1">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {REACTION_TYPES.map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => onReact(type)}
-            disabled={pending}
-            className="inline-flex items-center gap-1 rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink/70 transition hover:bg-ink/10 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {REACTION_LABEL[type]}
-            <span className="text-ink/50">{counts[type] ?? 0}</span>
-          </button>
-        ))}
-      </div>
-      {error ? <p className="text-xs text-ember">{error}</p> : null}
+    <div className="flex flex-wrap items-center gap-2 pt-3">
+      {REACTION_TYPES.map((type) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => react(type)}
+          disabled={pending !== null}
+          className="rounded-full border border-sand bg-white px-3 py-1 text-xs font-medium text-ink/70 transition hover:border-ember/40 disabled:opacity-60"
+        >
+          {LABEL[type]} {counts[type] ?? 0}
+        </button>
+      ))}
+      <span className="text-xs text-ink/40">{total} reactions</span>
     </div>
   );
 }

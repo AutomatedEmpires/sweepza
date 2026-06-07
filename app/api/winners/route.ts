@@ -1,62 +1,51 @@
 import { NextResponse } from "next/server";
-import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { updateSeekerState } from "@/lib/db/seeker-state";
-import { createServiceRoleClient } from "@/lib/supabase/server";
-import { winnerSubmissionSchema } from "@/lib/winner-submission-schema";
+import * as Sentry from "@sentry/nextjs";
 
-export const dynamic = "force-dynamic";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { WinnerPostRow } from "@/lib/db/types";
 
-export async function POST(request: Request) {
-  if (!isClerkConfigured()) {
-    return NextResponse.json(
-      { error: "Clerk is not configured for this environment." },
-      { status: 503 },
-    );
+// NOTE: Clerk auth wiring is Lane B. For now we require an access token header.
+function getAccessToken(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth) return null;
+  const [type, token] = auth.split(" ");
+  if (type?.toLowerCase() !== "bearer" || !token) return null;
+  return token;
+}
+
+export async function POST(req: Request) {
+  try {
+    const accessToken = getAccessToken(req);
+    if (!accessToken) {
+      return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    }
+
+    const body = (await req.json()) as {
+      listingId?: string;
+      photoUrl?: string;
+      caption?: string;
+    };
+
+    const supabase = createServerSupabaseClient(accessToken);
+
+    const { data, error } = await supabase
+      .from("winner_post")
+      .insert({
+        listing_id: body.listingId ?? null,
+        photo_url: body.photoUrl ?? null,
+        caption: body.caption ?? null,
+        review_status: "submitted",
+      })
+      .select("*")
+      .single<WinnerPostRow>();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ id: data.id }, { status: 201 });
+  } catch (err) {
+    Sentry.captureException(err);
+    return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
-
-  const authUser = await ensureCurrentAppUser();
-  if (!authUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const parsed = winnerSubmissionSchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid payload", details: parsed.error.flatten() },
-      { status: 400 },
-    );
-  }
-
-  const input = parsed.data;
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("winner_post")
-    .insert({
-      app_user_id: authUser.appUserId,
-      listing_id: input.listingId ?? null,
-      caption: input.caption,
-      photo_url: input.photoUrl ?? null,
-      verified_win: false,
-      review_status: "submitted",
-    })
-    .select("id")
-    .single<{ id: string }>();
-
-  if (error) {
-    return NextResponse.json(
-      { error: `Winner post insert failed: ${error.message}` },
-      { status: 500 },
-    );
-  }
-
-  if (input.listingId) {
-    await updateSeekerState({
-      appUserId: authUser.appUserId,
-      listingId: input.listingId,
-      primaryUiState: "won",
-      saved: true,
-    });
-  }
-
-  return NextResponse.json({ ok: true, id: data.id });
 }

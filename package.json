@@ -20,8 +20,10 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.3",
+    "@sentry/nextjs": "^8.20.0",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^15.1.0",
+    "posthog-js": "^1.248.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "stripe": "^22.2.0",
