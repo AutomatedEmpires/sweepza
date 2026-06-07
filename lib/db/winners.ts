@@ -24,7 +24,7 @@ export async function getPublishedWinnerPosts(
   const supabase = createServerSupabaseClient();
   const limit = args.limit ?? 20;
 
-  let query = supabase
+  let base = supabase
     .from("winner_post")
     .select(
       [
@@ -42,19 +42,16 @@ export async function getPublishedWinnerPosts(
     )
     .eq("review_status", "published" satisfies WinnerReviewStatus)
     .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit + 1)
-    .returns<WinnerPostJoinRow[]>();
+    .order("id", { ascending: false });
 
   if (args.cursor) {
-    // Cursor as (created_at, id) tuple.
-    query = query
-      .or(
-        `created_at.lt.${args.cursor.createdAt},and(created_at.eq.${args.cursor.createdAt},id.lt.${args.cursor.id})`,
-      );
+    // Cursor as (created_at, id) tuple — applied before limit/returns.
+    base = base.or(
+      `created_at.lt.${args.cursor.createdAt},and(created_at.eq.${args.cursor.createdAt},id.lt.${args.cursor.id})`,
+    );
   }
 
-  const { data, error } = await query;
+  const { data, error } = await base.limit(limit + 1).returns<WinnerPostJoinRow[]>();
   if (error) throw new Error(`getPublishedWinnerPosts failed: ${error.message}`);
   const rows = data ?? [];
 
