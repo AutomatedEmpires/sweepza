@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { WinnerPostRow } from "@/lib/db/types";
 
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Admin · Winner Wall",
 };
