@@ -13,6 +13,7 @@ import {
   isExpired,
 } from "@/lib/listing-badges";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
+import { useNow } from "@/lib/now";
 import { useSeekerState } from "@/lib/seeker-state";
 import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
@@ -24,9 +25,9 @@ const MAX_CARD_BADGES = 3;
 // should not fire.
 export type CardSurface = "scroll" | "swipe" | "detail";
 
-function countdownLabel(listing: Listing): string {
-  if (isExpired(listing)) return "Ended";
-  const days = daysUntil(listing.endDate);
+function countdownLabel(listing: Listing, now: Date): string {
+  if (isExpired(listing, now)) return "Ended";
+  const days = daysUntil(listing.endDate, now);
   if (days <= 0) return "Ends today";
   if (days === 1) return "1 day left";
   return `${days} days left`;
@@ -40,7 +41,8 @@ export function ListingCard({
   surface?: CardSurface;
 }) {
   const store = useSeekerState();
-  const expired = isExpired(listing);
+  const now = useNow();
+  const expired = isExpired(listing, now);
   const initialState: SeekerUiState =
     listing.seekerState?.primaryUiState ?? "none";
 
@@ -108,8 +110,8 @@ export function ListingCard({
   }
 
   const badges = useMemo(
-    () => computeBadges(listing).slice(0, MAX_CARD_BADGES),
-    [listing],
+    () => computeBadges(listing, now).slice(0, MAX_CARD_BADGES),
+    [listing, now],
   );
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
@@ -128,7 +130,7 @@ export function ListingCard({
 
   const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
   const endLabel = formatEndDate(listing.endDate);
-  const countdown = countdownLabel(listing);
+  const countdown = countdownLabel(listing, now);
 
   return (
     <article

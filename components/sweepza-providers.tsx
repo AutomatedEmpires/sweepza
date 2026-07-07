@@ -1,6 +1,7 @@
 "use client";
 
 import { ClerkProvider } from "@clerk/nextjs";
+import { NowProvider } from "@/lib/now";
 import {
   SeekerStateProvider,
   type SeekerStateSnapshot,
@@ -12,19 +13,23 @@ export function SweepzaProviders({
   clerkPublishableKey,
   initialSeekerState,
   persistenceMode,
+  serverNow,
 }: {
   children: React.ReactNode;
   clerkPublishableKey?: string;
   initialSeekerState: SeekerStateSnapshot;
   persistenceMode: SeekerStatePersistenceMode;
+  serverNow: number;
 }) {
   const content = (
-    <SeekerStateProvider
-      initial={initialSeekerState}
-      persistenceMode={persistenceMode}
-    >
-      {children}
-    </SeekerStateProvider>
+    <NowProvider value={serverNow}>
+      <SeekerStateProvider
+        initial={initialSeekerState}
+        persistenceMode={persistenceMode}
+      >
+        {children}
+      </SeekerStateProvider>
+    </NowProvider>
   );
 
   if (!clerkPublishableKey) {

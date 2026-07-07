@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
+import { useNow } from "@/lib/now";
 import { useSeekerState } from "@/lib/seeker-state";
 import {
   EMPTY_ROUTINE_SNAPSHOT,
@@ -95,6 +96,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
   const [extra, setExtra] = useState<Listing[]>([]);
   const fetchedIdsRef = useRef<Set<string>>(new Set());
   const store = useSeekerState();
+  const now = useNow();
 
   const snapshot = store?.snapshot ?? EMPTY_ROUTINE_SNAPSHOT;
 
@@ -139,8 +141,8 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
   }, [snapshot, allListings]);
 
   const buckets = useMemo(
-    () => buildRoutineBuckets(allListings, snapshot),
-    [allListings, snapshot],
+    () => buildRoutineBuckets(allListings, snapshot, now),
+    [allListings, snapshot, now],
   );
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];

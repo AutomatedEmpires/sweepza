@@ -19,6 +19,7 @@ import {
   formatPrizeValue,
   formatRelativeTime,
 } from "@/lib/listing-format";
+import { useNow } from "@/lib/now";
 import { useSeekerState } from "@/lib/seeker-state";
 import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
@@ -37,9 +38,9 @@ interface RuleRow {
   value: string;
 }
 
-function countdownLabel(listing: Listing): string {
-  if (isExpired(listing)) return "Ended";
-  const days = daysUntil(listing.endDate);
+function countdownLabel(listing: Listing, now: Date): string {
+  if (isExpired(listing, now)) return "Ended";
+  const days = daysUntil(listing.endDate, now);
   if (days <= 0) return "Ends today";
   if (days === 1) return "1 day left";
   return `${days} days left`;
@@ -55,7 +56,8 @@ export function ListingDetail({
   isSignedIn: boolean;
 }) {
   const store = useSeekerState();
-  const expired = isExpired(listing);
+  const now = useNow();
+  const expired = isExpired(listing, now);
   const initialState: SeekerUiState =
     listing.seekerState?.primaryUiState ?? "none";
 
@@ -128,7 +130,7 @@ export function ListingDetail({
     }
   }
 
-  const badges = useMemo(() => computeBadges(listing), [listing]);
+  const badges = useMemo(() => computeBadges(listing, now), [listing, now]);
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
@@ -146,7 +148,7 @@ export function ListingDetail({
 
   const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
   const endLabel = formatEndDate(listing.endDate);
-  const countdown = countdownLabel(listing);
+  const countdown = countdownLabel(listing, now);
 
   const prizeMeta = [
     listing.prizeCategory,
@@ -583,7 +585,7 @@ export function ListingDetail({
               )}
               {listing.publishedAt && (
                 <p className="mt-2 text-xs text-ink/50">
-                  Listed on Sweepza {formatRelativeTime(listing.publishedAt)}
+                  Listed on Sweepza {formatRelativeTime(listing.publishedAt, now)}
                 </p>
               )}
             </div>
