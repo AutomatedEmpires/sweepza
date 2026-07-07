@@ -52,7 +52,7 @@ export default async function RootLayout({
   const authUser = await ensureCurrentAppUser();
   const initialSeekerState = authUser
     ? await getSeekerStateSnapshotForAppUser(authUser.appUserId)
-    : { primary: {}, saved: {} };
+    : { primary: {}, saved: {}, activity: {} };
 
   return (
     <html lang="en" className={display.variable}>
@@ -62,6 +62,7 @@ export default async function RootLayout({
             clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
             initialSeekerState={initialSeekerState}
             persistenceMode={authUser ? "remote" : "local"}
+            serverNow={Date.now()}
           >
             <MobileShell utility={<ShellUtilityBar authUser={authUser} />}>
               {children}

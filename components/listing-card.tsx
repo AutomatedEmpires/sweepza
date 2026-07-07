@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { canOptimizeImage } from "@/lib/image";
 import { Icon } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
 import { track } from "@/lib/analytics";
@@ -13,7 +15,9 @@ import {
   isExpired,
 } from "@/lib/listing-badges";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
+import { useNow } from "@/lib/now";
 import { useSeekerState } from "@/lib/seeker-state";
+import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const MAX_CARD_BADGES = 3;
@@ -23,9 +27,9 @@ const MAX_CARD_BADGES = 3;
 // should not fire.
 export type CardSurface = "scroll" | "swipe" | "detail";
 
-function countdownLabel(listing: Listing): string {
-  if (isExpired(listing)) return "Ended";
-  const days = daysUntil(listing.endDate);
+function countdownLabel(listing: Listing, now: Date): string {
+  if (isExpired(listing, now)) return "Ended";
+  const days = daysUntil(listing.endDate, now);
   if (days <= 0) return "Ends today";
   if (days === 1) return "1 day left";
   return `${days} days left`;
@@ -39,13 +43,15 @@ export function ListingCard({
   surface?: CardSurface;
 }) {
   const store = useSeekerState();
-  const expired = isExpired(listing);
+  const now = useNow();
+  const expired = isExpired(listing, now);
   const initialState: SeekerUiState =
     listing.seekerState?.primaryUiState ?? "none";
 
   // Falls back to local state when no seeker-state provider is mounted.
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
+  const [shareFlash, setShareFlash] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -92,18 +98,30 @@ export function ListingCard({
     if (next === "skipped") track("listing_skipped", baseProps);
   }
 
-  function handleShare() {
-    track("listing_shared", { ...baseProps, share_type: "link" });
+  async function handleShare() {
+    const outcome = await shareLink({
+      title: listing.title,
+      url: listingShareUrl(listing.slug),
+    });
+    if (outcome === "dismissed" || outcome === "failed") return;
+    track("listing_shared", { ...baseProps, share_type: outcome === "shared" ? "native" : "link" });
+    if (outcome === "copied") {
+      setShareFlash(true);
+      window.setTimeout(() => setShareFlash(false), 1600);
+    }
   }
 
   const badges = useMemo(
-    () => computeBadges(listing).slice(0, MAX_CARD_BADGES),
-    [listing],
+    () => computeBadges(listing, now).slice(0, MAX_CARD_BADGES),
+    [listing, now],
   );
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
-  const hostName = listing.host?.name ?? sourceText;
+  // Attribution name: claimed host first, then the original sponsor for
+  // Sweepza-found listings. When neither exists the source label stands alone.
+  const attributionName = listing.host?.name ?? listing.originalSponsorName;
+  const hostName = attributionName ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
@@ -114,7 +132,7 @@ export function ListingCard({
 
   const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
   const endLabel = formatEndDate(listing.endDate);
-  const countdown = countdownLabel(listing);
+  const countdown = countdownLabel(listing, now);
 
   return (
     <article
@@ -126,12 +144,13 @@ export function ListingCard({
       {/* Hero photo + overlays */}
       <div className="relative aspect-[4/3] w-full bg-sand">
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={imageUrl}
             alt={listing.imageAltText ?? listing.prizeName}
-            className="h-full w-full object-cover"
-            loading="lazy"
+            fill
+            className="object-cover"
+            sizes="(min-width: 1536px) 320px, (min-width: 1024px) 480px, 100vw"
+            unoptimized={!canOptimizeImage(imageUrl)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink/30">
@@ -142,11 +161,13 @@ export function ListingCard({
         {/* Host seal */}
         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-cream/90 py-0.5 pl-0.5 pr-2 shadow-sm backdrop-blur">
           {listing.host?.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={listing.host.logoUrl}
               alt={listing.host.name}
+              width={24}
+              height={24}
               className="h-6 w-6 rounded-full object-cover"
+              unoptimized={!canOptimizeImage(listing.host.logoUrl)}
             />
           ) : (
             <span className="grid h-6 w-6 place-items-center rounded-full bg-sand text-[10px] font-bold text-ink/60">
@@ -200,8 +221,8 @@ export function ListingCard({
           </Link>
         </h3>
 
-        <p className="mt-0.5 truncate text-[11px] font-medium text-ink/45">
-          {hostName} · {sourceText}
+        <p className="mt-0.5 truncate text-[11px] font-medium text-ink/60">
+          {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
         </p>
 
         {prizeValue && (
@@ -222,27 +243,27 @@ export function ListingCard({
         {/* Begins / Ends */}
         <div className="flex items-stretch text-center">
           <div className="flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
               Begins
             </p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
-              <Icon name="calendar" size={13} className="text-ink/40" />
+              <Icon name="calendar" size={13} className="text-ink/55" />
               {startLabel}
             </p>
           </div>
           <div className="mx-2 w-px bg-sand" />
           <div className="flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
               Ends
             </p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
-              <Icon name="calendar" size={13} className="text-ink/40" />
+              <Icon name="calendar" size={13} className="text-ink/55" />
               {endLabel}
             </p>
             <p
               className={cn(
                 "text-[10px] font-semibold",
-                expired ? "text-ink/40" : "text-ember",
+                expired ? "text-ink/55" : "text-ember",
               )}
             >
               {countdown}
@@ -255,24 +276,26 @@ export function ListingCard({
           <button
             type="button"
             onClick={handleEnter}
-            disabled={expired}
+            disabled={expired || won}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition",
-              expired
-                ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                : won
-                  ? "bg-moss text-cream"
+              // Won outranks expired — the outcome is the seeker's permanent
+              // record; that the sweepstake later ended is secondary.
+              won
+                ? "cursor-default bg-moss text-cream"
+                : expired
+                  ? "cursor-not-allowed bg-ink/10 text-ink/55"
                   : entered
                     ? "bg-moss/15 text-moss"
                     : "bg-moss text-cream hover:bg-moss/90",
             )}
           >
-            {expired ? (
-              "Expired"
-            ) : won ? (
+            {won ? (
               <>
                 <Icon name="trophy" size={16} /> Won
               </>
+            ) : expired ? (
+              "Expired"
             ) : entered ? (
               <>
                 <Icon name="check" size={16} /> Entered
@@ -290,7 +313,7 @@ export function ListingCard({
             aria-pressed={skipped}
             aria-label="Skip listing"
             className={cn(
-              "grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition",
+              "grid h-11 w-11 place-items-center rounded-full border border-sand text-ink/60 transition",
               skipped && "bg-ink/5 text-ink",
             )}
           >
@@ -301,14 +324,21 @@ export function ListingCard({
             type="button"
             onClick={handleShare}
             aria-label="Share listing"
-            className="grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
+            className={cn(
+              "grid h-11 w-11 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5",
+              shareFlash && "border-moss bg-moss/10 text-moss",
+            )}
           >
-            <Icon name="share" size={18} />
+            <Icon name={shareFlash ? "check" : "share"} size={18} />
           </button>
         </div>
 
+        <span aria-live="polite" className="sr-only">
+          {shareFlash ? "Link copied to clipboard" : ""}
+        </span>
+
         {/* Footer microcopy */}
-        <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+        <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
           No purchase necessary
         </p>
       </div>

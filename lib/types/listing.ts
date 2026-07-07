@@ -82,6 +82,17 @@ export interface ListingSeekerState {
   wonAt?: string;
 }
 
+// Per-listing action timestamps as they appear in the seeker-state snapshot.
+// Backed by listing_seeker_state columns; in local (signed-out) mode the client
+// stamps these itself so Ready Again / Sweep Routine work without an account.
+export interface SeekerListingActivity {
+  savedAt?: string;
+  enteredAt?: string;
+  skippedAt?: string;
+  wonAt?: string;
+  updatedAt?: string;
+}
+
 export interface Listing {
   id: string;
   slug: string;

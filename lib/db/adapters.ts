@@ -1,16 +1,14 @@
 // Pure adapters mapping canonical Supabase row shapes (lib/db/types.ts) to the
 // presentational UI shapes the cards/pages consume (lib/types/listing.ts and
-// lib/mock/winners.ts). No I/O and no secrets -- safe to unit test and to call
-// from server components once live data is wired. The DB-access layer
-// (lib/db/*) is responsible for the joins (host, tags, winner author,
-// reactions); these functions only translate already-fetched rows.
+// lib/types/winner.ts). No I/O and no secrets -- safe to unit test and to call
+// from server components. The DB-access layer (lib/db/*) is responsible for
+// the joins (host, tags, winner author, reactions); these functions only
+// translate already-fetched rows.
 //
 // Why this exists: the UI types use camelCase, require non-null entryUrl and
 // endDate, embed host data, expect display-string prize categories, and carry
 // derived flags (isBoosted, winnerReported) that the listing row does not
-// return directly. Centralizing the translation makes the eventual
-// mock -> Supabase swap a one-liner at each call site. See
-// "Sweepza -- Cross-App Alignment Audit".
+// return directly. See "Sweepza -- Cross-App Alignment Audit".
 
 import type {
   EntryFrequency,
@@ -19,7 +17,7 @@ import type {
   PrizeCategory,
   SourceLabel,
 } from "@/lib/types/listing";
-import type { WinnerPost } from "@/lib/mock/winners";
+import type { WinnerPost } from "@/lib/types/winner";
 import type { ReactionType } from "./enums";
 import type {
   HostPublicRow,

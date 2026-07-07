@@ -17,30 +17,30 @@ export default async function HostNotificationsPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Notification Preferences</h1>
-        <Link href="/host" className="text-sm text-indigo-600 hover:underline">Back to dashboard</Link>
+        <h1 className="text-2xl font-semibold text-ink">Notification Preferences</h1>
+        <Link href="/host" className="text-sm text-moss hover:underline">Back to dashboard</Link>
       </div>
 
       <form action={updateNotificationPrefsAction} className="space-y-4">
         {TOGGLES.map((toggle) => {
           const checked = prefs[toggle.name as keyof typeof prefs] as boolean;
           return (
-            <label key={toggle.name} htmlFor={toggle.name} className="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+            <label key={toggle.name} htmlFor={toggle.name} className="flex items-start gap-3 rounded-card border border-sand bg-cream p-4">
               <input
                 id={toggle.name}
                 name={toggle.name}
                 type="checkbox"
                 defaultChecked={checked}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                className="mt-1 h-4 w-4 rounded border-sand text-moss focus:ring-moss"
               />
               <span>
-                <span className="block text-sm font-medium text-gray-900">{toggle.label}</span>
-                <span className="block text-sm text-gray-500">{toggle.description}</span>
+                <span className="block text-sm font-medium text-ink">{toggle.label}</span>
+                <span className="block text-sm text-ink/60">{toggle.description}</span>
               </span>
             </label>
           );
         })}
-        <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        <button type="submit" className="rounded-full bg-moss px-4 py-2 text-sm font-medium text-cream hover:bg-moss/90">
           Save preferences
         </button>
       </form>

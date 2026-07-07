@@ -1,18 +1,22 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { Icon } from "@/components/icon";
 import { type ReactionType } from "@/lib/db/enums";
 import { WinnerReactionBar } from "@/components/winner-reaction-bar";
+import { canOptimizeImage } from "@/lib/image";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
-import type { WinnerPost } from "@/lib/mock/winners";
+import type { WinnerPost } from "@/lib/types/winner";
 import type { Listing } from "@/lib/types/listing";
 
 export function WinnerCard({
   post,
   listing,
+  isAuthenticated = false,
 }: {
   post: WinnerPost;
   listing?: Listing;
+  isAuthenticated?: boolean;
 }) {
   const imageUrl =
     post.photoUrl ?? listing?.mainImageUrl ?? listing?.categoryFallbackImageUrl;
@@ -23,12 +27,13 @@ export function WinnerCard({
     <article className="overflow-hidden rounded-card border border-sand bg-white">
       {imageUrl ? (
         <div className="relative aspect-[4/3] w-full bg-sand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
-            className="h-full w-full object-cover"
-            loading="lazy"
+            fill
+            className="object-cover"
+            sizes="(min-width: 1024px) 480px, 100vw"
+            unoptimized={!canOptimizeImage(imageUrl)}
           />
           {post.verifiedWin ? (
             <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-moss px-2.5 py-1 text-xs font-medium text-cream">
@@ -61,17 +66,18 @@ export function WinnerCard({
             className="flex items-center gap-3 rounded-2xl border border-sand bg-cream p-2.5 transition hover:border-ember/40 focus-visible:border-ember focus-visible:outline-none"
           >
             {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={imageUrl}
                 alt=""
                 aria-hidden
+                width={48}
+                height={48}
                 className="h-12 w-12 flex-none rounded-xl object-cover"
-                loading="lazy"
+                unoptimized={!canOptimizeImage(imageUrl)}
               />
             ) : null}
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium uppercase tracking-wide text-ink/40">
+              <span className="block text-xs font-medium uppercase tracking-wide text-ink/55">
                 Won from
               </span>
               <span className="line-clamp-1 text-sm font-medium text-ink">{listing.title}</span>
@@ -82,26 +88,18 @@ export function WinnerCard({
                   : ""}
               </span>
             </span>
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              className="h-4 w-4 flex-none text-ink/40"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m9 6 6 6-6 6" />
-            </svg>
+            <Icon
+              name="caretRight"
+              size={16}
+              className="flex-none text-ink/55"
+            />
           </Link>
         ) : null}
 
         <WinnerReactionBar
           winnerPostId={post.id}
           initialCounts={post.reactions ?? {}}
-          isAuthenticated={false}
-          onUnauthenticated={() => undefined}
+          isAuthenticated={isAuthenticated}
         />
       </div>
     </article>

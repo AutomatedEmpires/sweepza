@@ -34,11 +34,14 @@ export interface PlatformSnapshot {
   active_listings: number;
   pending_review_listings: number;
   held_listings: number;
+  /** Active+public listings whose end_date has passed — stale inventory. */
+  stale_active_listings: number;
 }
 
 export async function getPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = createServiceRoleClient();
-  const [total, active, pendingReview, held] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [total, active, pendingReview, held, stale] = await Promise.all([
     supabase.from("listing").select("*", { count: "exact", head: true }),
     supabase
       .from("listing")
@@ -53,10 +56,16 @@ export async function getPlatformSnapshot(): Promise<PlatformSnapshot> {
       .from("listing")
       .select("*", { count: "exact", head: true })
       .eq("moderation_status", "under_review"),
+    supabase
+      .from("listing")
+      .select("*", { count: "exact", head: true })
+      .eq("lifecycle_status", "active")
+      .eq("visibility_status", "public")
+      .lt("end_date", today),
   ]);
 
   const firstError =
-    total.error ?? active.error ?? pendingReview.error ?? held.error;
+    total.error ?? active.error ?? pendingReview.error ?? held.error ?? stale.error;
   if (firstError) {
     throw new Error(`getPlatformSnapshot failed: ${firstError.message}`);
   }
@@ -66,6 +75,7 @@ export async function getPlatformSnapshot(): Promise<PlatformSnapshot> {
     active_listings: active.count ?? 0,
     pending_review_listings: pendingReview.count ?? 0,
     held_listings: held.count ?? 0,
+    stale_active_listings: stale.count ?? 0,
   };
 }
 

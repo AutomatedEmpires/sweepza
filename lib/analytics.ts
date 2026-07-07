@@ -9,6 +9,7 @@ export type AnalyticsEvent =
   | "listing_saved"
   | "listing_enter_clicked"
   | "listing_marked_entered"
+  | "listing_marked_won"
   | "listing_skipped"
   | "listing_shared"
   | "discover_feed_loaded"

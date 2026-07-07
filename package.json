@@ -13,17 +13,22 @@
     "lint": "next lint",
     "typegen": "next typegen",
     "typecheck": "pnpm typegen && tsc --noEmit",
-    "validate": "pnpm lint && pnpm typecheck && pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
+    "ops:expire-stale": "node scripts/expire-stale-listings.mjs",
+    "ops:seed-dev": "node scripts/seed-dev-listings.mjs",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.3",
-    "@sentry/nextjs": "^8.20.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@sentry/nextjs": "^10.63.0",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^15.1.0",
-    "posthog-js": "^1.248.0",
+    "posthog-js": "^1.398.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "stripe": "^22.2.0",
@@ -36,8 +41,15 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.0",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.15",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "dompurify": ">=3.4.11",
+      "postcss": ">=8.5.10"
+    }
   }
 }

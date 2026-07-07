@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Icon, type IconName } from "@/components/icon";
 import {
   getHostSnapshot,
   getPlatformSnapshot,
@@ -65,6 +67,96 @@ export default async function AdminDashboardPage() {
           Sweepza.
         </p>
       </header>
+
+      {/* Needs attention — actionable queues dominate; stats support. */}
+      {(() => {
+        const queues: {
+          count: number;
+          label: string;
+          href: string;
+          icon: IconName;
+        }[] = [
+          {
+            count: platform.pending_review_listings,
+            label: "Listings pending review",
+            href: "/admin/listings",
+            icon: "rules",
+          },
+          {
+            count: platform.held_listings,
+            label: "Listings held under review",
+            href: "/admin/listings",
+            icon: "flag",
+          },
+          {
+            count: platform.stale_active_listings,
+            label: "Active listings past their end date",
+            href: "/admin/listings",
+            icon: "clock",
+          },
+          {
+            count: hosts.pending_verification,
+            label: "Hosts awaiting verification",
+            href: "/admin/hosts",
+            icon: "host",
+          },
+          {
+            count: winners.pending_winner_posts,
+            label: "Winner posts to moderate",
+            href: "/admin/winners",
+            icon: "trophy",
+          },
+          {
+            count: reports.open_reports,
+            label: "Open reports",
+            href: "/admin/reports",
+            icon: "flag",
+          },
+        ];
+        const attention = queues.filter((item) => item.count > 0);
+
+        return (
+          <div className="mt-6">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+              Needs attention
+            </h2>
+            {attention.length === 0 ? (
+              <div className="flex items-center gap-3 rounded-card border border-moss/30 bg-moss/5 p-4">
+                <Icon name="check" size={18} className="text-moss" />
+                <p className="text-sm font-medium text-ink">
+                  All queues are clear.
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-sand overflow-hidden rounded-card border border-ember/25 bg-white/80">
+                {attention.map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-ink/5"
+                    >
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/10 text-ember">
+                        <Icon name={item.icon} size={15} />
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm font-medium text-ink">
+                        {item.label}
+                      </span>
+                      <span className="rounded-full bg-ember px-2.5 py-0.5 text-xs font-bold text-cream">
+                        {item.count}
+                      </span>
+                      <Icon
+                        name="caretRight"
+                        size={14}
+                        className="text-ink/35"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="mt-6 flex flex-col gap-6">
         <div>

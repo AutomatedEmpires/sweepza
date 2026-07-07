@@ -268,7 +268,7 @@ export default async function HostPage({
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-card border border-sand bg-cream p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/40">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/55">
                       Active listings
                     </p>
                     <p className="mt-2 text-3xl font-display text-ink">
@@ -280,7 +280,7 @@ export default async function HostPage({
                     </p>
                   </div>
                   <div className="rounded-card border border-sand bg-cream p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/40">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/55">
                       Plan status
                     </p>
                     <p className="mt-2 text-3xl font-display text-ink">
@@ -294,7 +294,7 @@ export default async function HostPage({
                     </p>
                   </div>
                   <div className="rounded-card border border-sand bg-cream p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/40">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/55">
                       Public listings
                     </p>
                     <p className="mt-2 text-3xl font-display text-ink">
@@ -306,7 +306,7 @@ export default async function HostPage({
                     </p>
                   </div>
                   <div className="rounded-card border border-sand bg-cream p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/40">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/55">
                       Ending soon
                     </p>
                     <p className="mt-2 text-3xl font-display text-ink">
@@ -477,7 +477,7 @@ export default async function HostPage({
                     <h2 className="text-sm font-semibold text-ink">
                       Recent listings
                     </h2>
-                    <span className="text-xs text-ink/45">
+                    <span className="text-xs text-ink/60">
                       {listingCounts?.total ?? 0} total
                     </span>
                   </div>

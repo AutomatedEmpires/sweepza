@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/icon";
 import {
@@ -37,14 +37,61 @@ export function FilterDrawer({
   onClear: () => void;
   resultCount: number;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Modal behavior: Escape closes, Tab is trapped inside the panel, focus
+  // moves into the dialog on open and returns to the opener on close, and
+  // the page behind cannot scroll.
   useEffect(() => {
     if (!open) return;
+
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const focusables = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+    focusables()[0]?.focus();
+
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const current = document.activeElement;
+      if (event.shiftKey && (current === first || !panelRef.current?.contains(current))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      opener?.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -63,7 +110,10 @@ export function FilterDrawer({
         onClick={onClose}
         className="absolute inset-0 bg-ink/40"
       />
-      <div className="relative mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto rounded-t-3xl bg-cream px-5 pb-6 pt-3 shadow-2xl">
+      <div
+        ref={panelRef}
+        className="relative mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto rounded-t-3xl bg-cream px-5 pb-6 pt-3 shadow-2xl"
+      >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ink/15" />
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-xl text-ink">Filters &amp; sort</h2>
@@ -83,7 +133,7 @@ export function FilterDrawer({
 
             return (
               <section key={group} className="flex flex-col gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/45">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">
                   {GROUP_LABELS[group]}
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -112,7 +162,7 @@ export function FilterDrawer({
           })}
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/45">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">
               Sort by
             </h3>
             <div className="flex flex-wrap gap-2">

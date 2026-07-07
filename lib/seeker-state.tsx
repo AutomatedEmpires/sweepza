@@ -2,24 +2,32 @@
 
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
-import type { SeekerUiState } from "@/lib/types/listing";
+import type {
+  SeekerListingActivity,
+  SeekerUiState,
+} from "@/lib/types/listing";
 
-// Session-scoped seeker state for mock data (Lane D). Seeker-specific state is
-// intentionally NOT on the listing object — the Canonical Listing Object keeps
-// it in a separate relationship. Lane B replaces this with a Supabase-backed
-// listing_seeker_state join table.
+// Client seeker-state store. Seeker-specific state is intentionally NOT on the
+// listing object — the Canonical Listing Object keeps it in the separate
+// listing_seeker_state relationship. Signed-in ("remote") mode hydrates from a
+// server snapshot and persists via /api/seeker-state; signed-out ("local")
+// mode persists to localStorage with the same shape, including the action
+// timestamps that power Ready Again and the Sweep Routine.
 
 interface SeekerStateValue {
   getState: (id: string) => SeekerUiState | undefined;
   isSaved: (id: string) => boolean;
+  getActivity: (id: string) => SeekerListingActivity | undefined;
+  /** Full current snapshot — feeds lib/sweep-routine bucket math. */
+  snapshot: SeekerStateSnapshot;
   setPrimaryState: (id: string, state: SeekerUiState) => void;
   toggleSaved: (id: string) => void;
 }
@@ -31,6 +39,7 @@ const STORAGE_KEY = "sweepza-seeker-state";
 export interface SeekerStateSnapshot {
   primary: Record<string, SeekerUiState>;
   saved: Record<string, boolean>;
+  activity: Record<string, SeekerListingActivity>;
 }
 
 export type SeekerStatePersistenceMode = "local" | "remote";
@@ -38,24 +47,33 @@ export type SeekerStatePersistenceMode = "local" | "remote";
 const EMPTY_SNAPSHOT: SeekerStateSnapshot = {
   primary: {},
   saved: {},
+  activity: {},
 };
+
+const ALLOWED_STATES = new Set<SeekerUiState>([
+  "none",
+  "saved",
+  "entered",
+  "skipped",
+  "won",
+]);
+
+const ACTIVITY_KEYS = [
+  "savedAt",
+  "enteredAt",
+  "skippedAt",
+  "wonAt",
+  "updatedAt",
+] as const;
 
 function sanitizePrimary(
   primary: Record<string, unknown> | undefined,
 ): Record<string, SeekerUiState> {
   if (!primary) return {};
 
-  const allowed = new Set<SeekerUiState>([
-    "none",
-    "saved",
-    "entered",
-    "skipped",
-    "won",
-  ]);
-
   const entries: Array<[string, SeekerUiState]> = [];
   for (const [id, value] of Object.entries(primary)) {
-    if (allowed.has(value as SeekerUiState)) {
+    if (ALLOWED_STATES.has(value as SeekerUiState)) {
       entries.push([id, value as SeekerUiState]);
     }
   }
@@ -74,6 +92,28 @@ function sanitizeSaved(
   );
 }
 
+function sanitizeActivity(
+  activity: Record<string, unknown> | undefined,
+): Record<string, SeekerListingActivity> {
+  if (!activity) return {};
+
+  const entries: Array<[string, SeekerListingActivity]> = [];
+  for (const [id, value] of Object.entries(activity)) {
+    if (!value || typeof value !== "object") continue;
+    const record = value as Record<string, unknown>;
+    const clean: SeekerListingActivity = {};
+    for (const key of ACTIVITY_KEYS) {
+      const raw = record[key];
+      if (typeof raw === "string" && !Number.isNaN(new Date(raw).getTime())) {
+        clean[key] = raw;
+      }
+    }
+    if (Object.keys(clean).length > 0) entries.push([id, clean]);
+  }
+
+  return Object.fromEntries(entries);
+}
+
 function readLocalSnapshot(): SeekerStateSnapshot {
   if (typeof window === "undefined") return EMPTY_SNAPSHOT;
 
@@ -84,11 +124,13 @@ function readLocalSnapshot(): SeekerStateSnapshot {
     const parsed = JSON.parse(raw) as {
       primary?: Record<string, unknown>;
       saved?: Record<string, unknown>;
+      activity?: Record<string, unknown>;
     };
 
     return {
       primary: sanitizePrimary(parsed.primary),
       saved: sanitizeSaved(parsed.saved),
+      activity: sanitizeActivity(parsed.activity),
     };
   } catch {
     return EMPTY_SNAPSHOT;
@@ -100,6 +142,15 @@ function writeLocalSnapshot(snapshot: SeekerStateSnapshot): void {
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
 }
+
+const STATE_TIMESTAMP: Partial<
+  Record<SeekerUiState, keyof SeekerListingActivity>
+> = {
+  saved: "savedAt",
+  entered: "enteredAt",
+  skipped: "skippedAt",
+  won: "wonAt",
+};
 
 export function SeekerStateProvider({
   children,
@@ -114,23 +165,38 @@ export function SeekerStateProvider({
     initial.primary,
   );
   const [saved, setSaved] = useState<Record<string, boolean>>(initial.saved);
-  // Tracks whether the initial localStorage read has completed so the write
-  // effect doesn't overwrite storage with empty state before hydration.
-  const hydratedRef = useRef(false);
+  const [activity, setActivity] = useState<
+    Record<string, SeekerListingActivity>
+  >(initial.activity ?? {});
+  // Gates the write effect until a render has committed the hydrated values.
+  // Must be state (not a ref): a ref flips synchronously during the mount
+  // effects, letting the write effect fire once with the pre-hydration empty
+  // maps and wipe the stored snapshot. As state, it batches with the hydrated
+  // values, so the write effect can never observe hydrated=true + stale data.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
     const snapshot = readLocalSnapshot();
-    setPrimary(snapshot.primary);
-    setSaved(snapshot.saved);
-    hydratedRef.current = true;
+    // startTransition: this fires while route-level Suspense boundaries
+    // (loading.tsx) may still be lazily hydrating card subtrees. A sync
+    // update would force those boundaries to client-render and React logs
+    // recoverable hydration mismatches (#418); a transition lets hydration
+    // finish first.
+    startTransition(() => {
+      // Merge under any state the user set before hydration finished.
+      setPrimary((current) => ({ ...snapshot.primary, ...current }));
+      setSaved((current) => ({ ...snapshot.saved, ...current }));
+      setActivity((current) => ({ ...snapshot.activity, ...current }));
+      setHydrated(true);
+    });
   }, [persistenceMode]);
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
-    if (!hydratedRef.current) return;
-    writeLocalSnapshot({ primary, saved });
-  }, [primary, saved, persistenceMode]);
+    if (!hydrated) return;
+    writeLocalSnapshot({ primary, saved, activity });
+  }, [primary, saved, activity, hydrated, persistenceMode]);
 
   const persistRemote = useCallback(
     async (payload: {
@@ -156,58 +222,93 @@ export function SeekerStateProvider({
     [],
   );
 
-  const setPrimaryState = useCallback((id: string, state: SeekerUiState) => {
-    setPrimary((current) => ({ ...current, [id]: state }));
-
-    if (state === "saved") {
-      setSaved((current) => ({ ...current, [id]: true }));
-    }
-
-    if (persistenceMode === "remote") {
-      void persistRemote({
-        listingId: id,
-        primaryUiState: state,
-        ...(state === "saved" ? { saved: true } : {}),
+  // Optimistic local stamp in both modes; in remote mode the server writes the
+  // authoritative timestamps and the next snapshot load replaces these.
+  const stampActivity = useCallback(
+    (id: string, state: SeekerUiState) => {
+      const now = new Date().toISOString();
+      setActivity((current) => {
+        const next: SeekerListingActivity = {
+          ...current[id],
+          updatedAt: now,
+        };
+        const key = STATE_TIMESTAMP[state];
+        if (key) next[key] = now;
+        return { ...current, [id]: next };
       });
-    }
-  }, [persistRemote, persistenceMode]);
+    },
+    [],
+  );
 
-  const toggleSaved = useCallback((id: string) => {
-    const nextSaved = !Boolean(saved[id]);
-    const currentPrimary = primary[id];
-    const nextPrimary = !nextSaved && currentPrimary === "saved" ? "none" : undefined;
+  const setPrimaryState = useCallback(
+    (id: string, state: SeekerUiState) => {
+      setPrimary((current) => ({ ...current, [id]: state }));
+      stampActivity(id, state);
 
-    setSaved((current) => {
-      if (nextSaved) {
-        return { ...current, [id]: true };
+      if (state === "saved") {
+        setSaved((current) => ({ ...current, [id]: true }));
       }
 
-      const copy = { ...current };
-      delete copy[id];
-      return copy;
-    });
+      if (persistenceMode === "remote") {
+        void persistRemote({
+          listingId: id,
+          primaryUiState: state,
+          ...(state === "saved" ? { saved: true } : {}),
+        });
+      }
+    },
+    [persistRemote, persistenceMode, stampActivity],
+  );
 
-    if (nextPrimary) {
-      setPrimary((current) => ({ ...current, [id]: nextPrimary }));
-    }
+  const toggleSaved = useCallback(
+    (id: string) => {
+      const nextSaved = !Boolean(saved[id]);
+      const currentPrimary = primary[id];
+      const nextPrimary =
+        !nextSaved && currentPrimary === "saved" ? "none" : undefined;
 
-    if (persistenceMode === "remote") {
-      void persistRemote({
-        listingId: id,
-        saved: nextSaved,
-        ...(nextPrimary ? { primaryUiState: nextPrimary } : {}),
+      setSaved((current) => {
+        if (nextSaved) {
+          return { ...current, [id]: true };
+        }
+
+        const copy = { ...current };
+        delete copy[id];
+        return copy;
       });
-    }
-  }, [persistRemote, persistenceMode, primary, saved]);
+
+      if (nextSaved) stampActivity(id, "saved");
+
+      if (nextPrimary) {
+        setPrimary((current) => ({ ...current, [id]: nextPrimary }));
+      }
+
+      if (persistenceMode === "remote") {
+        void persistRemote({
+          listingId: id,
+          saved: nextSaved,
+          ...(nextPrimary ? { primaryUiState: nextPrimary } : {}),
+        });
+      }
+    },
+    [persistRemote, persistenceMode, primary, saved, stampActivity],
+  );
+
+  const snapshot = useMemo<SeekerStateSnapshot>(
+    () => ({ primary, saved, activity }),
+    [primary, saved, activity],
+  );
 
   const value = useMemo<SeekerStateValue>(
     () => ({
       getState: (id) => primary[id],
       isSaved: (id) => Boolean(saved[id]),
+      getActivity: (id) => activity[id],
+      snapshot,
       setPrimaryState,
       toggleSaved,
     }),
-    [primary, saved, setPrimaryState, toggleSaved],
+    [primary, saved, activity, snapshot, setPrimaryState, toggleSaved],
   );
 
   return (
@@ -218,8 +319,8 @@ export function SeekerStateProvider({
 }
 
 /**
- * Returns the seeker-state store, or null when no provider is mounted (e.g. the
- * standalone Browse grid), in which case cards fall back to local state.
+ * Returns the seeker-state store, or null when no provider is mounted, in
+ * which case cards fall back to component-local state.
  */
 export function useSeekerState(): SeekerStateValue | null {
   return useContext(SeekerStateContext);

@@ -18,9 +18,12 @@ import type { Listing } from "@/lib/types/listing";
 
 export function DiscoverFeed({
   listings,
+  query = "",
   hideSkipped = true,
 }: {
   listings: Listing[];
+  /** Active full-text query (already applied server-side) for labels/analytics. */
+  query?: string;
   hideSkipped?: boolean;
 }) {
   const [active, setActive] = useState<FilterChipId[]>([]);
@@ -37,10 +40,13 @@ export function DiscoverFeed({
   }, [listings, active, sort, hideSkipped, store]);
 
   useEffect(() => {
-    track("discover_feed_loaded", { count: visible.length, sort });
-    // Fire once on mount for the initial feed load.
+    if (query) {
+      track("search_results_shown", { query, result_count: listings.length });
+    }
+    track("discover_feed_loaded", { count: visible.length, sort, ...(query ? { query } : {}) });
+    // Fire once per feed load (new query = new server render = new mount data).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [query]);
 
   function toggleChip(id: FilterChipId) {
     setActive((cur) => {
@@ -61,7 +67,11 @@ export function DiscoverFeed({
   }
 
   const hasActiveControls = active.length > 0;
-  const countLabel = visible.length === 1 ? "1 sweep" : `${visible.length} sweeps`;
+  const countLabel = query
+    ? `${visible.length} ${visible.length === 1 ? "sweep" : "sweeps"} matching “${query}”`
+    : visible.length === 1
+      ? "1 sweep"
+      : `${visible.length} sweeps`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -88,7 +98,7 @@ export function DiscoverFeed({
       </div>
 
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-xs text-ink/45">{countLabel}</span>
+        <span className="text-xs text-ink/60">{countLabel}</span>
         {hasActiveControls ? (
           <button
             type="button"
@@ -102,23 +112,29 @@ export function DiscoverFeed({
 
       {visible.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-sand bg-white/60 px-6 py-12 text-center">
-          <Icon name="gift" size={40} className="text-ink/30" />
+          <Icon name={query ? "search" : "gift"} size={40} className="text-ink/30" />
           <p className="text-sm font-medium text-ink">
-            No sweepstakes match your filters
+            {query
+              ? `Nothing matches “${query}”`
+              : "No sweepstakes match your filters"}
           </p>
           <p className="text-xs text-ink/55">
-            Try clearing filters or browsing a broader set.
+            {query
+              ? "Try fewer words, a host name, or a prize category."
+              : "Try clearing filters or browsing a broader set."}
           </p>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="rounded-full bg-ember px-4 py-2 text-xs font-semibold text-cream"
-          >
-            Clear filters
-          </button>
+          {hasActiveControls && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="rounded-full bg-ember px-4 py-2 text-xs font-semibold text-cream"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {visible.map((listing) => (
             <ListingCard key={listing.id} listing={listing} surface="scroll" />
           ))}

@@ -1,12 +1,24 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
-import { getPublicListings } from "@/lib/db/listings";
+import { TodayDashboard } from "@/components/today-dashboard";
+import { ensureCurrentAppUser } from "@/lib/auth";
+import {
+  getPublicListings,
+  getSeekerHistoryListingsByIds,
+} from "@/lib/db/listings";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import { formatPrizeValue } from "@/lib/listing-format";
 import type { Listing } from "@/lib/types/listing";
 
 export const dynamic = "force-dynamic";
+
+// Today — the consumer habit surface and the app's front door.
+// Signed-in: personal operating layer (Ready Again, Ending Today, Saved-not-
+// entered, New since last visit, Recent activity) with a discovery rail below.
+// Signed-out: editorial variant that still upgrades itself with any local
+// (device-only) routine the visitor has built.
 
 const STEPS: { icon: IconName; title: string; body: string }[] = [
   {
@@ -30,7 +42,10 @@ function Rail({ listings }: { listings: Listing[] }) {
   return (
     <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
       {listings.map((listing) => (
-        <div key={listing.id} className="w-[85%] shrink-0 snap-center">
+        <div
+          key={listing.id}
+          className="w-[85%] shrink-0 snap-center lg:w-[340px]"
+        >
           <ListingCard listing={listing} />
         </div>
       ))}
@@ -38,9 +53,84 @@ function Rail({ listings }: { listings: Listing[] }) {
   );
 }
 
-export default async function HomePage() {
+function RailSection({
+  title,
+  href,
+  listings,
+}: {
+  title: string;
+  href: string;
+  listings: Listing[];
+}) {
+  if (listings.length === 0) return null;
+  return (
+    <section className="px-4">
+      <div className="mb-3 flex items-end justify-between">
+        <h2 className="font-display text-2xl text-ink">{title}</h2>
+        <Link
+          href={href}
+          className="text-xs font-semibold text-moss transition hover:underline"
+        >
+          See all
+        </Link>
+      </div>
+      <Rail listings={listings} />
+    </section>
+  );
+}
+
+function FooterBlock() {
+  return (
+    <div className="flex flex-col gap-2 px-5 pb-2">
+      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
+        No purchase necessary · See official rules
+      </p>
+      <nav
+        aria-label="Footer"
+        className="flex items-center justify-center gap-4 text-xs font-medium text-ink/50"
+      >
+        <Link href="/about" className="transition hover:text-ink">
+          About
+        </Link>
+        <Link href="/privacy" className="transition hover:text-ink">
+          Privacy
+        </Link>
+        <Link href="/terms" className="transition hover:text-ink">
+          Terms
+        </Link>
+      </nav>
+    </div>
+  );
+}
+
+export default async function TodayPage() {
   const now = new Date();
-  const listings = await getPublicListings({ limit: 30 });
+  const [authUser, publicListings] = await Promise.all([
+    ensureCurrentAppUser(),
+    getPublicListings({ limit: 100 }),
+  ]);
+  let listings: Listing[] = publicListings;
+
+  // Signed-in seekers can have saved/entered/won state on listings outside
+  // the current public feed window. Hydrate those by id so Today keeps history
+  // cards visible just like My Sweeps.
+  if (authUser) {
+    const snapshot = await getSeekerStateSnapshotForAppUser(authUser.appUserId);
+    const known = new Set(publicListings.map((listing) => listing.id));
+    const touched = new Set([
+      ...Object.keys(snapshot.saved),
+      ...Object.keys(snapshot.activity),
+      ...Object.keys(snapshot.primary).filter(
+        (id) => snapshot.primary[id] !== "none",
+      ),
+    ]);
+    const missing = [...touched].filter((id) => !known.has(id));
+    if (missing.length > 0) {
+      const historyListings = await getSeekerHistoryListingsByIds(missing);
+      listings = [...publicListings, ...historyListings];
+    }
+  }
+
   const active = listings.filter((listing) => !isExpired(listing, now));
 
   const endingSoon = [...active]
@@ -59,6 +149,44 @@ export default async function HomePage() {
     "USD",
   );
 
+  const dateLabel = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  if (authUser) {
+    const firstName = authUser.displayName?.split(" ")[0];
+    return (
+      <div className="flex flex-col gap-8 pb-6">
+        <header className="px-5 pt-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
+            {dateLabel}
+          </p>
+          <h1 className="mt-1 font-display text-4xl leading-[1.05] text-ink">
+            Today{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-ink/70">
+            Your sweep routine — what&apos;s ready, ending, and new.
+          </p>
+        </header>
+
+        <TodayDashboard listings={listings} />
+
+        <RailSection title="Worth a look" href="/discover" listings={endingSoon} />
+        {featured.length > 0 && (
+          <RailSection
+            title="Featured & boosted"
+            href="/discover"
+            listings={featured}
+          />
+        )}
+
+        <FooterBlock />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8 pb-6">
       {/* Hero */}
@@ -72,7 +200,8 @@ export default async function HomePage() {
           simplified.
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-ink/70">
-          Discover sweepstakes worth entering — photo-first, tag-driven, no noise.
+          Discover sweepstakes worth entering — then let Sweepza run your daily
+          routine: what&apos;s ready, what&apos;s ending, what you won.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <Link
@@ -94,55 +223,33 @@ export default async function HomePage() {
       <div className="mx-5 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-card border border-sand bg-cream">
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ink">{active.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Live sweeps
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ember">{endingSoonCount}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Ending soon
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ink">{prizePool ?? "—"}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             In prizes
           </p>
         </div>
       </div>
 
-      {/* Ending soon rail */}
-      {endingSoon.length > 0 && (
-        <section className="px-4">
-          <div className="mb-3 flex items-end justify-between">
-            <h2 className="font-display text-2xl text-ink">Ending soon</h2>
-            <Link
-              href="/discover"
-              className="text-xs font-semibold text-moss transition hover:underline"
-            >
-              See all
-            </Link>
-          </div>
-          <Rail listings={endingSoon} />
-        </section>
-      )}
+      {/* Local routine — upgrades the page for returning device-only seekers */}
+      <TodayDashboard listings={listings} />
 
-      {/* Featured rail */}
-      {featured.length > 0 && (
-        <section className="px-4">
-          <div className="mb-3 flex items-end justify-between">
-            <h2 className="font-display text-2xl text-ink">Featured &amp; boosted</h2>
-            <Link
-              href="/discover"
-              className="text-xs font-semibold text-moss transition hover:underline"
-            >
-              See all
-            </Link>
-          </div>
-          <Rail listings={featured} />
-        </section>
-      )}
+      <RailSection title="Ending soon" href="/discover" listings={endingSoon} />
+      <RailSection
+        title="Featured & boosted"
+        href="/discover"
+        listings={featured}
+      />
 
       {/* How it works */}
       <section className="px-5">
@@ -158,7 +265,7 @@ export default async function HomePage() {
               </span>
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <span className="font-display text-base text-ink/40">
+                  <span className="font-display text-base text-ink/55">
                     {i + 1}
                   </span>
                   {step.title}
@@ -188,43 +295,12 @@ export default async function HomePage() {
             </p>
           </div>
           <span className="ml-auto text-moss">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 6l6 6-6 6" />
-            </svg>
+            <Icon name="caretRight" size={20} />
           </span>
         </Link>
       </section>
 
-      {/* Footer microcopy */}
-      <div className="flex flex-col gap-2 px-5 pb-2">
-        <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
-          No purchase necessary · See official rules
-        </p>
-        <nav
-          aria-label="Footer"
-          className="flex items-center justify-center gap-4 text-xs font-medium text-ink/50"
-        >
-          <Link href="/about" className="transition hover:text-ink">
-            About
-          </Link>
-          <Link href="/privacy" className="transition hover:text-ink">
-            Privacy
-          </Link>
-          <Link href="/terms" className="transition hover:text-ink">
-            Terms
-          </Link>
-        </nav>
-      </div>
+      <FooterBlock />
     </div>
   );
 }

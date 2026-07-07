@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { track } from "@/lib/analytics";
+import { useSeekerState } from "@/lib/seeker-state";
 
 export interface WinnerListingOption {
   id: string;
@@ -16,6 +17,7 @@ export function WinnerSubmissionForm(props: {
   const [photoUrl, setPhotoUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const store = useSeekerState();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,6 +35,9 @@ export function WinnerSubmissionForm(props: {
 
       setStatus("success");
       track("winner_submission_completed", { listing_id: listingId || null });
+      // Reporting a win from a tracked listing also marks it Won in the
+      // seeker's own state, so My Sweeps and Today stay consistent.
+      if (listingId && store) store.setPrimaryState(listingId, "won");
     } catch {
       setStatus("error");
       track("winner_submission_failed", { listing_id: listingId || null, error_type: "network" });
