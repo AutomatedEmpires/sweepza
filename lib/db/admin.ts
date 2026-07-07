@@ -60,6 +60,7 @@ export async function getPlatformSnapshot(): Promise<PlatformSnapshot> {
       .from("listing")
       .select("*", { count: "exact", head: true })
       .eq("lifecycle_status", "active")
+      .eq("visibility_status", "public")
       .lt("end_date", today),
   ]);
 

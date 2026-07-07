@@ -120,11 +120,12 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
       ]),
     ].filter((id) => !known.has(id) && !fetchedIdsRef.current.has(id));
 
-    if (missing.length === 0) return;
-    missing.forEach((id) => fetchedIdsRef.current.add(id));
+    const idsToFetch = missing.slice(0, 100);
+    if (idsToFetch.length === 0) return;
+    idsToFetch.forEach((id) => fetchedIdsRef.current.add(id));
 
     const controller = new AbortController();
-    fetch(`/api/listings?ids=${missing.slice(0, 100).join(",")}`, {
+    fetch(`/api/listings?ids=${idsToFetch.join(",")}`, {
       signal: controller.signal,
     })
       .then((response) => (response.ok ? response.json() : null))

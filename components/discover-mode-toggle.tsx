@@ -6,7 +6,7 @@ import { Icon, type IconName } from "@/components/icon";
 import { cn } from "@/lib/cn";
 
 // Segmented Feed | Swipe control — discovery is one system with two modes,
-// not two destinations. Preserves the active search query across modes.
+// not two destinations. Preserves active discovery params across modes.
 const MODES: { href: string; label: string; icon: IconName }[] = [
   { href: "/discover", label: "Feed", icon: "discover" },
   { href: "/discover/swipe", label: "Swipe", icon: "repeat" },
@@ -15,8 +15,8 @@ const MODES: { href: string; label: string; icon: IconName }[] = [
 export function DiscoverModeToggle() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const q = searchParams.get("q");
-  const suffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  const serializedParams = searchParams.toString();
+  const suffix = serializedParams ? `?${serializedParams}` : "";
 
   return (
     <div
@@ -32,7 +32,7 @@ export function DiscoverModeToggle() {
             href={`${mode.href}${suffix}`}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
+              "inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition",
               active ? "bg-ink text-cream" : "text-ink/60 hover:text-ink",
             )}
           >

@@ -132,12 +132,17 @@ export function buildRoutineBuckets(
     const saved = Boolean(snapshot.saved[listing.id]);
     const entered = primary === "entered" || Boolean(activity?.enteredAt);
     const won = primary === "won";
+    const skipped = primary === "skipped";
     const expired = isExpired(listing, now);
+
+    if (skipped) {
+      buckets.skipped.push(listing);
+      continue;
+    }
 
     if (saved) buckets.saved.push(listing);
     if (entered) buckets.entered.push(listing);
     if (won) buckets.won.push(listing);
-    if (primary === "skipped") buckets.skipped.push(listing);
 
     if (won) continue;
 

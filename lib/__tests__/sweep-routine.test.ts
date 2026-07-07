@@ -153,6 +153,27 @@ describe("buildRoutineBuckets", () => {
     expect(buckets.readyAgain).toHaveLength(0);
   });
 
+  it("keeps skipped listings out of actionable buckets even with prior entry activity", () => {
+    const daily = listing({ entryFrequency: "daily" });
+    const buckets = buildRoutineBuckets(
+      [daily],
+      snapshot({
+        primary: { "l-1": "skipped" },
+        activity: {
+          "l-1": {
+            enteredAt: "2026-07-05T10:00:00",
+            skippedAt: "2026-07-06T09:00:00",
+          },
+        },
+      }),
+      NOW,
+    );
+    expect(buckets.skipped.map((x) => x.id)).toEqual(["l-1"]);
+    expect(buckets.entered).toHaveLength(0);
+    expect(buckets.readyAgain).toHaveLength(0);
+    expect(buckets.endingSoon).toHaveLength(0);
+  });
+
   it("puts tracked listings ending within 3 days into endingSoon", () => {
     const closing = listing({
       endDate: new Date(NOW.getTime() + 2 * DAY_MS).toISOString(),

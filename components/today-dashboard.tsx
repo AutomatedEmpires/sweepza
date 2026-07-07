@@ -155,6 +155,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
   const hasRoutine =
     readyCount > 0 ||
     buckets.endingSoon.length > 0 ||
+    newSinceLastVisit.length > 0 ||
     recent.length > 0 ||
     buckets.entered.length > 0;
 

@@ -45,4 +45,4 @@ inventory automatically.
 
 ## Build pipeline
 
-Every change follows: **Spec → Acceptance Criteria → Branch → Implementation → PR → Review (Claude / Copilot + CI) → squash-merge → deploy**. Nothing lands on `main` without a PR and a green quality gate. See `AGENTS.md`. Validate locally with `pnpm validate` (lint + typecheck + build).
+Every change follows: **Spec → Acceptance Criteria → Branch → Implementation → PR → Review (Claude / Copilot + CI) → squash-merge → deploy**. Nothing lands on `main` without a PR and a green quality gate. See `AGENTS.md`. Validate locally with `pnpm validate` (lint + typecheck + test + build).
