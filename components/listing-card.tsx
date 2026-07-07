@@ -313,7 +313,7 @@ export function ListingCard({
             aria-pressed={skipped}
             aria-label="Skip listing"
             className={cn(
-              "grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition",
+              "grid h-11 w-11 place-items-center rounded-full border border-sand text-ink/60 transition",
               skipped && "bg-ink/5 text-ink",
             )}
           >
@@ -325,7 +325,7 @@ export function ListingCard({
             onClick={handleShare}
             aria-label="Share listing"
             className={cn(
-              "grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5",
+              "grid h-11 w-11 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5",
               shareFlash && "border-moss bg-moss/10 text-moss",
             )}
           >

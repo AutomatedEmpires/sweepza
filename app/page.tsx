@@ -3,7 +3,11 @@ import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
 import { ensureCurrentAppUser } from "@/lib/auth";
-import { getPublicListings } from "@/lib/db/listings";
+import {
+  getPublicListings,
+  getSeekerHistoryListingsByIds,
+} from "@/lib/db/listings";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import { formatPrizeValue } from "@/lib/listing-format";
 import type { Listing } from "@/lib/types/listing";
@@ -101,10 +105,32 @@ function FooterBlock() {
 
 export default async function TodayPage() {
   const now = new Date();
-  const [authUser, listings] = await Promise.all([
+  const [authUser, publicListings] = await Promise.all([
     ensureCurrentAppUser(),
     getPublicListings({ limit: 100 }),
   ]);
+  let listings: Listing[] = publicListings;
+
+  // Signed-in seekers can have saved/entered/won state on listings outside
+  // the current public feed window. Hydrate those by id so Today keeps history
+  // cards visible just like My Sweeps.
+  if (authUser) {
+    const snapshot = await getSeekerStateSnapshotForAppUser(authUser.appUserId);
+    const known = new Set(publicListings.map((listing) => listing.id));
+    const touched = new Set([
+      ...Object.keys(snapshot.saved),
+      ...Object.keys(snapshot.activity),
+      ...Object.keys(snapshot.primary).filter(
+        (id) => snapshot.primary[id] !== "none",
+      ),
+    ]);
+    const missing = [...touched].filter((id) => !known.has(id));
+    if (missing.length > 0) {
+      const historyListings = await getSeekerHistoryListingsByIds(missing);
+      listings = [...publicListings, ...historyListings];
+    }
+  }
+
   const active = listings.filter((listing) => !isExpired(listing, now));
 
   const endingSoon = [...active]

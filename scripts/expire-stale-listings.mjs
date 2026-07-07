@@ -8,10 +8,12 @@
 // Usage (repo root): node scripts/expire-stale-listings.mjs [--dry-run]
 
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 function loadEnv(path = ".env.local") {
-  const out = {};
+  const out = { ...process.env };
+  if (!existsSync(path)) return out;
+
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (!line || line.startsWith("#") || !line.includes("=")) continue;
     const i = line.indexOf("=");
@@ -24,7 +26,7 @@ const env = loadEnv();
 const url = env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL;
 const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE;
 if (!url || !key) {
-  console.error("Missing Supabase URL or service role key in .env.local");
+  console.error("Missing Supabase URL or service role key in environment");
   process.exit(1);
 }
 
@@ -36,6 +38,7 @@ const { data: stale, error: findError } = await supabase
   .from("listing")
   .select("id, slug, end_date")
   .eq("lifecycle_status", "active")
+  .eq("visibility_status", "public")
   .lt("end_date", today);
 
 if (findError) {

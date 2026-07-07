@@ -195,11 +195,9 @@ export async function getSeekerHistoryListingsByIds(
 }
 
 /**
- * Fetch a single listing by slug. Resolves the once-public lifecycle set so
- * detail pages for ended sweepstakes keep working — Won-from links on the
- * Winner Wall and My Sweeps history must never 404. The detail UI already
- * renders the Ended state. Service-role client with explicit predicates
- * (anon RLS would hide non-active rows).
+ * Fetch a single listing by slug for unauthenticated public detail/API reads.
+ * Slugs are guessable, so keep this stricter than seeker-history id lookups:
+ * only active public listings should resolve here.
  */
 export async function getListingBySlug(slug: string): Promise<Listing | null> {
   const supabase = createServiceRoleClient();
@@ -207,7 +205,7 @@ export async function getListingBySlug(slug: string): Promise<Listing | null> {
     .from("listing")
     .select("*")
     .eq("visibility_status", "public")
-    .in("lifecycle_status", ONCE_PUBLIC_LIFECYCLES)
+    .eq("lifecycle_status", "active")
     .not("moderation_status", "in", '("under_review","action_taken")')
     .eq("slug", slug)
     .maybeSingle<ListingRow>();

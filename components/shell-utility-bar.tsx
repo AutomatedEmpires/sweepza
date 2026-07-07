@@ -18,9 +18,11 @@ export function ShellUtilityBar({
         authUser ? (
           <Link
             href="/profile"
-            className="truncate rounded-full bg-moss/10 px-3 py-1 font-medium text-moss transition hover:bg-moss/20"
+            className="inline-flex min-h-11 min-w-0 items-center rounded-full bg-moss/10 px-3 py-2 font-medium text-moss transition hover:bg-moss/20"
           >
-            {authUser.displayName ?? authUser.email ?? "Signed in"}
+            <span className="truncate">
+              {authUser.displayName ?? authUser.email ?? "Signed in"}
+            </span>
           </Link>
         ) : (
           <div className="flex items-center gap-2">

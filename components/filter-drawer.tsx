@@ -38,6 +38,11 @@ export function FilterDrawer({
   resultCount: number;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Modal behavior: Escape closes, Tab is trapped inside the panel, focus
   // moves into the dialog on open and returns to the opener on close, and
@@ -62,7 +67,7 @@ export function FilterDrawer({
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -86,7 +91,7 @@ export function FilterDrawer({
       document.body.style.overflow = previousOverflow;
       opener?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
