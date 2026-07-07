@@ -259,15 +259,24 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   return (
     <div
-      className="flex flex-col items-center gap-5 px-4 pb-6 pt-2 outline-none"
+      className="flex flex-col items-center gap-5 px-4 pb-6 pt-2 outline-none focus-visible:ring-2 focus-visible:ring-moss/50"
       role="group"
       aria-roledescription="Swipe deck"
       aria-label="Sweepstakes"
+      aria-describedby="swipe-deck-help"
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-ink/45">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink/60">
         Sweep {index + 1} of {total}
+      </p>
+      {/* Keyboard equivalence for the swipe gestures — announced to assistive
+          tech and shown on desktop where a keyboard is the likely input. */}
+      <p
+        id="swipe-deck-help"
+        className="sr-only lg:not-sr-only lg:-mt-3 lg:text-[11px] lg:font-medium lg:text-ink/55"
+      >
+        Keyboard: ← skip · → save · ↑ enter · Backspace undo
       </p>
 
       <div className="relative w-full">
@@ -372,7 +381,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
         </button>
       </div>
 
-      <p className="text-center text-[11px] text-ink/45">
+      <p className="text-center text-[11px] text-ink/60">
         Drag a card, tap a button, or use ← Skip · → Save · ↑ Enter · ⌫ Undo.
       </p>
 

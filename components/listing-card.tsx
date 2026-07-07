@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { canOptimizeImage } from "@/lib/image";
 import { Icon } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
 import { track } from "@/lib/analytics";
@@ -142,12 +144,13 @@ export function ListingCard({
       {/* Hero photo + overlays */}
       <div className="relative aspect-[4/3] w-full bg-sand">
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={imageUrl}
             alt={listing.imageAltText ?? listing.prizeName}
-            className="h-full w-full object-cover"
-            loading="lazy"
+            fill
+            className="object-cover"
+            sizes="(min-width: 1536px) 320px, (min-width: 1024px) 480px, 100vw"
+            unoptimized={!canOptimizeImage(imageUrl)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-ink/30">
@@ -158,11 +161,13 @@ export function ListingCard({
         {/* Host seal */}
         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-cream/90 py-0.5 pl-0.5 pr-2 shadow-sm backdrop-blur">
           {listing.host?.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={listing.host.logoUrl}
               alt={listing.host.name}
+              width={24}
+              height={24}
               className="h-6 w-6 rounded-full object-cover"
+              unoptimized={!canOptimizeImage(listing.host.logoUrl)}
             />
           ) : (
             <span className="grid h-6 w-6 place-items-center rounded-full bg-sand text-[10px] font-bold text-ink/60">
@@ -216,7 +221,7 @@ export function ListingCard({
           </Link>
         </h3>
 
-        <p className="mt-0.5 truncate text-[11px] font-medium text-ink/45">
+        <p className="mt-0.5 truncate text-[11px] font-medium text-ink/60">
           {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
         </p>
 
@@ -238,27 +243,27 @@ export function ListingCard({
         {/* Begins / Ends */}
         <div className="flex items-stretch text-center">
           <div className="flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
               Begins
             </p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
-              <Icon name="calendar" size={13} className="text-ink/40" />
+              <Icon name="calendar" size={13} className="text-ink/55" />
               {startLabel}
             </p>
           </div>
           <div className="mx-2 w-px bg-sand" />
           <div className="flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
               Ends
             </p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-ink/70">
-              <Icon name="calendar" size={13} className="text-ink/40" />
+              <Icon name="calendar" size={13} className="text-ink/55" />
               {endLabel}
             </p>
             <p
               className={cn(
                 "text-[10px] font-semibold",
-                expired ? "text-ink/40" : "text-ember",
+                expired ? "text-ink/55" : "text-ember",
               )}
             >
               {countdown}
@@ -271,24 +276,26 @@ export function ListingCard({
           <button
             type="button"
             onClick={handleEnter}
-            disabled={expired}
+            disabled={expired || won}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition",
-              expired
-                ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                : won
-                  ? "bg-moss text-cream"
+              // Won outranks expired — the outcome is the seeker's permanent
+              // record; that the sweepstake later ended is secondary.
+              won
+                ? "cursor-default bg-moss text-cream"
+                : expired
+                  ? "cursor-not-allowed bg-ink/10 text-ink/55"
                   : entered
                     ? "bg-moss/15 text-moss"
                     : "bg-moss text-cream hover:bg-moss/90",
             )}
           >
-            {expired ? (
-              "Expired"
-            ) : won ? (
+            {won ? (
               <>
                 <Icon name="trophy" size={16} /> Won
               </>
+            ) : expired ? (
+              "Expired"
             ) : entered ? (
               <>
                 <Icon name="check" size={16} /> Entered
@@ -331,7 +338,7 @@ export function ListingCard({
         </span>
 
         {/* Footer microcopy */}
-        <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+        <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
           No purchase necessary
         </p>
       </div>

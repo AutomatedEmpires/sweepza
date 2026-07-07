@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import type Stripe from "stripe";
 import { getHostByStripeCustomerId, upsertSubscriptionFromStripe } from "@/lib/db/subscriptions";
 import { env } from "@/lib/env";
@@ -74,6 +75,12 @@ export async function POST(request: Request) {
     const host = await getHostByStripeCustomerId(customerId);
 
     if (!host) {
+      // A paying Stripe customer with no matching host means entitlements
+      // have desynced — this must page someone, not just 404 quietly.
+      Sentry.captureMessage("Stripe webhook: no host for customer", {
+        level: "error",
+        extra: { eventType: event.type, customerId },
+      });
       return NextResponse.json(
         {
           error: "No Sweepza host matches the Stripe customer on this event.",
@@ -96,6 +103,11 @@ export async function POST(request: Request) {
       status: synced.status,
     });
   } catch (error) {
+    // 500 makes Stripe retry; Sentry makes the failure visible to us. A
+    // silent billing-sync failure would strand a paying host without slots.
+    Sentry.captureException(error, {
+      extra: { eventType: event.type, source: "stripe-webhook" },
+    });
     return NextResponse.json(
       {
         error: "Stripe webhook processing failed.",

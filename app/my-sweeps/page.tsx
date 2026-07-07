@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { MySweepsDashboard } from "@/components/my-sweeps-dashboard";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
-import { getPublicListings, getPublicListingsByIds } from "@/lib/db/listings";
+import {
+  getPublicListings,
+  getSeekerHistoryListingsByIds,
+} from "@/lib/db/listings";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import type { Listing } from "@/lib/types/listing";
 
@@ -28,7 +31,9 @@ export default async function MySweepsPage() {
     ]);
     const missing = [...touched].filter((id) => !known.has(id));
     if (missing.length > 0) {
-      const byIds = await getPublicListingsByIds(missing);
+      // History query — keeps resolving ended/paused listings so Won and
+      // Entered records never vanish when a sweepstake expires.
+      const byIds = await getSeekerHistoryListingsByIds(missing);
       merged = [...listings, ...byIds];
     }
   }

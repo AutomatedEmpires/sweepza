@@ -40,10 +40,12 @@ export default async function ListingDetailPage({
   const clerkConfigured = isClerkConfigured();
 
   return (
-    <ListingDetail
-      listing={listing}
-      clerkConfigured={clerkConfigured}
-      isSignedIn={Boolean(authUser)}
-    />
+    <div className="lg:mx-auto lg:max-w-2xl">
+      <ListingDetail
+        listing={listing}
+        clerkConfigured={clerkConfigured}
+        isSignedIn={Boolean(authUser)}
+      />
+    </div>
   );
 }

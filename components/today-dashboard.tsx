@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
@@ -34,7 +34,7 @@ const ACTIVITY_META: Record<
 function Rail({ listings }: { listings: Listing[] }) {
   if (listings.length === 1) {
     return (
-      <div className="px-1">
+      <div className="px-1 lg:max-w-[340px]">
         <ListingCard listing={listings[0]} />
       </div>
     );
@@ -42,7 +42,10 @@ function Rail({ listings }: { listings: Listing[] }) {
   return (
     <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
       {listings.map((listing) => (
-        <div key={listing.id} className="w-[85%] shrink-0 snap-center">
+        <div
+          key={listing.id}
+          className="w-[85%] shrink-0 snap-center lg:w-[340px]"
+        >
           <ListingCard listing={listing} />
         </div>
       ))}
@@ -88,13 +91,19 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
   const [lastVisitAt, setLastVisitAt] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    // startTransition: swapping in the personal routine while sibling
+    // Suspense boundaries are still hydrating must not force them to
+    // client-render (recoverable #418 noise) — let hydration finish first.
     try {
       const previous = window.localStorage.getItem(LAST_VISIT_KEY);
-      setLastVisitAt(previous);
+      startTransition(() => {
+        setMounted(true);
+        setLastVisitAt(previous);
+      });
       window.localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
     } catch {
-      // Storage unavailable — skip "new since last visit".
+      // Storage unavailable — still mount, just skip "new since last visit".
+      startTransition(() => setMounted(true));
     }
   }, []);
 
@@ -184,19 +193,19 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       <div className="mx-4 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-card border border-sand bg-cream">
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-moss">{readyCount}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Ready now
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ember">{endingToday.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Ending today
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ink">{buckets.entered.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             In play
           </p>
         </div>

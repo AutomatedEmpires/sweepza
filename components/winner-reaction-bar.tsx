@@ -64,7 +64,7 @@ export function WinnerReactionBar(props: {
           {LABEL[type]} {counts[type] ?? 0}
         </button>
       ))}
-      <span className="text-xs text-ink/40">{total} reactions</span>
+      <span className="text-xs text-ink/55">{total} reactions</span>
     </div>
   );
 }

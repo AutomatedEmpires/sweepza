@@ -1,9 +1,24 @@
 import "server-only";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  createServerSupabaseClient,
+  createServiceRoleClient,
+} from "@/lib/supabase/server";
 import type { Listing, PrizeCategory } from "@/lib/types/listing";
 import { PRIZE_CATEGORY_TO_CATEGORY_CODE, toListing } from "./adapters";
-import type { EntryFrequency } from "./enums";
+import type { EntryFrequency, LifecycleStatus } from "./enums";
 import type { HostPublicRow, ListingRow, WinnerPostRow } from "./types";
+
+// Lifecycle statuses a listing can hold AFTER having been publicly live.
+// Seeker history (Won / Entered / Saved) must keep resolving these — a
+// seeker's record of outcomes is permanent even when the sweepstake isn't.
+// Draft / pending_review / rejected / held / inactive are deliberately
+// excluded: those were never public and must not leak through history reads.
+const ONCE_PUBLIC_LIFECYCLES: LifecycleStatus[] = [
+  "active",
+  "paused",
+  "expired",
+  "archived",
+];
 
 export interface DiscoverFilters {
   categories?: string[];
@@ -33,10 +48,14 @@ function getTagLabel(tag: ListingTagLabelRow["tag"]): string | undefined {
 export async function adaptListingRows(
   rows: ListingRow[],
   accessToken?: string,
+  // Joins (host/tags/winners) run on this client when provided — the seeker
+  // history path passes the service-role client so joins resolve for rows
+  // the anon RLS policy can no longer see.
+  client?: ReturnType<typeof createServerSupabaseClient>,
 ): Promise<Listing[]> {
   if (rows.length === 0) return [];
 
-  const supabase = createServerSupabaseClient(accessToken);
+  const supabase = client ?? createServerSupabaseClient(accessToken);
   const listingIds = rows.map((row) => row.id);
   const hostIds = [...new Set(rows.flatMap((row) => (row.host_id ? [row.host_id] : [])))];
 
@@ -146,43 +165,54 @@ export async function getPublicListings(
   return adaptListingRows(data ?? [], accessToken);
 }
 
-export async function getPublicListingsByIds(
+/**
+ * Seeker-history lookup by id set. Unlike the public queries this keeps
+ * resolving listings after they end (expired/paused/archived) so a seeker's
+ * Won / Entered / Saved record is permanent. Runs on the service-role client
+ * because anon RLS only exposes active listings; safety comes from the
+ * explicit once-public predicates (never drafts or unreviewed submissions).
+ */
+export async function getSeekerHistoryListingsByIds(
   listingIds: string[],
-  accessToken?: string,
 ): Promise<Listing[]> {
   if (listingIds.length === 0) return [];
 
-  const supabase = createServerSupabaseClient(accessToken);
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("listing")
     .select("*")
     .eq("visibility_status", "public")
-    .eq("lifecycle_status", "active")
+    .in("lifecycle_status", ONCE_PUBLIC_LIFECYCLES)
+    .not("moderation_status", "in", '("under_review","action_taken")')
     .in("id", listingIds)
     .returns<ListingRow[]>();
 
   if (error) {
-    throw new Error(`getPublicListingsByIds failed: ${error.message}`);
+    throw new Error(`getSeekerHistoryListingsByIds failed: ${error.message}`);
   }
 
-  return adaptListingRows(data ?? [], accessToken);
+  return adaptListingRows(data ?? [], undefined, supabase);
 }
 
-/** Fetch a single listing by slug (RLS still applies). */
-export async function getListingBySlug(
-  slug: string,
-  accessToken?: string,
-): Promise<Listing | null> {
-  const supabase = createServerSupabaseClient(accessToken);
+/**
+ * Fetch a single listing by slug. Resolves the once-public lifecycle set so
+ * detail pages for ended sweepstakes keep working — Won-from links on the
+ * Winner Wall and My Sweeps history must never 404. The detail UI already
+ * renders the Ended state. Service-role client with explicit predicates
+ * (anon RLS would hide non-active rows).
+ */
+export async function getListingBySlug(slug: string): Promise<Listing | null> {
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("listing")
     .select("*")
     .eq("visibility_status", "public")
-    .eq("lifecycle_status", "active")
+    .in("lifecycle_status", ONCE_PUBLIC_LIFECYCLES)
+    .not("moderation_status", "in", '("under_review","action_taken")')
     .eq("slug", slug)
     .maybeSingle<ListingRow>();
   if (error) throw new Error(`getListingBySlug failed: ${error.message}`);
   if (!data) return null;
-  const [listing] = await adaptListingRows([data], accessToken);
+  const [listing] = await adaptListingRows([data], undefined, supabase);
   return listing ?? null;
 }

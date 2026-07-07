@@ -2,47 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Icon, type IconName } from "@/components/icon";
+import { Icon } from "@/components/icon";
 import { cn } from "@/lib/cn";
+import { CONSUMER_NAV_ITEMS, isNavItemActive } from "@/lib/nav";
 
-// Consumer-first primary navigation. Host and admin surfaces are reached
-// through Profile (role-aware), not from a permanent consumer tab.
-const items: {
-  href: string;
-  label: string;
-  icon: IconName;
-  /** Additional path prefixes that keep this tab active. */
-  match?: string[];
-}[] = [
-  { href: "/", label: "Today", icon: "today" },
-  {
-    href: "/discover",
-    label: "Discover",
-    icon: "discover",
-    match: ["/search", "/listings", "/sweeps"],
-  },
-  { href: "/my-sweeps", label: "My Sweeps", icon: "sweeps", match: ["/saved"] },
-  { href: "/winners", label: "Winners", icon: "trophy" },
-  { href: "/profile", label: "Profile", icon: "profile" },
-];
-
+// Mobile primary navigation (<lg). Desktop uses components/side-rail.tsx —
+// both render lib/nav.ts so the IA cannot drift between breakpoints.
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-stretch border-t border-sand bg-cream/95 backdrop-blur"
+      className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-stretch border-t border-sand bg-cream/95 backdrop-blur lg:hidden"
     >
-      {items.map((item) => {
-        const prefixes = [item.href, ...(item.match ?? [])];
-        const active =
-          item.href === "/"
-            ? pathname === "/"
-            : prefixes.some(
-                (prefix) =>
-                  pathname === prefix || pathname.startsWith(`${prefix}/`),
-              );
+      {CONSUMER_NAV_ITEMS.map((item) => {
+        const active = isNavItemActive(item, pathname);
         return (
           <Link
             key={item.href}

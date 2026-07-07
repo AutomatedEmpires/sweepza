@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -177,11 +178,18 @@ export function SeekerStateProvider({
   useEffect(() => {
     if (persistenceMode !== "local") return;
     const snapshot = readLocalSnapshot();
-    // Merge under any state the user set before hydration finished.
-    setPrimary((current) => ({ ...snapshot.primary, ...current }));
-    setSaved((current) => ({ ...snapshot.saved, ...current }));
-    setActivity((current) => ({ ...snapshot.activity, ...current }));
-    setHydrated(true);
+    // startTransition: this fires while route-level Suspense boundaries
+    // (loading.tsx) may still be lazily hydrating card subtrees. A sync
+    // update would force those boundaries to client-render and React logs
+    // recoverable hydration mismatches (#418); a transition lets hydration
+    // finish first.
+    startTransition(() => {
+      // Merge under any state the user set before hydration finished.
+      setPrimary((current) => ({ ...snapshot.primary, ...current }));
+      setSaved((current) => ({ ...snapshot.saved, ...current }));
+      setActivity((current) => ({ ...snapshot.activity, ...current }));
+      setHydrated(true);
+    });
   }, [persistenceMode]);
 
   useEffect(() => {

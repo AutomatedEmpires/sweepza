@@ -110,7 +110,7 @@ export function ListingReportButton({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-ink/45 transition hover:text-ink"
+              className="text-ink/60 transition hover:text-ink"
               aria-label="Close report form"
             >
               <Icon name="skip" size={16} />

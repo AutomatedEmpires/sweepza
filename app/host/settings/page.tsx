@@ -10,12 +10,12 @@ export default async function HostSettingsPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Host Settings</h1>
-        <Link href="/host" className="text-sm text-indigo-600 hover:underline">Back to dashboard</Link>
+        <h1 className="text-2xl font-semibold text-ink">Host Settings</h1>
+        <Link href="/host" className="text-sm text-moss hover:underline">Back to dashboard</Link>
       </div>
 
-      <section className="rounded-lg border border-gray-200 p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-medium text-gray-800">Logo</h2>
+      <section className="rounded-card border border-sand bg-cream p-4 shadow-sm">
+        <h2 className="mb-3 text-lg font-medium text-ink">Logo</h2>
         <HostLogoUploader initialLogoUrl={host.logo_url} />
       </section>
     </div>

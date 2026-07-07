@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Icon, type IconName } from "@/components/icon";
@@ -130,7 +130,10 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: { data?: Listing[] } | null) => {
         if (payload?.data?.length) {
-          setExtra((current) => [...current, ...payload.data!]);
+          // Transition: never force still-hydrating boundaries to client-render.
+          startTransition(() => {
+            setExtra((current) => [...current, ...payload.data!]);
+          });
         }
       })
       .catch(() => {
@@ -214,7 +217,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {activeListings.map((listing) => (
             <ListingCard key={listing.id} listing={listing} />
           ))}

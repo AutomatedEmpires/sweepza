@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPublicListings, getPublicListingsByIds } from "@/lib/db/listings";
+import {
+  getPublicListings,
+  getSeekerHistoryListingsByIds,
+} from "@/lib/db/listings";
 import {
   FILTER_CHIPS,
   SORT_OPTIONS,
@@ -38,12 +41,15 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   // Direct lookup by id set (e.g. My Sweeps hydrating a local seeker's
-  // touched listings). RLS still applies — only public/active rows return.
+  // touched listings). Uses the seeker-history read path so Won/Entered
+  // records keep resolving after a listing ends; only once-public rows are
+  // exposed (never drafts or unreviewed submissions), and ids are unguessable
+  // UUIDs the caller already holds.
   const ids = parseList(searchParams.getAll("ids"))
     .filter((value) => UUID_PATTERN.test(value))
     .slice(0, MAX_IDS);
   if (ids.length > 0) {
-    const listings = await getPublicListingsByIds(ids);
+    const listings = await getSeekerHistoryListingsByIds(ids);
     return NextResponse.json({
       data: listings,
       meta: { count: listings.length, ids },

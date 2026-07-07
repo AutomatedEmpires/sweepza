@@ -49,14 +49,14 @@ export function SearchInput({
       onSubmit={(event) => event.preventDefault()}
       className="flex items-center gap-2 rounded-full border border-sand bg-white px-3.5 py-2"
     >
-      <Icon name="search" size={16} className="shrink-0 text-ink/40" />
+      <Icon name="search" size={16} className="shrink-0 text-ink/55" />
       <input
         type="search"
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder={placeholder}
         aria-label="Search sweepstakes"
-        className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink/40"
+        className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink/55"
       />
       {value ? (
         <button
@@ -66,7 +66,7 @@ export function SearchInput({
             router.push("/discover");
           }}
           aria-label="Clear search"
-          className="grid h-11 w-11 shrink-0 place-items-center text-ink/40 transition hover:text-ink"
+          className="grid h-11 w-11 shrink-0 place-items-center text-ink/55 transition hover:text-ink"
         >
           <Icon name="skip" size={14} />
         </button>

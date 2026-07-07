@@ -9,8 +9,9 @@ export function ShellUtilityBar({
   const clerkConfigured = isClerkConfigured();
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
-      <span className="font-semibold uppercase tracking-[0.15em] text-ink/45">
+    <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs lg:justify-end lg:px-8">
+      {/* Brand lives in the desktop side rail; keep it mobile-only here. */}
+      <span className="font-semibold uppercase tracking-[0.15em] text-ink/60 lg:hidden">
         Sweepza
       </span>
       {clerkConfigured ? (

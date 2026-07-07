@@ -34,7 +34,7 @@ export default async function WinnersPage() {
       </header>
 
       {posts.length > 0 ? (
-        <div className="mt-6 space-y-5">
+        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
           {posts.map((post) => (
             <WinnerCard
               key={post.id}

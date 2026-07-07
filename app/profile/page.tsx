@@ -46,7 +46,7 @@ export default async function ProfilePage() {
   );
 
   return (
-    <section className="flex flex-col gap-5 px-4 pb-8 pt-8">
+    <section className="flex flex-col gap-5 px-4 pb-8 pt-8 lg:mx-auto lg:w-full lg:max-w-2xl">
       <header className="px-1">
         <h1 className="font-display text-3xl text-ink">Profile</h1>
       </header>
@@ -71,7 +71,7 @@ export default async function ProfilePage() {
       ) : (
         <div className="rounded-card border border-sand bg-cream p-4">
           <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink/5 text-ink/40">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink/5 text-ink/55">
               <Icon name="profile" size={26} />
             </span>
             <div className="min-w-0">
@@ -107,7 +107,7 @@ export default async function ProfilePage() {
 
       {/* Your activity */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/45">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
           Your activity
         </h2>
         <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
@@ -128,7 +128,7 @@ export default async function ProfilePage() {
 
       {/* Hosting */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/45">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
           Hosting
         </h2>
         <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
@@ -148,7 +148,7 @@ export default async function ProfilePage() {
       {/* Admin — role-gated */}
       {isAdmin && (
         <div>
-          <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/45">
+          <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
             Operations
           </h2>
           <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
@@ -164,7 +164,7 @@ export default async function ProfilePage() {
 
       {/* About & legal */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/45">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
           About
         </h2>
         <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
@@ -191,7 +191,7 @@ export default async function ProfilePage() {
 
       {authUser && clerkConfigured && <ProfileSignOut />}
 
-      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
         Free for seekers · No purchase necessary
       </p>
     </section>

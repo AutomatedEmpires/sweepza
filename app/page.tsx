@@ -38,7 +38,10 @@ function Rail({ listings }: { listings: Listing[] }) {
   return (
     <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
       {listings.map((listing) => (
-        <div key={listing.id} className="w-[85%] shrink-0 snap-center">
+        <div
+          key={listing.id}
+          className="w-[85%] shrink-0 snap-center lg:w-[340px]"
+        >
           <ListingCard listing={listing} />
         </div>
       ))}
@@ -75,7 +78,7 @@ function RailSection({
 function FooterBlock() {
   return (
     <div className="flex flex-col gap-2 px-5 pb-2">
-      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
         No purchase necessary · See official rules
       </p>
       <nav
@@ -194,19 +197,19 @@ export default async function TodayPage() {
       <div className="mx-5 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-card border border-sand bg-cream">
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ink">{active.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Live sweeps
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ember">{endingSoonCount}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             Ending soon
           </p>
         </div>
         <div className="px-3 py-4 text-center">
           <p className="font-display text-2xl text-ink">{prizePool ?? "—"}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/45">
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
             In prizes
           </p>
         </div>
@@ -236,7 +239,7 @@ export default async function TodayPage() {
               </span>
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <span className="font-display text-base text-ink/40">
+                  <span className="font-display text-base text-ink/55">
                     {i + 1}
                   </span>
                   {step.title}

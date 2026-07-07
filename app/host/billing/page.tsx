@@ -14,7 +14,7 @@ export default async function HostBillingPage() {
   const usedPct = Math.min(100, Math.round((used / total) * 100));
 
   return (
-    <div className="px-4 pb-8 pt-8">
+    <div className="px-4 pb-8 pt-8 lg:mx-auto lg:w-full lg:max-w-2xl">
       <header className="mb-5 flex items-start justify-between gap-3 px-1">
         <div>
           <h1 className="font-display text-3xl text-ink">Billing</h1>
@@ -55,7 +55,7 @@ export default async function HostBillingPage() {
             <p className="text-sm text-ink/60">Active listing slots</p>
             <p className="font-display text-2xl leading-none text-ink">
               {used}
-              <span className="text-base text-ink/40"> / {total}</span>
+              <span className="text-base text-ink/55"> / {total}</span>
             </p>
           </div>
           <div
@@ -96,7 +96,7 @@ export default async function HostBillingPage() {
           Manage billing in Stripe <Icon name="caretRight" size={15} />
         </button>
       </form>
-      <p className="mt-2 text-center text-[11px] text-ink/45">
+      <p className="mt-2 text-center text-[11px] text-ink/60">
         Payment methods, invoices, plan changes, and cancellation are handled in
         the secure Stripe portal.
       </p>

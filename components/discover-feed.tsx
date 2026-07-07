@@ -98,7 +98,7 @@ export function DiscoverFeed({
       </div>
 
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-xs text-ink/45">{countLabel}</span>
+        <span className="text-xs text-ink/60">{countLabel}</span>
         {hasActiveControls ? (
           <button
             type="button"
@@ -134,7 +134,7 @@ export function DiscoverFeed({
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {visible.map((listing) => (
             <ListingCard key={listing.id} listing={listing} surface="scroll" />
           ))}

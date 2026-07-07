@@ -103,7 +103,7 @@ export default async function AdminReportsPage() {
                                 {report.ai_severity}
                               </span>
                             ) : (
-                              <span className="text-ink/40">—</span>
+                              <span className="text-ink/55">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-ink/70">

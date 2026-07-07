@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { canOptimizeImage } from "@/lib/image";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingBadge } from "@/components/listing-badge";
 import { ListingReportButton } from "@/components/listing-report-button";
@@ -217,19 +219,7 @@ export function ListingDetail({
         href="/discover"
         className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-ink/60 transition hover:text-ink"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 6l-6 6 6 6" />
-        </svg>
+        <Icon name="caretRight" size={16} className="rotate-180" />
         Discover
       </Link>
 
@@ -238,11 +228,14 @@ export function ListingDetail({
         {/* Photo + overlays */}
         <div className="relative aspect-[4/3] w-full bg-sand">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={imageUrl}
               alt={listing.imageAltText ?? listing.prizeName}
-              className="h-full w-full object-cover"
+              fill
+              priority
+              className="object-cover"
+              sizes="(min-width: 1024px) 672px, 100vw"
+              unoptimized={!canOptimizeImage(imageUrl)}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-ink/30">
@@ -253,11 +246,13 @@ export function ListingDetail({
           {/* Host seal */}
           <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-cream/90 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur">
             {listing.host?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={listing.host.logoUrl}
                 alt={listing.host.name}
+                width={28}
+                height={28}
                 className="h-7 w-7 rounded-full object-cover"
+                unoptimized={!canOptimizeImage(listing.host.logoUrl)}
               />
             ) : (
               <span className="grid h-7 w-7 place-items-center rounded-full bg-sand text-[11px] font-bold text-ink/60">
@@ -317,7 +312,7 @@ export function ListingDetail({
             </span>
           </h1>
 
-          <p className="mt-1 text-xs font-medium text-ink/45">
+          <p className="mt-1 text-xs font-medium text-ink/60">
             {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
           </p>
 
@@ -336,27 +331,27 @@ export function ListingDetail({
           {/* Begins / Ends */}
           <div className="flex items-stretch text-center">
             <div className="flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
                 Begins
               </p>
               <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
-                <Icon name="calendar" size={14} className="text-ink/40" />
+                <Icon name="calendar" size={14} className="text-ink/55" />
                 {startLabel}
               </p>
             </div>
             <div className="mx-3 w-px bg-sand" />
             <div className="flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
                 Ends
               </p>
               <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
-                <Icon name="calendar" size={14} className="text-ink/40" />
+                <Icon name="calendar" size={14} className="text-ink/55" />
                 {endLabel}
               </p>
               <p
                 className={cn(
                   "text-[11px] font-semibold",
-                  expired ? "text-ink/40" : "text-ember",
+                  expired ? "text-ink/55" : "text-ember",
                 )}
               >
                 {countdown}
@@ -381,24 +376,26 @@ export function ListingDetail({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={expired}
+              disabled={expired || won}
               className={cn(
                 "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-base font-semibold transition",
-                expired
-                  ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                  : won
-                    ? "bg-moss text-cream"
+                // Won outranks expired — the outcome is the seeker's permanent
+                // record; that the sweepstake later ended is secondary.
+                won
+                  ? "cursor-default bg-moss text-cream"
+                  : expired
+                    ? "cursor-not-allowed bg-ink/10 text-ink/55"
                     : entered
                       ? "bg-moss/15 text-moss"
                       : "bg-moss text-cream hover:bg-moss/90",
               )}
             >
-              {expired ? (
-                "Sweepstakes ended"
-              ) : won ? (
+              {won ? (
                 <>
                   <Icon name="trophy" size={18} /> Won
                 </>
+              ) : expired ? (
+                "Sweepstakes ended"
               ) : entered ? (
                 <>
                   <Icon name="check" size={18} /> Entered — enter again
@@ -484,7 +481,7 @@ export function ListingDetail({
           </div>
 
           {/* Footer microcopy */}
-          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">
+          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
             No purchase necessary
           </p>
         </div>
@@ -497,7 +494,7 @@ export function ListingDetail({
             <Icon name="gift" size={20} />
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/60">
               Prize
             </p>
             <p className="text-base font-semibold text-ink">
@@ -515,7 +512,7 @@ export function ListingDetail({
 
       {/* Rules snapshot */}
       <div className="mt-6">
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/45">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/60">
           Rules snapshot
         </h2>
         <dl className="divide-y divide-sand overflow-hidden rounded-card border border-sand">
@@ -524,7 +521,7 @@ export function ListingDetail({
               key={row.id}
               className="flex items-center gap-3 px-4 py-3 text-sm"
             >
-              <Icon name={row.icon} size={16} className="shrink-0 text-ink/40" />
+              <Icon name={row.icon} size={16} className="shrink-0 text-ink/55" />
               <dt className="text-ink/60">{row.label}</dt>
               <dd className="ml-auto text-right font-medium text-ink">
                 {row.value}
@@ -544,11 +541,13 @@ export function ListingDetail({
             className="flex w-full items-center gap-3 rounded-card border border-sand px-4 py-3 text-left transition hover:bg-ink/5"
           >
             {listing.host.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={listing.host.logoUrl}
                 alt={listing.host.name}
+                width={36}
+                height={36}
                 className="h-9 w-9 rounded-full object-cover"
+                unoptimized={!canOptimizeImage(listing.host.logoUrl)}
               />
             ) : (
               <span className="grid h-9 w-9 place-items-center rounded-full bg-sand text-sm font-bold text-ink/60">
