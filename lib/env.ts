@@ -25,6 +25,8 @@ const schema = z.object({
   NOTION_API_TOKEN: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional(),
+  /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
+  CRON_SECRET: z.string().optional(),
 });
 
 export const env = schema.parse(process.env);
