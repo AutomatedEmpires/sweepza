@@ -15,9 +15,12 @@ export function ShellUtilityBar({
       </span>
       {clerkConfigured ? (
         authUser ? (
-          <span className="truncate rounded-full bg-moss/10 px-3 py-1 font-medium text-moss">
+          <Link
+            href="/profile"
+            className="truncate rounded-full bg-moss/10 px-3 py-1 font-medium text-moss transition hover:bg-moss/20"
+          >
             {authUser.displayName ?? authUser.email ?? "Signed in"}
-          </span>
+          </Link>
         ) : (
           <div className="flex items-center gap-2">
             <Link

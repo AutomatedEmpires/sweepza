@@ -15,11 +15,14 @@
     "typecheck": "pnpm typegen && tsc --noEmit",
     "validate": "pnpm lint && pnpm typecheck && pnpm build",
     "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
+    "ops:expire-stale": "node scripts/expire-stale-listings.mjs",
+    "ops:seed-dev": "node scripts/seed-dev-listings.mjs",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.3",
+    "@phosphor-icons/react": "^2.1.10",
     "@sentry/nextjs": "^8.20.0",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^15.1.0",

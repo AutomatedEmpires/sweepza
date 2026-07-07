@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
 import { track } from "@/lib/analytics";
@@ -16,8 +17,8 @@ export function WinnerReactionBar(props: {
   winnerPostId: string;
   initialCounts: Partial<Record<ReactionType, number>>;
   isAuthenticated: boolean;
-  onUnauthenticated: () => void;
 }) {
+  const router = useRouter();
   const [counts, setCounts] = useState(props.initialCounts);
   const [pending, setPending] = useState<ReactionType | null>(null);
 
@@ -28,7 +29,7 @@ export function WinnerReactionBar(props: {
 
   async function react(type: ReactionType) {
     if (!props.isAuthenticated) {
-      props.onUnauthenticated();
+      router.push("/sign-in");
       return;
     }
 

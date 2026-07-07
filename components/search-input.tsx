@@ -27,19 +27,20 @@ export function SearchInput({
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
 
     const next = value.trim();
+    if (next === initial) return;
     timeoutRef.current = window.setTimeout(() => {
       if (!next) {
-        router.push("/search");
+        router.push("/discover");
         return;
       }
-      track("search_performed", { query: next, result_count: 0 });
-      router.push(`/search?q=${encodeURIComponent(next)}`);
+      track("search_performed", { query: next });
+      router.push(`/discover?q=${encodeURIComponent(next)}`);
     }, 300);
 
     return () => {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     };
-  }, [router, value]);
+  }, [router, value, initial]);
 
   return (
     <form
@@ -62,7 +63,7 @@ export function SearchInput({
           type="button"
           onClick={() => {
             setValue("");
-            router.push("/search");
+            router.push("/discover");
           }}
           aria-label="Clear search"
           className="grid h-11 w-11 shrink-0 place-items-center text-ink/40 transition hover:text-ink"

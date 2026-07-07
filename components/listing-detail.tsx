@@ -17,8 +17,10 @@ import {
   ENTRY_FREQUENCY_LABEL,
   formatEndDate,
   formatPrizeValue,
+  formatRelativeTime,
 } from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
+import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
@@ -61,6 +63,7 @@ export function ListingDetail({
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [hostOpen, setHostOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [shareFlash, setShareFlash] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -107,14 +110,21 @@ export function ListingDetail({
     if (next === "skipped") track("listing_skipped", baseProps);
   }
 
-  function handleShare() {
-    track("listing_shared", { ...baseProps, share_type: "link" });
-    if (
-      typeof navigator !== "undefined" &&
-      typeof navigator.share === "function"
-    ) {
-      const url = typeof window !== "undefined" ? window.location.href : undefined;
-      navigator.share({ title: listing.title, url }).catch(() => {});
+  function handleMarkWon() {
+    setPrimary("won");
+    track("listing_marked_won", baseProps);
+  }
+
+  async function handleShare() {
+    const outcome = await shareLink({
+      title: listing.title,
+      url: listingShareUrl(listing.slug),
+    });
+    if (outcome === "dismissed" || outcome === "failed") return;
+    track("listing_shared", { ...baseProps, share_type: outcome === "shared" ? "native" : "link" });
+    if (outcome === "copied") {
+      setShareFlash(true);
+      window.setTimeout(() => setShareFlash(false), 1600);
     }
   }
 
@@ -122,7 +132,10 @@ export function ListingDetail({
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
-  const hostName = listing.host?.name ?? sourceText;
+  // Attribution name: claimed host first, then the original sponsor for
+  // Sweepza-found listings. When neither exists the source label stands alone.
+  const attributionName = listing.host?.name ?? listing.originalSponsorName;
+  const hostName = attributionName ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
@@ -303,7 +316,7 @@ export function ListingDetail({
           </h1>
 
           <p className="mt-1 text-xs font-medium text-ink/45">
-            {hostName} · {sourceText}
+            {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
           </p>
 
           <p className="mt-2 text-sm leading-relaxed text-ink/70">
@@ -414,6 +427,28 @@ export function ListingDetail({
             </p>
           )}
 
+          {/* Win reporting — user-reported state that feeds the Won view and
+              the Winner Wall. Entered sweeps stay winnable after they end
+              (winners are usually announced later). */}
+          {entered && !won && (
+            <button
+              type="button"
+              onClick={handleMarkWon}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-moss/40 bg-moss/5 px-4 py-2.5 text-sm font-semibold text-moss transition hover:bg-moss/10"
+            >
+              <Icon name="trophy" size={16} /> I won this sweepstakes
+            </button>
+          )}
+          {won && (
+            <Link
+              href="/winners/new"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full bg-ember px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-ember/90"
+            >
+              <Icon name="trophy" size={16} /> You won — share it on the Winner
+              Wall
+            </Link>
+          )}
+
           {/* Secondary actions */}
           <div className="mt-3 flex items-center justify-center gap-3">
             <button
@@ -433,10 +468,17 @@ export function ListingDetail({
               type="button"
               onClick={handleShare}
               aria-label="Share listing"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink"
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink",
+                shareFlash && "text-moss",
+              )}
             >
-              <Icon name="share" size={15} /> Share
+              <Icon name={shareFlash ? "check" : "share"} size={15} />{" "}
+              {shareFlash ? "Link copied" : "Share"}
             </button>
+            <span aria-live="polite" className="sr-only">
+              {shareFlash ? "Link copied to clipboard" : ""}
+            </span>
           </div>
 
           {/* Footer microcopy */}
@@ -539,6 +581,11 @@ export function ListingDetail({
                   Original sponsor: {listing.originalSponsorName}
                 </p>
               )}
+              {listing.publishedAt && (
+                <p className="mt-2 text-xs text-ink/50">
+                  Listed on Sweepza {formatRelativeTime(listing.publishedAt)}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -548,6 +595,11 @@ export function ListingDetail({
           <p className="mt-1">{SOURCE_LABEL_NOTE[listing.sourceLabel]}</p>
           {listing.originalSponsorName && (
             <p className="mt-1">Original sponsor: {listing.originalSponsorName}</p>
+          )}
+          {listing.publishedAt && (
+            <p className="mt-2 text-xs text-ink/50">
+              Listed on Sweepza {formatRelativeTime(listing.publishedAt)}
+            </p>
           )}
         </div>
       )}

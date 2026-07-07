@@ -1,11 +1,14 @@
 import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import type { SeekerListingActivity } from "@/lib/types/listing";
 import type { SeekerUiState } from "./enums";
 import type { ListingSeekerStateRow } from "./types";
 
 export interface SeekerStateSnapshot {
   primary: Record<string, SeekerUiState>;
   saved: Record<string, boolean>;
+  /** Action timestamps per listing — powers Ready Again and Sweep Routine. */
+  activity: Record<string, SeekerListingActivity>;
 }
 
 const ACTION_TIMESTAMP: Partial<
@@ -34,6 +37,15 @@ export async function getSeekerStatesForAppUser(
   return data ?? [];
 }
 
+function toActivity(row: ListingSeekerStateRow): SeekerListingActivity {
+  const activity: SeekerListingActivity = { updatedAt: row.updated_at };
+  if (row.saved_at) activity.savedAt = row.saved_at;
+  if (row.entered_at) activity.enteredAt = row.entered_at;
+  if (row.skipped_at) activity.skippedAt = row.skipped_at;
+  if (row.won_at) activity.wonAt = row.won_at;
+  return activity;
+}
+
 export function toSeekerStateSnapshot(
   rows: ListingSeekerStateRow[],
 ): SeekerStateSnapshot {
@@ -43,6 +55,9 @@ export function toSeekerStateSnapshot(
     ),
     saved: Object.fromEntries(
       rows.filter((row) => row.is_saved).map((row) => [row.listing_id, true]),
+    ),
+    activity: Object.fromEntries(
+      rows.map((row) => [row.listing_id, toActivity(row)]),
     ),
   };
 }

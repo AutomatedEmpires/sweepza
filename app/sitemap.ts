@@ -6,11 +6,10 @@ const STATIC_PATHS = [
   "",
   "/discover",
   "/discover/swipe",
-  "/listings",
   "/about",
   "/privacy",
   "/terms",
-  "/saved",
+  "/my-sweeps",
   "/winners",
   "/host",
 ];

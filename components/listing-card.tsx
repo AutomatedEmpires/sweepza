@@ -14,6 +14,7 @@ import {
 } from "@/lib/listing-badges";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
+import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const MAX_CARD_BADGES = 3;
@@ -46,6 +47,7 @@ export function ListingCard({
   // Falls back to local state when no seeker-state provider is mounted.
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
+  const [shareFlash, setShareFlash] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -92,8 +94,17 @@ export function ListingCard({
     if (next === "skipped") track("listing_skipped", baseProps);
   }
 
-  function handleShare() {
-    track("listing_shared", { ...baseProps, share_type: "link" });
+  async function handleShare() {
+    const outcome = await shareLink({
+      title: listing.title,
+      url: listingShareUrl(listing.slug),
+    });
+    if (outcome === "dismissed" || outcome === "failed") return;
+    track("listing_shared", { ...baseProps, share_type: outcome === "shared" ? "native" : "link" });
+    if (outcome === "copied") {
+      setShareFlash(true);
+      window.setTimeout(() => setShareFlash(false), 1600);
+    }
   }
 
   const badges = useMemo(
@@ -103,7 +114,10 @@ export function ListingCard({
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
-  const hostName = listing.host?.name ?? sourceText;
+  // Attribution name: claimed host first, then the original sponsor for
+  // Sweepza-found listings. When neither exists the source label stands alone.
+  const attributionName = listing.host?.name ?? listing.originalSponsorName;
+  const hostName = attributionName ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
@@ -201,7 +215,7 @@ export function ListingCard({
         </h3>
 
         <p className="mt-0.5 truncate text-[11px] font-medium text-ink/45">
-          {hostName} · {sourceText}
+          {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
         </p>
 
         {prizeValue && (
@@ -301,11 +315,18 @@ export function ListingCard({
             type="button"
             onClick={handleShare}
             aria-label="Share listing"
-            className="grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
+            className={cn(
+              "grid h-10 w-10 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5",
+              shareFlash && "border-moss bg-moss/10 text-moss",
+            )}
           >
-            <Icon name="share" size={18} />
+            <Icon name={shareFlash ? "check" : "share"} size={18} />
           </button>
         </div>
+
+        <span aria-live="polite" className="sr-only">
+          {shareFlash ? "Link copied to clipboard" : ""}
+        </span>
 
         {/* Footer microcopy */}
         <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-ink/40">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPublicListings } from "@/lib/db/listings";
+import { getPublicListings, getPublicListingsByIds } from "@/lib/db/listings";
 import {
   FILTER_CHIPS,
   SORT_OPTIONS,
@@ -30,8 +30,26 @@ function parseList(values: string[]): string[] {
 
 export const dynamic = "force-dynamic";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_IDS = 100;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+
+  // Direct lookup by id set (e.g. My Sweeps hydrating a local seeker's
+  // touched listings). RLS still applies — only public/active rows return.
+  const ids = parseList(searchParams.getAll("ids"))
+    .filter((value) => UUID_PATTERN.test(value))
+    .slice(0, MAX_IDS);
+  if (ids.length > 0) {
+    const listings = await getPublicListingsByIds(ids);
+    return NextResponse.json({
+      data: listings,
+      meta: { count: listings.length, ids },
+    });
+  }
+
   const categories = parseList(searchParams.getAll("category"));
   const entryFrequencies = parseList(searchParams.getAll("entryFrequency")).filter(
     (value): value is EntryFrequency => VALID_ENTRY_FREQUENCIES.has(value as EntryFrequency),

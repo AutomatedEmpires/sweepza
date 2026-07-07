@@ -52,7 +52,7 @@ export default async function RootLayout({
   const authUser = await ensureCurrentAppUser();
   const initialSeekerState = authUser
     ? await getSeekerStateSnapshotForAppUser(authUser.appUserId)
-    : { primary: {}, saved: {} };
+    : { primary: {}, saved: {}, activity: {} };
 
   return (
     <html lang="en" className={display.variable}>

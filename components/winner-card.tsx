@@ -4,15 +4,17 @@ import { Icon } from "@/components/icon";
 import { type ReactionType } from "@/lib/db/enums";
 import { WinnerReactionBar } from "@/components/winner-reaction-bar";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
-import type { WinnerPost } from "@/lib/mock/winners";
+import type { WinnerPost } from "@/lib/types/winner";
 import type { Listing } from "@/lib/types/listing";
 
 export function WinnerCard({
   post,
   listing,
+  isAuthenticated = false,
 }: {
   post: WinnerPost;
   listing?: Listing;
+  isAuthenticated?: boolean;
 }) {
   const imageUrl =
     post.photoUrl ?? listing?.mainImageUrl ?? listing?.categoryFallbackImageUrl;
@@ -82,26 +84,18 @@ export function WinnerCard({
                   : ""}
               </span>
             </span>
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              className="h-4 w-4 flex-none text-ink/40"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m9 6 6 6-6 6" />
-            </svg>
+            <Icon
+              name="caretRight"
+              size={16}
+              className="flex-none text-ink/40"
+            />
           </Link>
         ) : null}
 
         <WinnerReactionBar
           winnerPostId={post.id}
           initialCounts={post.reactions ?? {}}
-          isAuthenticated={false}
-          onUnauthenticated={() => undefined}
+          isAuthenticated={isAuthenticated}
         />
       </div>
     </article>

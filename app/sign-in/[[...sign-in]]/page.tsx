@@ -28,7 +28,7 @@ export default function SignInPage() {
   return (
     <section className="px-5 pb-10 pt-8">
       <div className="mx-auto flex max-w-md justify-center">
-        <SignIn forceRedirectUrl="/saved" signUpUrl="/sign-up" />
+        <SignIn forceRedirectUrl="/" signUpUrl="/sign-up" />
       </div>
     </section>
   );

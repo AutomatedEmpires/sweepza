@@ -36,7 +36,11 @@ export default async function WinnersPage() {
       {posts.length > 0 ? (
         <div className="mt-6 space-y-5">
           {posts.map((post) => (
-            <WinnerCard key={post.id} post={post} />
+            <WinnerCard
+              key={post.id}
+              post={post}
+              isAuthenticated={Boolean(authUser)}
+            />
           ))}
         </div>
       ) : (
