@@ -24,7 +24,7 @@ vercel_sensitivity_flag() {
   local vercel_env="$2"
 
   case "$key" in
-    SUPABASE_SERVICE_ROLE_KEY|CLERK_SECRET_KEY|STRIPE_SECRET_KEY|GITHUB_TOKEN)
+    SUPABASE_SERVICE_ROLE_KEY|CLERK_SECRET_KEY|CLERK_WEBHOOK_SECRET|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|SENTRY_AUTH_TOKEN|RESEND_API_KEY|CRON_SECRET|GITHUB_TOKEN)
       if [ "$vercel_env" != "development" ]; then
         echo "--sensitive"
         return 0

@@ -94,6 +94,22 @@ async function ensureWebhook(url) {
   const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
   const existing = endpoints.data.find((e) => e.url === url && e.status === "enabled");
   if (existing) {
+    const hasWildcard = existing.enabled_events.includes("*");
+    const missingEvents = hasWildcard
+      ? []
+      : events.filter((event) => !existing.enabled_events.includes(event));
+    if (missingEvents.length > 0) {
+      const updated = await stripe.webhookEndpoints.update(existing.id, {
+        enabled_events: events,
+      });
+      return {
+        id: updated.id,
+        url: updated.url,
+        secretWritten: false,
+        note: "existing endpoint reused and event subscriptions updated; secret not re-readable",
+      };
+    }
+
     // Signing secret is only returned at creation; if it already exists we
     // can't re-read it — report and let the operator rotate if needed.
     return { id: existing.id, url: existing.url, secretWritten: false, note: "existing endpoint reused; secret not re-readable" };

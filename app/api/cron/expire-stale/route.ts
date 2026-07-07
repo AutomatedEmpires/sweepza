@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     .from("listing")
     .select("id, slug, end_date")
     .eq("lifecycle_status", "active")
+    .eq("visibility_status", "public")
     .lt("end_date", today);
 
   if (findError) {
