@@ -26,12 +26,12 @@ function LinkRow({
       href={href}
       className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-ink/5"
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-moss/10 text-moss">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-pine/10 text-pine">
         <Icon name={icon} size={17} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-ink">{title}</span>
-        <span className="block text-xs text-ink/55">{body}</span>
+        <span className="block text-xs text-graphite">{body}</span>
       </span>
       <Icon name="caretRight" size={14} className="text-ink/35" />
     </Link>
@@ -53,8 +53,8 @@ export default async function ProfilePage() {
 
       {/* Identity */}
       {authUser ? (
-        <div className="flex items-center gap-3 rounded-card border border-sand bg-cream p-4">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-moss text-lg font-bold text-cream">
+        <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-e1">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-pine text-lg font-bold text-white">
             {(authUser.displayName ?? authUser.email ?? "S")
               .charAt(0)
               .toUpperCase()}
@@ -64,21 +64,23 @@ export default async function ProfilePage() {
               {authUser.displayName ?? "Sweepza seeker"}
             </p>
             {authUser.email && (
-              <p className="truncate text-xs text-ink/55">{authUser.email}</p>
+              <p className="truncate text-xs text-graphite">
+                {authUser.email}
+              </p>
             )}
           </div>
         </div>
       ) : (
-        <div className="rounded-card border border-sand bg-cream p-4">
+        <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
           <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink/5 text-ink/55">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink/5 text-graphite">
               <Icon name="profile" size={26} />
             </span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ink">
                 You&apos;re browsing locally
               </p>
-              <p className="mt-0.5 text-xs leading-relaxed text-ink/55">
+              <p className="mt-0.5 text-xs leading-relaxed text-graphite">
                 Your sweep activity is saved on this device only.
                 {clerkConfigured
                   ? " Sign in to sync it to your Sweepza account."
@@ -90,13 +92,13 @@ export default async function ProfilePage() {
             <div className="mt-3 flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="flex-1 rounded-full bg-moss px-4 py-2 text-center text-sm font-semibold text-cream transition hover:bg-moss/90"
+                className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-ember/90"
               >
                 Sign in
               </Link>
               <Link
                 href="/sign-up"
-                className="flex-1 rounded-full border border-sand px-4 py-2 text-center text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+                className="flex-1 rounded-xl border border-line px-4 py-2.5 text-center text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
               >
                 Create account
               </Link>
@@ -107,10 +109,10 @@ export default async function ProfilePage() {
 
       {/* Your activity */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
           Your activity
         </h2>
-        <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
+        <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-e1">
           <LinkRow
             href="/my-sweeps"
             icon="sweeps"
@@ -128,10 +130,10 @@ export default async function ProfilePage() {
 
       {/* Hosting */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
           Hosting
         </h2>
-        <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
+        <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-e1">
           <LinkRow
             href="/host"
             icon="host"
@@ -148,10 +150,10 @@ export default async function ProfilePage() {
       {/* Admin — role-gated */}
       {isAdmin && (
         <div>
-          <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
+          <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
             Operations
           </h2>
-          <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
+          <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-e1">
             <LinkRow
               href="/admin"
               icon="shield"
@@ -164,10 +166,10 @@ export default async function ProfilePage() {
 
       {/* About & legal */}
       <div>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-ink/60">
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
           About
         </h2>
-        <div className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
+        <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-e1">
           <LinkRow
             href="/about"
             icon="info"
@@ -191,7 +193,7 @@ export default async function ProfilePage() {
 
       {authUser && clerkConfigured && <ProfileSignOut />}
 
-      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
+      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-graphite">
         Free for seekers · No purchase necessary
       </p>
     </section>

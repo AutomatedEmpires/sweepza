@@ -4,6 +4,7 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
+import { cn } from "@/lib/cn";
 import { daysUntil } from "@/lib/listing-badges";
 import { formatRelativeTime } from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
@@ -14,9 +15,9 @@ import {
 } from "@/lib/sweep-routine";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
-// Today — the personal operating layer. Computes the seeker's routine live
-// from the seeker-state snapshot so it stays current as they act, and works
-// identically for signed-in (server snapshot) and signed-out (local) seekers.
+// Today — the daily sweepstakes routine. It answers, in order: what needs me
+// now, what's ready again, what's ending, what's new, what I've handled. The
+// system decides the "next best action"; the user reads the day in one glance.
 
 const LAST_VISIT_KEY = "sweepza-last-visit-at";
 const MAX_SECTION_CARDS = 6;
@@ -34,17 +35,17 @@ const ACTIVITY_META: Record<
 function Rail({ listings }: { listings: Listing[] }) {
   if (listings.length === 1) {
     return (
-      <div className="px-1 lg:max-w-[340px]">
+      <div className="px-1 lg:max-w-md">
         <ListingCard listing={listings[0]} />
       </div>
     );
   }
   return (
-    <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
+    <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:overflow-visible xl:grid-cols-3">
       {listings.map((listing) => (
         <div
           key={listing.id}
-          className="w-[85%] shrink-0 snap-center lg:w-[340px]"
+          className="w-[86%] shrink-0 snap-center sm:w-[340px] lg:w-auto"
         >
           <ListingCard listing={listing} />
         </div>
@@ -67,16 +68,18 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="px-4">
-      <div className="mb-3 flex items-center gap-2 px-1">
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-moss/10 text-moss">
-          <Icon name={icon} size={17} />
+    <section className="px-4 lg:px-0">
+      <div className="mb-3.5 flex items-center gap-2.5 px-1 lg:px-0">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink/5 text-ink/70">
+          <Icon name={icon} size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-2xl leading-none text-ink">{title}</h2>
-          <p className="mt-0.5 text-xs text-ink/55">{subtitle}</p>
+          <h2 className="font-display text-[26px] leading-none text-ink">
+            {title}
+          </h2>
+          <p className="mt-1 text-[13px] text-graphite">{subtitle}</p>
         </div>
-        <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-bold text-ink/60">
+        <span className="nums rounded-full bg-ink/5 px-2.5 py-1 text-xs font-bold text-ink/60">
           {count}
         </span>
       </div>
@@ -91,9 +94,6 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
   const [lastVisitAt, setLastVisitAt] = useState<string | null>(null);
 
   useEffect(() => {
-    // startTransition: swapping in the personal routine while sibling
-    // Suspense boundaries are still hydrating must not force them to
-    // client-render (recoverable #418 noise) — let hydration finish first.
     try {
       const previous = window.localStorage.getItem(LAST_VISIT_KEY);
       startTransition(() => {
@@ -102,13 +102,11 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       });
       window.localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
     } catch {
-      // Storage unavailable — still mount, just skip "new since last visit".
       startTransition(() => setMounted(true));
     }
   }, []);
 
   const snapshot = store?.snapshot ?? EMPTY_ROUTINE_SNAPSHOT;
-
   const buckets = useMemo(
     () => buildRoutineBuckets(listings, snapshot),
     [listings, snapshot],
@@ -143,43 +141,39 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       .slice(0, MAX_SECTION_CARDS);
   }, [listings, lastVisitAt, touchedIds]);
 
-  // Ready Again is the habit anchor; Ending Today is the urgency anchor.
-  const endingToday = buckets.endingSoon.filter(
-    (listing) => daysUntil(listing.endDate) <= 0,
-  );
-  const endingSoonRest = buckets.endingSoon.filter(
-    (listing) => daysUntil(listing.endDate) > 0,
-  );
+  const endingToday = buckets.endingSoon.filter((l) => daysUntil(l.endDate) <= 0);
+  const endingSoonRest = buckets.endingSoon.filter((l) => daysUntil(l.endDate) > 0);
 
   const readyCount = buckets.ready.length + buckets.readyAgain.length;
   const hasRoutine =
     readyCount > 0 ||
     buckets.endingSoon.length > 0 ||
-    newSinceLastVisit.length > 0 ||
     recent.length > 0 ||
     buckets.entered.length > 0;
 
-  // Until the client snapshot hydrates, render nothing personal — the server
-  // editorial content above/below this component carries the first paint.
   if (!mounted) return null;
 
+  // ---- Empty / onboarding ----
   if (!hasRoutine) {
     return (
-      <section className="px-4">
-        <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-sand bg-white/60 px-6 py-10 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-moss/10 text-moss">
-            <Icon name="today" size={24} />
+      <section className="px-4 lg:px-0">
+        <div className="flex flex-col items-center gap-4 rounded-sheet border border-line bg-surface px-6 py-12 text-center shadow-e1">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-ember/10 text-ember">
+            <Icon name="today" size={26} />
           </span>
           <div>
-            <p className="font-display text-xl text-ink">Start your Sweep Routine</p>
-            <p className="mx-auto mt-1 max-w-[36ch] text-sm leading-relaxed text-ink/60">
-              Save or enter sweepstakes and Today becomes your daily queue —
-              what&apos;s ready, what&apos;s ending, and what&apos;s new.
+            <p className="font-display text-2xl text-ink">
+              Start your sweep routine
+            </p>
+            <p className="mx-auto mt-1.5 max-w-[42ch] text-sm leading-relaxed text-graphite">
+              Save or enter a few sweepstakes and Today becomes your daily
+              queue — what&apos;s ready, what&apos;s ending, and what you won.
+              Sweepza remembers so you don&apos;t have to.
             </p>
           </div>
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-full bg-moss px-5 py-2.5 text-sm font-semibold text-cream transition hover:bg-moss/90"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
           >
             Find your first sweeps <Icon name="discover" size={16} />
           </Link>
@@ -188,31 +182,129 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
     );
   }
 
+  // ---- Next best action ----
+  const nba =
+    endingToday.length > 0
+      ? {
+          tone: "urgent" as const,
+          eyebrow: "Ends today",
+          headline:
+            endingToday.length === 1
+              ? "One sweep you're tracking ends today"
+              : `${endingToday.length} sweeps you're tracking end today`,
+          sub: "Enter before they close — this is the last call.",
+          listing: endingToday[0],
+        }
+      : buckets.readyAgain.length > 0
+        ? {
+            tone: "again" as const,
+            eyebrow: "Ready again",
+            headline:
+              buckets.readyAgain.length === 1
+                ? "A daily entry just re-opened"
+                : `${buckets.readyAgain.length} entry windows re-opened`,
+            sub: "Your recurring sweeps are ready for another entry.",
+            listing: buckets.readyAgain[0],
+          }
+        : buckets.ready.length > 0
+          ? {
+              tone: "open" as const,
+              eyebrow: "Ready to enter",
+              headline:
+                buckets.ready.length === 1
+                  ? "You saved one you haven't entered yet"
+                  : `${buckets.ready.length} saved sweeps are waiting`,
+              sub: "You liked these — they're still open.",
+              listing: buckets.ready[0],
+            }
+          : null;
+
+  const clearForToday = !nba;
+
   return (
-    <div className="flex flex-col gap-8">
-      {/* Routine summary strip */}
-      <div className="mx-4 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-card border border-sand bg-cream">
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-moss">{readyCount}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            Ready now
-          </p>
-        </div>
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-ember">{endingToday.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            Ending today
-          </p>
-        </div>
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-ink">{buckets.entered.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            In play
-          </p>
-        </div>
+    <div className="flex flex-col gap-9">
+      {/* Intelligence strip */}
+      <div className="mx-4 grid grid-cols-3 overflow-hidden rounded-card border border-line bg-surface shadow-e1 lg:mx-0">
+        {[
+          { n: readyCount, label: "Ready now", tone: "text-pine" },
+          { n: endingToday.length, label: "End today", tone: "text-flame" },
+          { n: buckets.entered.length, label: "In play", tone: "text-ink" },
+        ].map((s, i) => (
+          <div
+            key={s.label}
+            className={cn(
+              "px-3 py-4 text-center",
+              i > 0 && "border-l border-line",
+            )}
+          >
+            <p className={cn("nums font-display text-3xl leading-none", s.tone)}>
+              {s.n}
+            </p>
+            <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-graphite">
+              {s.label}
+            </p>
+          </div>
+        ))}
       </div>
 
-      {buckets.readyAgain.length > 0 && (
+      {/* Next best action hero */}
+      {nba && (
+        <section className="px-4 lg:px-0">
+          <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-8 lg:rounded-sheet lg:border lg:border-line lg:bg-surface lg:p-6 lg:shadow-e1">
+            <div className="mb-4 lg:mb-0">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]",
+                  nba.tone === "urgent"
+                    ? "text-flame"
+                    : nba.tone === "again"
+                      ? "text-pine"
+                      : "text-ember",
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    nba.tone === "urgent"
+                      ? "bg-flame animate-pulse-urgent"
+                      : nba.tone === "again"
+                        ? "bg-pine"
+                        : "bg-ember",
+                  )}
+                />
+                Your next best action · {nba.eyebrow}
+              </span>
+              <h2 className="mt-2 font-display text-[30px] leading-[1.1] text-ink lg:text-4xl">
+                {nba.headline}
+              </h2>
+              <p className="mt-2 max-w-[46ch] text-sm leading-relaxed text-graphite">
+                {nba.sub}
+              </p>
+            </div>
+            <div className="lg:max-w-md">
+              <ListingCard listing={nba.listing} priority />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {clearForToday && (
+        <section className="px-4 lg:px-0">
+          <div className="flex flex-col items-center gap-3 rounded-sheet border border-pine/25 bg-pine/[0.06] px-6 py-10 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-pine text-white">
+              <Icon name="check" size={24} />
+            </span>
+            <p className="font-display text-2xl text-ink">You&apos;re clear for today</p>
+            <p className="max-w-[40ch] text-sm text-graphite">
+              Nothing needs you right now. Sweepza is watching your saved and
+              recurring sweeps — you&apos;ll see them here the moment they&apos;re ready.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Routine sections (skip the one already surfaced as NBA) */}
+      {buckets.readyAgain.length > 0 && nba?.tone !== "again" && (
         <Section
           icon="repeat"
           title="Ready again"
@@ -223,7 +315,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
         </Section>
       )}
 
-      {endingToday.length > 0 && (
+      {endingToday.length > 0 && nba?.tone !== "urgent" && (
         <Section
           icon="clock"
           title="Ending today"
@@ -234,7 +326,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
         </Section>
       )}
 
-      {buckets.ready.length > 0 && (
+      {buckets.ready.length > 0 && nba?.tone !== "open" && (
         <Section
           icon="bookmark"
           title="Saved, not entered"
@@ -268,16 +360,16 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       )}
 
       {recent.length > 0 && (
-        <section className="px-4">
-          <div className="mb-3 flex items-center gap-2 px-1">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-ink/5 text-ink/60">
-              <Icon name="history" size={17} />
+        <section className="px-4 lg:px-0">
+          <div className="mb-3.5 flex items-center gap-2.5 px-1 lg:px-0">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-ink/5 text-ink/70">
+              <Icon name="history" size={16} />
             </span>
-            <h2 className="font-display text-2xl leading-none text-ink">
-              Recent activity
+            <h2 className="font-display text-[26px] leading-none text-ink">
+              Recently handled
             </h2>
           </div>
-          <ul className="divide-y divide-sand overflow-hidden rounded-card border border-sand bg-cream">
+          <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-e1">
             {recent.map((item) => {
               const meta =
                 item.state !== "none" ? ACTIVITY_META[item.state] : null;
@@ -286,29 +378,36 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
                 <li key={`${item.listing.id}-${item.state}`}>
                   <Link
                     href={`/sweeps/${item.listing.slug}`}
-                    className="flex items-center gap-3 px-4 py-3 transition hover:bg-ink/5"
+                    className="flex items-center gap-3 px-4 py-3 transition hover:bg-ink/[0.03]"
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-moss/10 text-moss">
+                    <span
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-full",
+                        item.state === "won"
+                          ? "bg-gold/15 text-gold"
+                          : "bg-pine/12 text-pine",
+                      )}
+                    >
                       <Icon name={meta.icon} size={15} />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink">
                         {item.listing.title}
                       </span>
-                      <span className="block text-xs text-ink/55">
+                      <span className="block text-xs text-graphite">
                         {meta.verb} {formatRelativeTime(item.at)}
                       </span>
                     </span>
-                    <Icon name="caretRight" size={14} className="text-ink/35" />
+                    <Icon name="caretRight" size={14} className="text-ink/30" />
                   </Link>
                 </li>
               );
             })}
           </ul>
-          <div className="mt-3 px-1">
+          <div className="mt-3 px-1 lg:px-0">
             <Link
               href="/my-sweeps"
-              className="text-xs font-semibold text-moss transition hover:underline"
+              className="text-sm font-semibold text-ember transition hover:underline"
             >
               Open My Sweeps →
             </Link>

@@ -4,24 +4,24 @@ import { Icon } from "@/components/icon";
 export default function NotFound() {
   return (
     <section className="flex min-h-[70dvh] flex-col items-center justify-center px-6 py-16 text-center">
-      <span className="grid h-16 w-16 place-items-center rounded-full bg-moss/10 text-moss">
+      <span className="grid h-16 w-16 place-items-center rounded-full bg-pine/10 text-pine">
         <Icon name="gift" size={30} />
       </span>
       <h1 className="mt-5 font-display text-4xl text-ink">Page not found</h1>
-      <p className="mt-3 max-w-sm text-sm leading-relaxed text-ink/65">
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-graphite">
         That page is not available right now. You can jump back into the live
         sweepstakes feed or head home.
       </p>
       <div className="mt-6 flex items-center gap-3">
         <Link
           href="/discover"
-          className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+          className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
         >
           Browse sweeps
         </Link>
         <Link
           href="/"
-          className="rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+          className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
         >
           Home
         </Link>

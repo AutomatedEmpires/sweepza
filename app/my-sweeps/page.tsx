@@ -39,19 +39,19 @@ export default async function MySweepsPage() {
   }
 
   return (
-    <section className="px-4 pb-8 pt-8">
-      <header className="mb-4 flex flex-col gap-1 px-1">
-        <h1 className="font-display text-3xl text-ink">My Sweeps</h1>
-        <p className="text-sm text-ink/60">
+    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+      <header className="mb-4 flex flex-col gap-1 px-1 lg:px-0">
+        <h1 className="font-display text-[26px] leading-none text-ink">My Sweeps</h1>
+        <p className="text-sm text-graphite">
           Everything you&apos;re tracking — ready to enter, in play, and won.
         </p>
       </header>
       {clerkConfigured && !authUser ? (
-        <div className="mb-4 rounded-card border border-sand bg-white/70 p-4">
+        <div className="mb-4 rounded-card border border-line bg-surface p-4 shadow-e1">
           <h2 className="text-sm font-semibold text-ink">
             Sign in to sync your sweep activity
           </h2>
-          <p className="mt-1 text-sm leading-relaxed text-ink/65">
+          <p className="mt-1 text-sm leading-relaxed text-graphite">
             This browser tracks your sweeps locally. A signed-in account keeps
             saved, entered, and won state connected to your Sweepza profile on
             every device.
@@ -59,13 +59,13 @@ export default async function MySweepsPage() {
           <div className="mt-3 flex items-center gap-2">
             <Link
               href="/sign-in"
-              className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+              className="rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-white transition hover:bg-ember/90"
             >
               Sign in
             </Link>
             <Link
               href="/sign-up"
-              className="rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+              className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-paper"
             >
               Create account
             </Link>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Icon } from "@/components/icon";
 import { track } from "@/lib/analytics";
 import { useSeekerState } from "@/lib/seeker-state";
 
@@ -9,6 +11,9 @@ export interface WinnerListingOption {
   title: string;
   endDate?: string;
 }
+
+const inputClass =
+  "mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition focus:border-ember focus:outline-none focus:ring-1 focus:ring-ember/30";
 
 export function WinnerSubmissionForm(props: {
   listings: WinnerListingOption[];
@@ -46,22 +51,39 @@ export function WinnerSubmissionForm(props: {
 
   if (status === "success") {
     return (
-      <div className="rounded-card border border-sand bg-cream p-4 text-sm text-ink/70">
-        <p className="font-semibold text-ink">Submitted</p>
-        <p className="mt-1">Your post is pending review. Once approved, it will appear on the Winner Wall.</p>
+      <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-6 text-center shadow-e1">
+        <div className="grid h-14 w-14 place-items-center rounded-full bg-pine/10 text-pine">
+          <Icon name="check" size={26} />
+        </div>
+        <p className="font-display text-[20px] leading-none text-ink">Submitted</p>
+        <p className="max-w-[38ch] text-sm leading-relaxed text-graphite">
+          Your post is pending review. Once approved, it will appear on the
+          Winner Wall.
+        </p>
+        <Link
+          href="/winners"
+          className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-paper"
+        >
+          Back to Winner Wall <Icon name="trophy" size={15} />
+        </Link>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 rounded-card border border-sand bg-white p-4">
+    <form
+      onSubmit={onSubmit}
+      className="space-y-4 rounded-card border border-line bg-surface p-4 shadow-e1"
+    >
       {props.listings.length > 0 ? (
         <div>
-          <label className="text-xs font-medium text-ink/60">Sweepstakes you entered</label>
+          <label className="text-xs font-medium text-graphite">
+            Sweepstakes you entered
+          </label>
           <select
             value={listingId}
             onChange={(e) => setListingId(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+            className={inputClass}
           >
             <option value="">— Select one —</option>
             {props.listings.map((opt) => (
@@ -73,33 +95,35 @@ export function WinnerSubmissionForm(props: {
         </div>
       ) : null}
       <div>
-        <label className="text-xs font-medium text-ink/60">Photo URL</label>
+        <label className="text-xs font-medium text-graphite">Photo URL</label>
         <input
           value={photoUrl}
           onChange={(e) => setPhotoUrl(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+          className={inputClass}
           placeholder="https://..."
           inputMode="url"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-ink/60">Caption</label>
+        <label className="text-xs font-medium text-graphite">Caption</label>
         <textarea
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-sand px-3 py-2 text-sm"
+          className={inputClass}
           maxLength={500}
           rows={4}
           placeholder="Won this!"
         />
       </div>
       {status === "error" ? (
-        <p className="text-xs text-red-600">Something went wrong. Try again.</p>
+        <p className="text-xs font-medium text-flame">
+          Something went wrong. Try again.
+        </p>
       ) : null}
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="w-full rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-cream disabled:opacity-60"
+        className="w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:opacity-60"
       >
         {status === "submitting" ? "Submitting…" : "Submit win"}
       </button>

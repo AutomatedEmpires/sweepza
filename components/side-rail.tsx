@@ -12,13 +12,13 @@ export function SideRail() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-sand bg-cream/80 px-4 py-6 lg:flex">
+    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-paper/80 px-4 py-6 lg:flex">
       <Link href="/" className="px-3">
         <span className="text-sm font-semibold uppercase tracking-[0.2em] text-ember">
           Sweepza
         </span>
-        <span className="mt-1 block text-[11px] text-ink/50">
-          Sweepstakes, simplified.
+        <span className="mt-1 block text-[11px] text-graphite">
+          The sweepstakes operating system
         </span>
       </Link>
 
@@ -31,10 +31,10 @@ export function SideRail() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-semibold transition",
+                "flex min-h-10 items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold transition",
                 active
-                  ? "bg-moss/10 text-moss"
-                  : "text-ink/60 hover:bg-ink/5 hover:text-ink",
+                  ? "bg-ember/10 text-ember"
+                  : "text-graphite hover:bg-ink/5 hover:text-ink",
               )}
             >
               <Icon
@@ -48,7 +48,7 @@ export function SideRail() {
         })}
       </nav>
 
-      <p className="mt-auto px-3 text-[10px] uppercase tracking-[0.15em] text-ink/55">
+      <p className="mt-auto px-3 text-[10px] uppercase tracking-[0.15em] text-graphite">
         No purchase necessary
       </p>
     </aside>

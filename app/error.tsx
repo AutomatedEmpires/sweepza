@@ -23,7 +23,7 @@ export default function RouteError({
       </span>
       <div>
         <h1 className="font-display text-3xl text-ink">Something snagged</h1>
-        <p className="mx-auto mt-2 max-w-[40ch] text-sm leading-relaxed text-ink/65">
+        <p className="mx-auto mt-2 max-w-[40ch] text-sm leading-relaxed text-graphite">
           That didn&apos;t load the way it should. It&apos;s been reported —
           try again, or head back to Today.
         </p>
@@ -32,13 +32,13 @@ export default function RouteError({
         <button
           type="button"
           onClick={reset}
-          className="rounded-full bg-moss px-5 py-2.5 text-sm font-semibold text-cream transition hover:bg-moss/90"
+          className="rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
         >
           Try again
         </button>
         <Link
           href="/"
-          className="rounded-full border border-sand px-5 py-2.5 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+          className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
         >
           Go to Today
         </Link>

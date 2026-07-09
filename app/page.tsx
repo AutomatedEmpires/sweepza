@@ -3,48 +3,32 @@ import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
 import { ensureCurrentAppUser } from "@/lib/auth";
-import {
-  getPublicListings,
-  getSeekerHistoryListingsByIds,
-} from "@/lib/db/listings";
-import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
+import { getPublicListings } from "@/lib/db/listings";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
-import { formatPrizeValue } from "@/lib/listing-format";
 import type { Listing } from "@/lib/types/listing";
 
 export const dynamic = "force-dynamic";
 
-// Today — the consumer habit surface and the app's front door.
-// Signed-in: personal operating layer (Ready Again, Ending Today, Saved-not-
-// entered, New since last visit, Recent activity) with a discovery rail below.
-// Signed-out: editorial variant that still upgrades itself with any local
-// (device-only) routine the visitor has built.
+// Today — the app's front door.
+// Signed in: the personal daily routine (next best action + sections).
+// Signed out: an editorial scene that demonstrates the product thesis —
+// "Sweepza remembers your sweepstakes so you don't have to." No fake counts;
+// when inventory is empty it reads as early, not broken.
 
-const STEPS: { icon: IconName; title: string; body: string }[] = [
-  {
-    icon: "gift",
-    title: "Discover",
-    body: "A photo-first feed of sweepstakes worth your time — tag-driven, no noise.",
-  },
-  {
-    icon: "send",
-    title: "Enter",
-    body: "Tap through to the host’s official entry page. Sweepza never charges to enter.",
-  },
-  {
-    icon: "trophy",
-    title: "Win",
-    body: "Track what you entered and celebrate real wins on the Winner Wall.",
-  },
-];
+function greeting(now: Date): string {
+  const h = now.getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 function Rail({ listings }: { listings: Listing[] }) {
   return (
-    <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2">
+    <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
       {listings.map((listing) => (
         <div
           key={listing.id}
-          className="w-[85%] shrink-0 snap-center lg:w-[340px]"
+          className="w-[86%] shrink-0 snap-center sm:w-[340px] lg:w-auto"
         >
           <ListingCard listing={listing} />
         </div>
@@ -64,12 +48,12 @@ function RailSection({
 }) {
   if (listings.length === 0) return null;
   return (
-    <section className="px-4">
-      <div className="mb-3 flex items-end justify-between">
-        <h2 className="font-display text-2xl text-ink">{title}</h2>
+    <section className="px-4 lg:px-0">
+      <div className="mb-3.5 flex items-end justify-between">
+        <h2 className="font-display text-[28px] leading-none text-ink">{title}</h2>
         <Link
           href={href}
-          className="text-xs font-semibold text-moss transition hover:underline"
+          className="text-sm font-semibold text-ember transition hover:underline"
         >
           See all
         </Link>
@@ -79,25 +63,39 @@ function RailSection({
   );
 }
 
+function TrustBand() {
+  const items: { icon: IconName; label: string }[] = [
+    { icon: "shield", label: "Free to enter — always" },
+    { icon: "rules", label: "Official rules on every listing" },
+    { icon: "verified", label: "Verified hosts, honest sources" },
+  ];
+  return (
+    <div className="mx-4 grid grid-cols-1 gap-3 rounded-card border border-line bg-surface p-4 shadow-e1 sm:grid-cols-3 lg:mx-0">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-pine/10 text-pine">
+            <Icon name={it.icon} size={16} />
+          </span>
+          <span className="text-[13px] font-medium text-ink/80">{it.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FooterBlock() {
   return (
-    <div className="flex flex-col gap-2 px-5 pb-2">
-      <p className="text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
+    <div className="flex flex-col gap-2 px-5 pb-2 lg:px-0">
+      <p className="text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
         No purchase necessary · See official rules
       </p>
       <nav
         aria-label="Footer"
-        className="flex items-center justify-center gap-4 text-xs font-medium text-ink/50"
+        className="flex items-center justify-center gap-4 text-xs font-medium text-graphite lg:justify-start"
       >
-        <Link href="/about" className="transition hover:text-ink">
-          About
-        </Link>
-        <Link href="/privacy" className="transition hover:text-ink">
-          Privacy
-        </Link>
-        <Link href="/terms" className="transition hover:text-ink">
-          Terms
-        </Link>
+        <Link href="/about" className="transition hover:text-ink">About</Link>
+        <Link href="/privacy" className="transition hover:text-ink">Privacy</Link>
+        <Link href="/terms" className="transition hover:text-ink">Terms</Link>
       </nav>
     </div>
   );
@@ -105,69 +103,36 @@ function FooterBlock() {
 
 export default async function TodayPage() {
   const now = new Date();
-  const [authUser, publicListings] = await Promise.all([
+  const [authUser, listings] = await Promise.all([
     ensureCurrentAppUser(),
     getPublicListings({ limit: 100 }),
   ]);
-  let listings: Listing[] = publicListings;
-
-  // Signed-in seekers can have saved/entered/won state on listings outside
-  // the current public feed window. Hydrate those by id so Today keeps history
-  // cards visible just like My Sweeps.
-  if (authUser) {
-    const snapshot = await getSeekerStateSnapshotForAppUser(authUser.appUserId);
-    const known = new Set(publicListings.map((listing) => listing.id));
-    const touched = new Set([
-      ...Object.keys(snapshot.saved),
-      ...Object.keys(snapshot.activity),
-      ...Object.keys(snapshot.primary).filter(
-        (id) => snapshot.primary[id] !== "none",
-      ),
-    ]);
-    const missing = [...touched].filter((id) => !known.has(id));
-    if (missing.length > 0) {
-      const historyListings = await getSeekerHistoryListingsByIds(missing);
-      listings = [...publicListings, ...historyListings];
-    }
-  }
-
-  const active = listings.filter((listing) => !isExpired(listing, now));
-
+  const active = listings.filter((l) => !isExpired(l, now));
   const endingSoon = [...active]
     .sort((a, b) => daysUntil(a.endDate, now) - daysUntil(b.endDate, now))
-    .slice(0, 4);
+    .slice(0, 3);
+  const featured = active.filter((l) => l.isFeatured || l.isBoosted).slice(0, 3);
 
-  const featured = active.filter((l) => l.isFeatured || l.isBoosted);
-
-  const endingSoonCount = active.filter((l) => {
-    const d = daysUntil(l.endDate, now);
-    return d >= 0 && d <= 3;
-  }).length;
-
-  const prizePool = formatPrizeValue(
-    active.reduce((sum, l) => sum + (l.prizeValue ?? 0), 0),
-    "USD",
-  );
-
-  const dateLabel = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
+  // ---- Signed-in: the routine ----
   if (authUser) {
     const firstName = authUser.displayName?.split(" ")[0];
+    const dateLabel = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
     return (
-      <div className="flex flex-col gap-8 pb-6">
-        <header className="px-5 pt-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
-            {dateLabel}
+      <div className="flex flex-col gap-9 pb-8 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-4">
+        <header className="px-5 pt-8 lg:px-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ember">
+            {greeting(now)} · {dateLabel}
           </p>
-          <h1 className="mt-1 font-display text-4xl leading-[1.05] text-ink">
-            Today{firstName ? `, ${firstName}` : ""}
+          <h1 className="mt-1.5 font-display text-[40px] leading-[1.02] text-ink lg:text-5xl">
+            Your Sweepza today{firstName ? `, ${firstName}` : ""}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink/70">
-            Your sweep routine — what&apos;s ready, ending, and new.
+          <p className="mt-2.5 max-w-[52ch] text-[15px] leading-relaxed text-graphite">
+            Everything you&apos;re tracking, in one glance — what&apos;s ready,
+            what&apos;s ending, and what you&apos;ve already handled.
           </p>
         </header>
 
@@ -175,11 +140,7 @@ export default async function TodayPage() {
 
         <RailSection title="Worth a look" href="/discover" listings={endingSoon} />
         {featured.length > 0 && (
-          <RailSection
-            title="Featured & boosted"
-            href="/discover"
-            listings={featured}
-          />
+          <RailSection title="Featured" href="/discover" listings={featured} />
         )}
 
         <FooterBlock />
@@ -187,116 +148,111 @@ export default async function TodayPage() {
     );
   }
 
+  // ---- Signed-out: the scene ----
+  const lifecycle: { icon: IconName; label: string; note: string }[] = [
+    { icon: "discover", label: "Discover", note: "prizes worth your time" },
+    { icon: "bookmark", label: "Save", note: "keep the ones you want" },
+    { icon: "send", label: "Enter", note: "on the host's official page" },
+    { icon: "repeat", label: "Ready again", note: "daily windows re-open" },
+    { icon: "trophy", label: "Won", note: "kept forever" },
+  ];
+
   return (
-    <div className="flex flex-col gap-8 pb-6">
-      {/* Hero */}
-      <header className="px-5 pt-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
-          Sweepza
+    <div className="flex flex-col gap-12 pb-10 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-6">
+      {/* Hero scene */}
+      <header className="px-5 pt-10 lg:px-0 lg:pt-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ember">
+          The sweepstakes operating system
         </p>
-        <h1 className="mt-2 font-display text-4xl leading-[1.05] text-ink">
-          Sweepstakes,
-          <br />
-          simplified.
+        <h1 className="mt-3 max-w-[16ch] font-display text-[44px] font-medium leading-[1.03] tracking-tightest text-ink lg:text-[68px]">
+          Sweepza remembers so you don&apos;t have to.
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-ink/70">
-          Discover sweepstakes worth entering — then let Sweepza run your daily
-          routine: what&apos;s ready, what&apos;s ending, what you won.
+        <p className="mt-4 max-w-[54ch] text-[16px] leading-relaxed text-graphite lg:text-lg">
+          Sweepstakes are scattered across brands, blogs, and daily-entry pages.
+          Sweepza gathers the ones worth entering and quietly keeps track of what
+          you saved, entered, can enter again, and won — so every day you open one
+          screen and know exactly what to do.
         </p>
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-full bg-moss px-5 py-2.5 text-sm font-semibold text-cream transition hover:bg-moss/90"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-6 py-3 text-sm font-semibold text-white transition hover:bg-ember/90"
           >
             Browse sweepstakes <Icon name="send" size={16} />
           </Link>
           <Link
-            href="/winners"
-            className="inline-flex items-center gap-1.5 rounded-full border border-sand px-5 py-2.5 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+            href="/sign-up"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold text-ink transition hover:bg-ink/5"
           >
-            Winner Wall <Icon name="trophy" size={16} />
+            Start my routine
           </Link>
+          <span className="text-xs font-medium text-graphite">
+            Free for seekers · no purchase necessary
+          </span>
         </div>
       </header>
 
-      {/* Live stat strip */}
-      <div className="mx-5 grid grid-cols-3 divide-x divide-sand overflow-hidden rounded-card border border-sand bg-cream">
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-ink">{active.length}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            Live sweeps
-          </p>
-        </div>
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-ember">{endingSoonCount}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            Ending soon
-          </p>
-        </div>
-        <div className="px-3 py-4 text-center">
-          <p className="font-display text-2xl text-ink">{prizePool ?? "—"}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-ink/60">
-            In prizes
-          </p>
-        </div>
-      </div>
-
-      {/* Local routine — upgrades the page for returning device-only seekers */}
-      <TodayDashboard listings={listings} />
-
-      <RailSection title="Ending soon" href="/discover" listings={endingSoon} />
-      <RailSection
-        title="Featured & boosted"
-        href="/discover"
-        listings={featured}
-      />
-
-      {/* How it works */}
-      <section className="px-5">
-        <h2 className="mb-3 font-display text-2xl text-ink">How Sweepza works</h2>
-        <ol className="flex flex-col gap-3">
-          {STEPS.map((step, i) => (
-            <li
-              key={step.title}
-              className="flex items-start gap-3 rounded-card border border-sand bg-cream p-4"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-moss/10 text-moss">
-                <Icon name={step.icon} size={20} />
-              </span>
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <span className="font-display text-base text-ink/55">
-                    {i + 1}
-                  </span>
-                  {step.title}
-                </p>
-                <p className="mt-0.5 text-sm leading-relaxed text-ink/65">
-                  {step.body}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* Winner Wall teaser */}
-      <section className="px-5">
-        <Link
-          href="/winners"
-          className="flex items-center gap-3 rounded-card border border-moss/30 bg-moss/5 p-4 transition hover:bg-moss/10"
-        >
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-moss text-cream">
-            <Icon name="trophy" size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">Real winners, real wins</p>
-            <p className="mt-0.5 text-sm text-ink/65">
-              See what seekers have won and share your own.
+      {/* Lifecycle — the memory moat, shown not told */}
+      <section className="px-4 lg:px-0">
+        <div className="overflow-hidden rounded-sheet border border-line bg-surface shadow-e1">
+          <div className="border-b border-line px-5 py-4">
+            <h2 className="font-display text-2xl text-ink">
+              One sweep, from discovery to win
+            </h2>
+            <p className="mt-1 text-sm text-graphite">
+              Sweepza tracks the whole lifecycle for you.
             </p>
           </div>
-          <span className="ml-auto text-moss">
-            <Icon name="caretRight" size={20} />
+          <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            {lifecycle.map((step, i) => (
+              <li
+                key={step.label}
+                className="flex flex-col gap-2 border-t border-line p-5 sm:border-l lg:border-t-0 lg:[&:first-child]:border-l-0"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-ember/10 text-ember">
+                  <Icon name={step.icon} size={19} />
+                </span>
+                <div>
+                  <p className="flex items-baseline gap-1.5 text-sm font-semibold text-ink">
+                    <span className="nums font-display text-base text-ink/30">
+                      {i + 1}
+                    </span>
+                    {step.label}
+                  </p>
+                  <p className="mt-0.5 text-xs leading-snug text-graphite">
+                    {step.note}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Real inventory when it exists; otherwise the page stays a scene */}
+      <RailSection title="Ending soon" href="/discover" listings={endingSoon} />
+      {featured.length > 0 && (
+        <RailSection title="Featured" href="/discover" listings={featured} />
+      )}
+
+      <TrustBand />
+
+      {/* Winner Wall teaser */}
+      <section className="px-4 lg:px-0">
+        <Link
+          href="/winners"
+          className="flex items-center gap-4 rounded-card border border-line bg-surface p-5 shadow-e1 transition hover:shadow-e2"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gold/12 text-gold">
+            <Icon name="trophy" size={22} weight="fill" />
           </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-xl text-ink">Real winners, real wins</p>
+            <p className="mt-0.5 text-sm text-graphite">
+              The Winner Wall is where members share the prizes they&apos;ve won here.
+            </p>
+          </div>
+          <Icon name="caretRight" size={20} className="shrink-0 text-ink/30" />
         </Link>
       </section>
 

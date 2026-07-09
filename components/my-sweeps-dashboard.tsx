@@ -157,7 +157,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
       <div
         role="tablist"
         aria-label="My Sweeps views"
-        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1"
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0"
       >
         {TABS.map((t) => {
           const count = buckets[t.id].length;
@@ -170,10 +170,10 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
               aria-selected={active}
               onClick={() => setTab(t.id)}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold transition",
+                "flex shrink-0 items-center gap-1.5 rounded-pill px-3.5 py-2 text-sm font-semibold transition",
                 active
-                  ? "bg-ink text-cream"
-                  : "border border-sand bg-white text-ink/60",
+                  ? "bg-ink text-paper"
+                  : "border border-line bg-surface text-ink/60 hover:text-ink",
               )}
             >
               <Icon name={t.icon} size={15} />
@@ -181,8 +181,8 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
               {count > 0 && (
                 <span
                   className={cn(
-                    "rounded-full px-1.5 text-xs font-bold",
-                    active ? "bg-cream/20 text-cream" : "bg-ink/5 text-ink/50",
+                    "nums rounded-pill px-1.5 text-xs font-bold",
+                    active ? "bg-paper/20 text-paper" : "bg-ink/5 text-ink/50",
                   )}
                 >
                   {count}
@@ -194,16 +194,20 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
       </div>
 
       {activeListings.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-card border border-dashed border-sand bg-white/60 px-6 py-12 text-center">
-          <Icon name={activeTab.icon} size={36} className="text-ink/30" />
-          <p className="text-sm font-medium text-ink">{activeTab.empty.title}</p>
-          <p className="max-w-[38ch] text-xs leading-relaxed text-ink/55">
+        <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-6 py-14 text-center shadow-e1">
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-paper text-ink/40">
+            <Icon name={activeTab.icon} size={26} />
+          </div>
+          <p className="font-display text-[20px] leading-none text-ink">
+            {activeTab.empty.title}
+          </p>
+          <p className="max-w-[38ch] text-sm leading-relaxed text-graphite">
             {activeTab.empty.body}
           </p>
           {(tab === "ready" || tab === "saved") && (
             <Link
               href="/discover"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
             >
               Discover sweeps <Icon name="discover" size={15} />
             </Link>
@@ -211,14 +215,14 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           {tab === "won" && (
             <Link
               href="/winners"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-paper"
             >
               Visit the Winner Wall <Icon name="trophy" size={15} />
             </Link>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {activeListings.map((listing) => (
             <ListingCard key={listing.id} listing={listing} />
           ))}

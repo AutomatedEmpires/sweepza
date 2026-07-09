@@ -21,10 +21,10 @@ export function FilterChips({
             onClick={() => onToggle(chip.id)}
             aria-pressed={on}
             className={cn(
-              "whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+              "whitespace-nowrap rounded-pill border px-3 py-1.5 text-xs font-semibold transition",
               on
-                ? "border-ember bg-ember text-cream"
-                : "border-sand bg-white text-ink/70 hover:border-ink/20",
+                ? "border-ink bg-ink text-paper"
+                : "border-line bg-surface text-ink/70 hover:border-ink/25",
             )}
           >
             {chip.label}

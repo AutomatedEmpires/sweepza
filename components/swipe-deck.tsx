@@ -222,25 +222,25 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
         ? "No live sweeps in the deck right now. Browse the full feed instead."
         : `You saved ${savedCount} and entered ${enteredCount}. Find them under Saved, or run the deck again.`;
     return (
-      <div className="flex flex-col items-center gap-4 px-6 pt-16 text-center">
-        <span className="grid h-16 w-16 place-items-center rounded-full bg-moss/10 text-moss">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 px-6 pt-16 text-center">
+        <span className="grid h-16 w-16 place-items-center rounded-full bg-pine/10 text-pine">
           <Icon name="trophy" size={32} />
         </span>
-        <h2 className="font-display text-2xl text-ink">You’re all caught up</h2>
-        <p className="max-w-xs text-sm text-ink/60">{summary}</p>
+        <h2 className="font-display text-[26px] leading-none text-ink">You’re all caught up</h2>
+        <p className="max-w-xs text-sm text-graphite">{summary}</p>
         <div className="mt-2 flex items-center gap-2">
           {decisions.length > 0 && (
             <button
               type="button"
               onClick={restart}
-              className="inline-flex items-center gap-1.5 rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
             >
               <Icon name="repeat" size={16} /> Start over
             </button>
           )}
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
           >
             <Icon name="gift" size={16} /> Browse feed
           </Link>
@@ -259,7 +259,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   return (
     <div
-      className="flex flex-col items-center gap-5 px-4 pb-6 pt-2 outline-none focus-visible:ring-2 focus-visible:ring-moss/50"
+      className="mx-auto flex w-full max-w-md flex-col items-center gap-5 px-4 pb-6 pt-2 outline-none focus-visible:ring-2 focus-visible:ring-pine/50"
       role="group"
       aria-roledescription="Swipe deck"
       aria-label="Sweepstakes"
@@ -267,14 +267,14 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-ink/60">
+      <p className="nums text-xs font-semibold uppercase tracking-wide text-graphite">
         Sweep {index + 1} of {total}
       </p>
       {/* Keyboard equivalence for the swipe gestures — announced to assistive
           tech and shown on desktop where a keyboard is the likely input. */}
       <p
         id="swipe-deck-help"
-        className="sr-only lg:not-sr-only lg:-mt-3 lg:text-[11px] lg:font-medium lg:text-ink/55"
+        className="sr-only lg:not-sr-only lg:-mt-3 lg:text-[11px] lg:font-medium lg:text-graphite"
       >
         Keyboard: ← skip · → save · ↑ enter · Backspace undo
       </p>
@@ -317,21 +317,21 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
                 <>
                   <span
                     style={saveOverlayStyle}
-                    className="pointer-events-none absolute right-4 top-6 z-10 rotate-6 rounded-lg border-2 border-ember bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-ember"
+                    className="pointer-events-none absolute right-4 top-6 z-10 rotate-6 rounded-xl border-2 border-ember bg-surface/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-ember"
                     aria-hidden
                   >
                     Save
                   </span>
                   <span
                     style={skipOverlayStyle}
-                    className="pointer-events-none absolute left-4 top-6 z-10 -rotate-6 rounded-lg border-2 border-ink bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-ink"
+                    className="pointer-events-none absolute left-4 top-6 z-10 -rotate-6 rounded-xl border-2 border-graphite bg-surface/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-graphite"
                     aria-hidden
                   >
                     Skip
                   </span>
                   <span
                     style={enterOverlayStyle}
-                    className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-lg border-2 border-moss bg-cream/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-moss"
+                    className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-xl border-2 border-pine bg-surface/90 px-3 py-1 font-display text-lg uppercase tracking-wide text-pine"
                     aria-hidden
                   >
                     Enter
@@ -352,7 +352,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
           onClick={undo}
           disabled={decisions.length === 0}
           aria-label="Undo"
-          className="grid h-11 w-11 place-items-center rounded-full border border-sand text-ink/60 transition enabled:hover:bg-ink/5 disabled:opacity-40"
+          className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-graphite transition enabled:hover:border-ink/25 disabled:opacity-40"
         >
           <Icon name="repeat" size={18} />
         </button>
@@ -360,7 +360,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
           type="button"
           onClick={() => triggerLeave("skip")}
           aria-label="Skip"
-          className="grid h-12 w-12 place-items-center rounded-full border border-sand text-ink/70 transition hover:bg-ink/5"
+          className="grid h-12 w-12 place-items-center rounded-full border border-line bg-surface text-ink/70 shadow-e1 transition hover:border-ink/25"
         >
           <Icon name="skip" size={20} />
         </button>
@@ -368,20 +368,21 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
           type="button"
           onClick={() => triggerLeave("save")}
           aria-label="Save"
-          className="grid h-12 w-12 place-items-center rounded-full bg-ember text-cream shadow-sm transition hover:bg-ember/90"
+          className="grid h-12 w-12 place-items-center rounded-full bg-ember text-white shadow-e1 transition hover:bg-ember/90"
         >
           <Icon name="bookmark" size={20} />
         </button>
         <button
           type="button"
           onClick={() => triggerLeave("enter")}
-          className="inline-flex items-center gap-1.5 rounded-full bg-moss px-5 py-3 text-sm font-semibold text-cream shadow-sm transition hover:bg-moss/90"
+          aria-label="Enter"
+          className="grid h-12 w-12 place-items-center rounded-full bg-pine text-white shadow-e1 transition hover:bg-pine/90"
         >
-          Enter <Icon name="send" size={16} />
+          <Icon name="send" size={20} />
         </button>
       </div>
 
-      <p className="text-center text-[11px] text-ink/60">
+      <p className="text-center text-[11px] text-graphite">
         Drag a card, tap a button, or use ← Skip · → Save · ↑ Enter · ⌫ Undo.
       </p>
 

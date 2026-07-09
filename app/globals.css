@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #fbf7f0;
-  --foreground: #1f1a17;
+  --background: #f5f0e7;
+  --foreground: #17130f;
 }
 
 html,
@@ -15,5 +15,59 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  /* Editorial display defaults: tighter tracking, real optical sizing. */
+  .font-display {
+    font-optical-sizing: auto;
+    letter-spacing: -0.02em;
+  }
+
+  /* Tabular numerals for countdowns, dates, stats. */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Consistent, visible focus for keyboard users across the app. */
+  :where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #17130f;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: #e0532b;
+    color: #ffffff;
+  }
+}
+
+@layer utilities {
+  /* Fade the bottom of horizontal rails so content feels editorial, not cut. */
+  .mask-fade-r {
+    -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

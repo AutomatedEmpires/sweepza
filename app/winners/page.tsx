@@ -1,5 +1,6 @@
 import { WinnerCard } from "@/components/winner-card";
 import Link from "next/link";
+import { Icon } from "@/components/icon";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getPublishedWinnerPosts } from "@/lib/db/winners";
 
@@ -15,20 +16,23 @@ export default async function WinnersPage() {
   const { posts } = await getPublishedWinnerPosts({ limit: 20 });
 
   return (
-    <section className="px-4 pb-8 pt-8">
+    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
       <header className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-ink">Winner Wall</h1>
-          <p className="text-sm text-ink/60">
-            Real members, real wins. Every post is a sweep someone found and entered right here.
+          <h1 className="font-display text-[26px] leading-none text-ink">
+            Winner Wall
+          </h1>
+          <p className="text-sm text-graphite">
+            Real members, real wins. Every post is a sweep someone found and
+            entered right here.
           </p>
         </div>
         {clerkConfigured ? (
           <Link
             href={authUser ? "/winners/new" : "/sign-in"}
-            className="inline-flex shrink-0 rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
           >
-            Share your win
+            Share your win <Icon name="share" size={15} />
           </Link>
         ) : null}
       </header>
@@ -44,20 +48,24 @@ export default async function WinnersPage() {
           ))}
         </div>
       ) : (
-        <div className="mt-10 rounded-card border border-dashed border-sand p-8 text-center">
-          <p className="text-sm font-medium text-ink">No wins posted yet</p>
-          <p className="mt-1 text-sm text-ink/55">
-            Be the first — when you win a sweep you found here, share it with the community.
+        <div className="mt-10 flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-6 py-14 text-center shadow-e1">
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-gold/10 text-gold">
+            <Icon name="trophy" size={26} />
+          </div>
+          <p className="font-display text-[20px] leading-none text-ink">
+            Be the first winner
+          </p>
+          <p className="max-w-[40ch] text-sm leading-relaxed text-graphite">
+            No wins posted yet — when you win a sweep you found here, share it
+            with the community.
           </p>
           {clerkConfigured ? (
-            <div className="mt-4">
-              <Link
-                href={authUser ? "/winners/new" : "/sign-in"}
-                className="inline-flex rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
-              >
-                Share your win
-              </Link>
-            </div>
+            <Link
+              href={authUser ? "/winners/new" : "/sign-in"}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            >
+              Share your win <Icon name="share" size={15} />
+            </Link>
           ) : null}
         </div>
       )}
