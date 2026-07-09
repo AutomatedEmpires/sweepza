@@ -21,44 +21,49 @@ export default async function EditHostListingPage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Edit Listing</h1>
-        <Link href="/host/listings" className="text-sm text-moss hover:underline">Cancel</Link>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 pb-8 pt-8">
+      <header className="mb-6 flex items-start justify-between gap-3 px-1">
+        <h1 className="font-display text-3xl text-ink">Edit listing</h1>
+        <Link
+          href="/host/listings"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
+        >
+          Cancel
+        </Link>
+      </header>
 
       {listing.review_notes ? (
-        <p className="mb-4 rounded-card border border-ember/25 bg-ember/5 p-3 text-sm text-ink/75">Review notes: {listing.review_notes}</p>
+        <p className="mb-4 rounded-card border border-flame/25 bg-flame/5 p-3 text-sm text-ink/75">Review notes: {listing.review_notes}</p>
       ) : null}
 
-      <form action={editHostListingAction} className="space-y-4">
+      <form action={editHostListingAction} className="flex flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-e1">
         <input type="hidden" name="listingId" value={listing.id} />
-        <div>
-          <label htmlFor="title" className="block text-sm font-medium text-ink/70">Title</label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Title</span>
           <input id="title" name="title" defaultValue={listing.title} required minLength={5} maxLength={70}
-            className="mt-1 block w-full rounded-md border border-sand px-3 py-2 shadow-sm focus:border-moss focus:ring-moss" />
-        </div>
-        <div>
-          <label htmlFor="short_description" className="block text-sm font-medium text-ink/70">Short description</label>
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Short description</span>
           <textarea id="short_description" name="short_description" defaultValue={listing.short_description} required minLength={10} maxLength={140} rows={3}
-            className="mt-1 block w-full rounded-md border border-sand px-3 py-2 shadow-sm focus:border-moss focus:ring-moss" />
-        </div>
-        <div>
-          <label htmlFor="prize_name" className="block text-sm font-medium text-ink/70">Prize name</label>
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Prize name</span>
           <input id="prize_name" name="prize_name" defaultValue={listing.prize_name} required minLength={3} maxLength={120}
-            className="mt-1 block w-full rounded-md border border-sand px-3 py-2 shadow-sm focus:border-moss focus:ring-moss" />
-        </div>
-        <div>
-          <label htmlFor="prize_value" className="block text-sm font-medium text-ink/70">Prize value (USD)</label>
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Prize value (USD)</span>
           <input id="prize_value" name="prize_value" type="number" min={0} step="1" defaultValue={listing.prize_value ?? ""}
-            className="mt-1 block w-full rounded-md border border-sand px-3 py-2 shadow-sm focus:border-moss focus:ring-moss" />
-        </div>
-        <div>
-          <label htmlFor="entry_url" className="block text-sm font-medium text-ink/70">Entry URL</label>
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Entry URL</span>
           <input id="entry_url" name="entry_url" type="url" defaultValue={listing.entry_url ?? ""}
-            className="mt-1 block w-full rounded-md border border-sand px-3 py-2 shadow-sm focus:border-moss focus:ring-moss" />
-        </div>
-        <button type="submit" className="rounded-full bg-moss px-4 py-2 text-sm font-medium text-cream hover:bg-moss/90">
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
+        </label>
+        <button type="submit" className="self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90">
           Save changes
         </button>
       </form>

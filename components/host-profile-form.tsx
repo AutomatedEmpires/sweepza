@@ -68,13 +68,13 @@ export function HostProfileForm({
   return (
     <form
       action={submit}
-      className="flex flex-col gap-4 rounded-card border border-sand bg-white/80 p-4"
+      className="flex flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-e1"
     >
       <div>
         <h2 className="text-sm font-semibold text-ink">
           {mode === "create" ? "Create your host profile" : "Edit host profile"}
         </h2>
-        <p className="mt-1 text-sm leading-relaxed text-ink/65">
+        <p className="mt-1 text-sm leading-relaxed text-graphite">
           {mode === "create"
             ? "Set up your public host identity so you can submit listings to Sweepza."
             : "Update the public details Sweepza shows for your host identity."}
@@ -90,7 +90,7 @@ export function HostProfileForm({
             minLength={2}
             maxLength={80}
             defaultValue={initialProfile?.display_name ?? ""}
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
 
@@ -101,7 +101,7 @@ export function HostProfileForm({
             type="url"
             defaultValue={initialProfile?.website_url ?? ""}
             placeholder="https://example.com"
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
 
@@ -112,7 +112,7 @@ export function HostProfileForm({
             rows={3}
             maxLength={300}
             defaultValue={initialProfile?.short_description ?? ""}
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
 
@@ -123,7 +123,7 @@ export function HostProfileForm({
             type="url"
             defaultValue={initialProfile?.logo_url ?? ""}
             placeholder="https://example.com/logo.png"
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
       </div>
@@ -132,7 +132,7 @@ export function HostProfileForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending
             ? "Saving..."
@@ -140,19 +140,19 @@ export function HostProfileForm({
               ? "Create host profile"
               : "Save changes"}
         </button>
-        <p className="text-xs text-ink/50">
+        <p className="text-xs text-graphite">
           Your profile is public to seekers browsing host listings.
         </p>
       </div>
 
       {result.error ? (
-        <p className="rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
+        <p className="rounded-xl border border-flame/30 bg-flame/10 px-3 py-2 text-sm text-flame">
           {result.error}
         </p>
       ) : null}
 
       {result.saved ? (
-        <p className="rounded-xl border border-moss/30 bg-moss/10 px-3 py-2 text-sm text-moss">
+        <p className="rounded-xl border border-pine/30 bg-pine/10 px-3 py-2 text-sm text-pine">
           Host profile saved.
         </p>
       ) : null}

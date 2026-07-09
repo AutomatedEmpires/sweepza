@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Icon } from "@/components/icon";
 import type { ReviewQueueListing } from "@/lib/db/listing-review";
 import type { ReviewAction } from "@/lib/listing-review-schema";
 
@@ -93,9 +94,10 @@ export function AdminReviewQueue({
 
   if (listings.length === 0) {
     return (
-      <div className="rounded-card border border-sand bg-white/70 p-4">
-        <p className="text-sm leading-relaxed text-ink/60">
-          No host-submitted listings are waiting for review right now.
+      <div className="flex items-center gap-3 rounded-card border border-pine/30 bg-pine/5 p-4">
+        <Icon name="check" size={18} className="text-pine" />
+        <p className="text-sm font-medium text-pine">
+          Queue clear — no host submissions waiting for review.
         </p>
       </div>
     );
@@ -113,53 +115,53 @@ export function AdminReviewQueue({
         return (
           <div
             key={listing.id}
-            className="rounded-card border border-sand bg-white/70 p-4"
+            className="rounded-card border border-line bg-surface p-4 shadow-e1"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">
                   {listing.title}
                 </p>
-                <p className="mt-1 text-xs text-ink/55">
-                  {listing.host_display_name ?? "Unknown host"}{" \u00b7 "}Ends{" "}
+                <p className="mt-1 text-xs text-graphite">
+                  {listing.host_display_name ?? "Unknown host"}{" · "}Ends{" "}
                   {formatDate(listing.end_date)}
                 </p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1 text-[11px] font-semibold uppercase tracking-wide">
-                <span className="rounded-full bg-moss/10 px-2 py-1 text-moss">
+                <span className="rounded-pill bg-pine/10 px-2 py-1 text-pine">
                   {listing.lifecycle_status}
                 </span>
-                <span className="rounded-full bg-ink/5 px-2 py-1 text-ink/60">
+                <span className="rounded-pill border border-line px-2 py-1 text-graphite">
                   {listing.visibility_status}
                 </span>
               </div>
             </div>
 
-            <p className="mt-3 text-sm leading-relaxed text-ink/65">
+            <p className="mt-3 text-sm leading-relaxed text-graphite">
               {listing.short_description}
             </p>
 
-            <dl className="mt-3 grid gap-1 text-xs text-ink/60">
+            <dl className="mt-3 grid gap-1 text-xs text-graphite">
               <div className="flex items-center justify-between gap-3">
                 <dt>Prize</dt>
-                <dd className="font-medium text-ink/80">{listing.prize_name}</dd>
+                <dd className="font-medium text-ink">{listing.prize_name}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt>Category</dt>
-                <dd className="font-medium text-ink/80">
+                <dd className="font-medium text-ink">
                   {listing.prize_category ?? "Uncategorized"}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt>Entry URL</dt>
-                <dd className="max-w-[60%] truncate font-medium text-ink/80">
+                <dd className="max-w-[60%] truncate font-medium text-ink">
                   {listing.entry_url ?? "Missing"}
                 </dd>
               </div>
             </dl>
 
             {missingImage || missingRules ? (
-              <p className="mt-3 rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-xs text-ember">
+              <p className="mt-3 rounded-xl border border-flame/30 bg-flame/10 px-3 py-2 text-xs text-flame">
                 Publish blockers:{" "}
                 {[
                   missingImage ? "main image" : null,
@@ -183,7 +185,7 @@ export function AdminReviewQueue({
                     [listing.id]: event.target.value,
                   }))
                 }
-                className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+                className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
                 placeholder="Optional notes (saved with reject / keep pending)."
               />
             </label>
@@ -193,7 +195,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "approve")}
-                className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Approve &amp; publish
               </button>
@@ -201,7 +203,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "keep_pending")}
-                className="rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/75 transition hover:bg-ink/5 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Keep pending
               </button>
@@ -209,20 +211,20 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "reject")}
-                className="rounded-full border border-ember/40 px-4 py-2 text-sm font-semibold text-ember transition hover:bg-ember/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl border border-flame/40 px-4 py-2.5 text-sm font-semibold text-flame transition hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Reject
               </button>
             </div>
 
             {state.error ? (
-              <p className="mt-3 rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
+              <p className="mt-3 rounded-xl border border-flame/30 bg-flame/10 px-3 py-2 text-sm text-flame">
                 {state.error}
               </p>
             ) : null}
 
             {state.message ? (
-              <p className="mt-3 rounded-xl border border-moss/30 bg-moss/10 px-3 py-2 text-sm text-moss">
+              <p className="mt-3 rounded-xl border border-pine/30 bg-pine/10 px-3 py-2 text-sm text-pine">
                 {state.message}
               </p>
             ) : null}

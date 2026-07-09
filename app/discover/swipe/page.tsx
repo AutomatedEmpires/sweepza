@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
-import { SwipeDeck } from "@/components/swipe-deck";
+import { SwipeDeck } from "@/components/swipe-deck-loader";
 import { getPublicListings } from "@/lib/db/listings";
 import { isExpired } from "@/lib/listing-badges";
 

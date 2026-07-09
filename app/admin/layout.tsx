@@ -16,26 +16,30 @@ function AdminGateNotice({
   showSignIn?: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-paper">
       <section className="px-5 pb-10 pt-8">
-        <div className="mx-auto max-w-xl rounded-card border border-sand bg-white/80 p-6">
+        <div className="mx-auto max-w-xl rounded-card border border-line bg-surface p-6 shadow-e1">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
             Admin
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-ink">{title}</h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink/65">{description}</p>
+          <h1 className="mt-1 font-display text-2xl font-bold text-ink">
+            {title}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-graphite">
+            {description}
+          </p>
           <div className="mt-4 flex items-center gap-2">
             {showSignIn ? (
               <Link
                 href="/sign-in"
-                className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90"
+                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
               >
                 Sign in
               </Link>
             ) : null}
             <Link
               href="/"
-              className="rounded-full border border-sand px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+              className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper"
             >
               Back to home
             </Link>
@@ -84,7 +88,7 @@ export default async function AdminLayout({
   const counts = await getNavBadgeCounts();
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-paper">
       <div className="mx-auto flex max-w-6xl flex-col md:flex-row">
         <AdminNav counts={counts} />
         <main className="min-w-0 flex-1">{children}</main>

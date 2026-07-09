@@ -7,11 +7,17 @@ const nextConfig = {
     // Keep this list in sync with OPTIMIZED_IMAGE_HOSTS in lib/image.ts.
     // Deliberately NOT a wildcard: the image optimizer is an open proxy for
     // any allowlisted host, so only hosts we control or trust belong here.
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
-      { protocol: "https", hostname: "*.supabase.co" }, // listing/host media in Supabase storage
+      { protocol: "https", hostname: "**.supabase.co" }, // listing/host media in Supabase storage
       { protocol: "https", hostname: "img.clerk.com" }, // account avatars
       { protocol: "https", hostname: "picsum.photos" }, // dev-seed placeholders
     ],
+  },
+  experimental: {
+    // Tree-shakes the Phosphor icon registry (components/icon.tsx) so
+    // Discover's initial bundle only ships the glyphs it actually renders.
+    optimizePackageImports: ["@phosphor-icons/react"],
   },
 };
 

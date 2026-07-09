@@ -38,7 +38,7 @@ export function AdminHostActions({ hostId }: { hostId: string }) {
           type="button"
           disabled={pending}
           onClick={() => run("verify")}
-          className="rounded-full bg-moss px-3 py-1.5 text-xs font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-pine px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Verify
         </button>
@@ -46,12 +46,12 @@ export function AdminHostActions({ hostId }: { hostId: string }) {
           type="button"
           disabled={pending}
           onClick={() => run("suspend")}
-          className="rounded-full border border-ember/40 px-3 py-1.5 text-xs font-semibold text-ember transition hover:bg-ember/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl border border-flame/40 px-3 py-1.5 text-xs font-semibold text-flame transition hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Suspend
         </button>
       </div>
-      {error ? <span className="text-[11px] text-ember">{error}</span> : null}
+      {error ? <span className="text-[11px] text-flame">{error}</span> : null}
     </div>
   );
 }
