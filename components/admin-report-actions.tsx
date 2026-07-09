@@ -51,7 +51,7 @@ export function AdminReportActions({
           type="button"
           disabled={pending}
           onClick={() => run("dismiss")}
-          className="rounded-full border border-sand px-3 py-1.5 text-xs font-semibold text-ink/75 transition hover:bg-ink/5 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl border border-line px-3 py-1.5 text-xs font-semibold text-ink/75 transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
         >
           Dismiss
         </button>
@@ -59,12 +59,12 @@ export function AdminReportActions({
           type="button"
           disabled={pending}
           onClick={() => run("act")}
-          className="rounded-full bg-ember px-3 py-1.5 text-xs font-semibold text-cream transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-ember px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Act
         </button>
       </div>
-      {error ? <span className="text-[11px] text-ember">{error}</span> : null}
+      {error ? <span className="text-[11px] text-flame">{error}</span> : null}
     </div>
   );
 }

@@ -16,18 +16,24 @@ export default async function AdminClaimsPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
           Admin
         </p>
-        <h1 className="mt-1 text-2xl font-bold text-ink">Claims</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink/65">
+        <h1 className="mt-1 font-display text-2xl font-bold text-ink">
+          Claims
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-graphite">
           Hosts requesting ownership of owner-seeded listings.
         </p>
       </header>
 
-      <div className="mt-6 rounded-card border border-sand bg-white/80 p-5">
-        <p className="text-3xl font-bold text-ink">{pending}</p>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink/55">
+      <div className="mt-6 rounded-card border border-line bg-surface p-5 shadow-e1">
+        <p
+          className={`font-display nums text-3xl font-bold ${pending > 0 ? "text-ember" : "text-ink"}`}
+        >
+          {pending}
+        </p>
+        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-graphite">
           Claims awaiting review
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-ink/65">
+        <p className="mt-3 text-sm leading-relaxed text-graphite">
           A full claim approval workflow is coming next. For now this surfaces
           the count of pending listing claims so it is visible alongside the
           rest of the command center.

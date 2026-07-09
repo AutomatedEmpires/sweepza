@@ -36,8 +36,10 @@ export default async function AdminListingsPage({
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
           Admin
         </p>
-        <h1 className="mt-1 text-2xl font-bold text-ink">Listings</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink/65">
+        <h1 className="mt-1 font-display text-2xl font-bold text-ink">
+          Listings
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-graphite">
           Manually import canonical listings or work the host submission review
           queue.
         </p>
@@ -50,10 +52,10 @@ export default async function AdminListingsPage({
             <Link
               key={item.id}
               href={`/admin/listings?tab=${item.id}`}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              className={`rounded-pill px-4 py-2 text-sm font-semibold transition ${
                 isActive
-                  ? "bg-ink text-cream"
-                  : "border border-sand text-ink/70 hover:bg-ink/5"
+                  ? "bg-ink text-paper"
+                  : "border border-line text-ink/70 hover:bg-paper"
               }`}
             >
               {item.label}

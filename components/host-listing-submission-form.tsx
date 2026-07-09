@@ -88,11 +88,11 @@ export function HostListingSubmissionForm({
   return (
     <form
       action={submit}
-      className="flex flex-col gap-4 rounded-card border border-sand bg-white/80 p-4"
+      className="flex flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-e1"
     >
       <div>
         <h2 className="text-sm font-semibold text-ink">Submit a listing</h2>
-        <p className="mt-1 text-sm leading-relaxed text-ink/65">
+        <p className="mt-1 text-sm leading-relaxed text-graphite">
           New host listings start as private drafts so Sweepza can review them
           before they go live.
         </p>
@@ -104,7 +104,7 @@ export function HostListingSubmissionForm({
           <input
             name="title"
             required
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
 
@@ -114,7 +114,7 @@ export function HostListingSubmissionForm({
             name="shortDescription"
             required
             rows={3}
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
         </label>
 
@@ -124,7 +124,7 @@ export function HostListingSubmissionForm({
             <input
               name="prizeName"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -135,7 +135,7 @@ export function HostListingSubmissionForm({
               type="number"
               min="0"
               step="1"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -146,7 +146,7 @@ export function HostListingSubmissionForm({
             <select
               name="prizeCategory"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             >
               <option value="">Select category</option>
               {categories.map((category) => (
@@ -163,7 +163,7 @@ export function HostListingSubmissionForm({
               name="entryFrequency"
               defaultValue="one_time"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             >
               {ENTRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -181,7 +181,7 @@ export function HostListingSubmissionForm({
               name="entryUrl"
               type="url"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -191,7 +191,7 @@ export function HostListingSubmissionForm({
               name="officialRulesUrl"
               type="url"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -203,7 +203,7 @@ export function HostListingSubmissionForm({
               name="endDate"
               type="date"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -213,7 +213,7 @@ export function HostListingSubmissionForm({
               name="eligibilityCountry"
               defaultValue="US"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -224,7 +224,7 @@ export function HostListingSubmissionForm({
             <input
               name="mainImageUrl"
               type="url"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -232,7 +232,7 @@ export function HostListingSubmissionForm({
             <span className="font-medium text-ink">Image alt text</span>
             <input
               name="imageAltText"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -242,19 +242,19 @@ export function HostListingSubmissionForm({
             <span className="font-medium text-ink">Sponsor name</span>
             <input
               name="sponsorName"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
 
           <fieldset className="flex flex-col gap-2 text-sm">
             <legend className="font-medium text-ink">Tags</legend>
-            <div className="grid max-h-40 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-sand bg-cream p-3">
+            <div className="grid max-h-40 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-line bg-paper p-3">
               {tags.map((tag) => (
                 <label
                   key={tag.code}
                   className="flex items-center gap-2 text-xs text-ink/75"
                 >
-                  <input type="checkbox" name="tagCodes" value={tag.code} />
+                  <input type="checkbox" name="tagCodes" value={tag.code} className="text-pine focus:ring-pine" />
                   <span>{tag.label}</span>
                 </label>
               ))}
@@ -267,23 +267,23 @@ export function HostListingSubmissionForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "Submitting..." : "Create draft listing"}
         </button>
-        <p className="text-xs text-ink/50">
+        <p className="text-xs text-graphite">
           Drafts stay private until Sweepza reviews and publishes them.
         </p>
       </div>
 
       {result.error ? (
-        <p className="rounded-xl border border-ember/30 bg-ember/10 px-3 py-2 text-sm text-ember">
+        <p className="rounded-xl border border-flame/30 bg-flame/10 px-3 py-2 text-sm text-flame">
           {result.error}
         </p>
       ) : null}
 
       {result.slug ? (
-        <div className="rounded-xl border border-moss/30 bg-moss/10 px-3 py-2 text-sm text-moss">
+        <div className="rounded-xl border border-pine/30 bg-pine/10 px-3 py-2 text-sm text-pine">
           Listing saved as draft:{" "}
           <a href={result.url} className="font-semibold underline">
             {result.slug}

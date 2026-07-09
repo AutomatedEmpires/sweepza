@@ -96,16 +96,12 @@ export function AdminListingImportForm({
   return (
     <form
       action={submit}
-      className="flex flex-col gap-4 rounded-card border border-sand bg-white/80 p-4"
+      className="flex flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-e1"
     >
       <div className="grid gap-4">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-ink">Title</span>
-          <input
-            name="title"
-            required
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-          />
+          <input name="title" required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
@@ -114,18 +110,14 @@ export function AdminListingImportForm({
             name="shortDescription"
             required
             rows={3}
-            className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
           />
         </label>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Prize name</span>
-            <input
-              name="prizeName"
-              required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            />
+            <input name="prizeName" required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
@@ -135,7 +127,7 @@ export function AdminListingImportForm({
               type="number"
               min="0"
               step="1"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -143,11 +135,7 @@ export function AdminListingImportForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Category</span>
-            <select
-              name="prizeCategory"
-              required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            >
+            <select name="prizeCategory" required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none">
               <option value="">Select category</option>
               {categories.map((category) => (
                 <option key={category.code} value={category.code}>
@@ -159,11 +147,7 @@ export function AdminListingImportForm({
 
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Entry frequency</span>
-            <select
-              name="entryFrequency"
-              required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            >
+            <select name="entryFrequency" required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none">
               {ENTRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -180,7 +164,7 @@ export function AdminListingImportForm({
               name="entryUrl"
               type="url"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -190,7 +174,7 @@ export function AdminListingImportForm({
               name="officialRulesUrl"
               type="url"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -202,7 +186,7 @@ export function AdminListingImportForm({
               name="endDate"
               type="date"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
 
@@ -212,7 +196,7 @@ export function AdminListingImportForm({
               name="eligibilityCountry"
               defaultValue="US"
               required
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -220,29 +204,19 @@ export function AdminListingImportForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Main image URL</span>
-            <input
-              name="mainImageUrl"
-              type="url"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            />
+            <input name="mainImageUrl" type="url" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Image alt text</span>
-            <input
-              name="imageAltText"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            />
+            <input name="imageAltText" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Sponsor name</span>
-            <input
-              name="sponsorName"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
-            />
+            <input name="sponsorName" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
@@ -250,7 +224,7 @@ export function AdminListingImportForm({
             <select
               name="sourceLabel"
               defaultValue="found_by_sweepza"
-              className="rounded-xl border border-sand bg-cream px-3 py-2 text-ink outline-none"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             >
               {SOURCE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -267,7 +241,7 @@ export function AdminListingImportForm({
             {tags.map((tag) => (
               <label
                 key={tag.code}
-                className="inline-flex items-center gap-2 rounded-full border border-sand bg-cream px-3 py-1.5 text-xs text-ink/80"
+                className="inline-flex items-center gap-2 rounded-pill border border-line bg-paper px-3 py-1.5 text-xs text-ink/80"
               >
                 <input type="checkbox" name="tagCodes" value={tag.code} />
                 {tag.label}
@@ -292,21 +266,21 @@ export function AdminListingImportForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-full bg-moss px-4 py-2 text-sm font-semibold text-cream transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "Importing..." : "Create listing"}
         </button>
         {result.slug ? (
           <a
             href={result.url}
-            className="text-sm font-semibold text-moss transition hover:underline"
+            className="text-sm font-semibold text-pine transition hover:underline"
           >
             Open `{result.slug}`
           </a>
         ) : null}
       </div>
 
-      {result.error ? <p className="text-sm text-ember">{result.error}</p> : null}
+      {result.error ? <p className="text-sm text-flame">{result.error}</p> : null}
     </form>
   );
 }
