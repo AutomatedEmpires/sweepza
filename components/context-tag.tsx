@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { Icon } from "@/components/icon";
 import type { ContextTone, ListingContext } from "@/lib/listing-context";
 
 // One context label per card. Two visual variants:
@@ -82,6 +83,12 @@ export function ContextTag({
     >
       {urgent && (
         <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse-urgent" />
+      )}
+      {context.tone === "again" && (
+        <Icon name="repeat" size={11} className="-ml-0.5" />
+      )}
+      {context.tone === "won" && (
+        <Icon name="trophy" size={11} weight="fill" className="-ml-0.5" />
       )}
       {context.label}
     </span>

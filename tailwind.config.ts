@@ -57,10 +57,38 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.55" },
         },
+        // Memory lifecycle motion — the signature interactions around
+        // remembering, recurrence, and winning.
+        "save-pop": {
+          "0%": { transform: "scale(1)" },
+          "40%": { transform: "scale(0.82)" },
+          "100%": { transform: "scale(1)" },
+        },
+        "pop-in": {
+          "0%": { opacity: "0", transform: "scale(0.6)" },
+          "60%": { transform: "scale(1.12)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        // "Ready again" recurrence — a calm breathing ring that invites
+        // re-entry without shouting. This is the memory engine made visible.
+        "ready-glow": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(62,107,82,0)" },
+          "50%": { boxShadow: "0 0 0 4px rgba(62,107,82,0.14)" },
+        },
+        // Won — a single slow sheen sweep across the action on the moment
+        // the win lands.
+        sheen: {
+          "0%": { transform: "translateX(-130%) skewX(-12deg)" },
+          "100%": { transform: "translateX(240%) skewX(-12deg)" },
+        },
       },
       animation: {
         "settle-in": "settle-in 0.35s cubic-bezier(0.22,1,0.36,1) both",
         "pulse-urgent": "pulse-urgent 2s ease-in-out infinite",
+        "save-pop": "save-pop 0.34s cubic-bezier(0.34,1.56,0.64,1)",
+        "pop-in": "pop-in 0.3s cubic-bezier(0.34,1.56,0.64,1) both",
+        "ready-glow": "ready-glow 2.6s ease-in-out infinite",
+        sheen: "sheen 2.4s ease-in-out 0.15s",
       },
     },
   },

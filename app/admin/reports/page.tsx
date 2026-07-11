@@ -1,3 +1,4 @@
+import { Icon } from "@/components/icon";
 import { AdminReportActions } from "@/components/admin-report-actions";
 import { getOpenReports, type AdminReportRow } from "@/lib/db/admin";
 import type { ReportAiSeverity, ReportTargetType } from "@/lib/db/enums";
@@ -18,10 +19,10 @@ const TARGET_GROUPS: { type: ReportTargetType; label: string }[] = [
 ];
 
 const SEVERITY_CLASSES: Record<ReportAiSeverity, string> = {
-  low: "bg-moss/10 text-moss",
-  medium: "bg-sky/10 text-sky",
-  high: "bg-ember/10 text-ember",
-  critical: "bg-ember text-cream",
+  low: "bg-pine/10 text-pine",
+  medium: "bg-ocean/10 text-ocean",
+  high: "bg-flame/10 text-flame",
+  critical: "bg-flame text-white",
 };
 
 function humanize(value: string): string {
@@ -51,16 +52,21 @@ export default async function AdminReportsPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
           Admin
         </p>
-        <h1 className="mt-1 text-2xl font-bold text-ink">Reports</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink/65">
+        <h1 className="mt-1 font-display text-2xl font-bold text-ink">
+          Reports
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-graphite">
           Open reports awaiting a decision, grouped by what was reported.
           Dismiss false alarms or act to hide the offending content.
         </p>
       </header>
 
       {reports.length === 0 ? (
-        <div className="mt-6 rounded-card border border-sand bg-white/80 p-5">
-          <p className="text-sm text-ink/60">No open reports right now.</p>
+        <div className="mt-6 flex items-center gap-3 rounded-card border border-pine/30 bg-pine/5 p-5">
+          <Icon name="check" size={18} className="text-pine" />
+          <p className="text-sm font-medium text-pine">
+            Queue clear — no open reports.
+          </p>
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
@@ -69,13 +75,13 @@ export default async function AdminReportsPage() {
             if (rows.length === 0) return null;
             return (
               <div key={group.type}>
-                <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+                <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
                   {group.label} ({rows.length})
                 </h2>
-                <div className="overflow-x-auto rounded-card border border-sand bg-white/80">
+                <div className="overflow-x-auto rounded-card border border-line bg-surface shadow-e1">
                   <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                     <thead>
-                      <tr className="border-b border-sand text-xs uppercase tracking-wide text-ink/55">
+                      <tr className="border-b border-line text-xs uppercase tracking-wide text-graphite">
                         <th className="px-4 py-3 font-semibold">Reporter</th>
                         <th className="px-4 py-3 font-semibold">Reason</th>
                         <th className="px-4 py-3 font-semibold">Severity</th>
@@ -87,26 +93,26 @@ export default async function AdminReportsPage() {
                       {rows.map((report) => (
                         <tr
                           key={report.id}
-                          className="border-b border-sand/70 align-top"
+                          className="border-b border-line align-top"
                         >
-                          <td className="px-4 py-3 text-ink/80">
+                          <td className="px-4 py-3 text-graphite">
                             {report.reporter_display_name ?? "Unknown"}
                           </td>
-                          <td className="px-4 py-3 capitalize text-ink/80">
+                          <td className="px-4 py-3 capitalize text-graphite">
                             {humanize(report.reason_code)}
                           </td>
                           <td className="px-4 py-3">
                             {report.ai_severity ? (
                               <span
-                                className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${SEVERITY_CLASSES[report.ai_severity]}`}
+                                className={`rounded-pill px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${SEVERITY_CLASSES[report.ai_severity]}`}
                               >
                                 {report.ai_severity}
                               </span>
                             ) : (
-                              <span className="text-ink/55">—</span>
+                              <span className="text-graphite">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-ink/70">
+                          <td className="px-4 py-3 text-graphite">
                             {formatDate(report.created_at)}
                           </td>
                           <td className="px-4 py-3">

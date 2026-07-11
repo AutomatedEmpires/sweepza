@@ -15,32 +15,44 @@ export default async function HostNotificationsPage() {
   const prefs = await getNotificationPrefs();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-ink">Notification Preferences</h1>
-        <Link href="/host" className="text-sm text-moss hover:underline">Back to dashboard</Link>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 pb-8 pt-8">
+      <header className="mb-6 flex items-start justify-between gap-3 px-1">
+        <h1 className="font-display text-3xl text-ink">Notification preferences</h1>
+        <Link
+          href="/host"
+          className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
+        >
+          Dashboard
+        </Link>
+      </header>
 
-      <form action={updateNotificationPrefsAction} className="space-y-4">
+      <form action={updateNotificationPrefsAction} className="flex flex-col gap-3">
         {TOGGLES.map((toggle) => {
           const checked = prefs[toggle.name as keyof typeof prefs] as boolean;
           return (
-            <label key={toggle.name} htmlFor={toggle.name} className="flex items-start gap-3 rounded-card border border-sand bg-cream p-4">
+            <label
+              key={toggle.name}
+              htmlFor={toggle.name}
+              className="flex items-start gap-3 rounded-card border border-line bg-surface p-4 shadow-e1"
+            >
               <input
                 id={toggle.name}
                 name={toggle.name}
                 type="checkbox"
                 defaultChecked={checked}
-                className="mt-1 h-4 w-4 rounded border-sand text-moss focus:ring-moss"
+                className="mt-1 h-4 w-4 rounded border-line text-pine focus:ring-pine"
               />
               <span>
                 <span className="block text-sm font-medium text-ink">{toggle.label}</span>
-                <span className="block text-sm text-ink/60">{toggle.description}</span>
+                <span className="block text-sm text-graphite">{toggle.description}</span>
               </span>
             </label>
           );
         })}
-        <button type="submit" className="rounded-full bg-moss px-4 py-2 text-sm font-medium text-cream hover:bg-moss/90">
+        <button
+          type="submit"
+          className="mt-1 self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+        >
           Save preferences
         </button>
       </form>

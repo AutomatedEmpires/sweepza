@@ -30,6 +30,14 @@ interface SeekerStateValue {
   snapshot: SeekerStateSnapshot;
   setPrimaryState: (id: string, state: SeekerUiState) => void;
   toggleSaved: (id: string) => void;
+  /**
+   * True once the store's authoritative values are in place: from mount in
+   * remote mode (server snapshot is already loaded), and after the localStorage
+   * read in local mode. Consumers use this to distinguish a genuine in-session
+   * state change from the one-time async hydration merge, so celebratory UI
+   * doesn't replay for already-entered/won items on page load.
+   */
+  hydrated: boolean;
 }
 
 const SeekerStateContext = createContext<SeekerStateValue | null>(null);
@@ -173,7 +181,9 @@ export function SeekerStateProvider({
   // effects, letting the write effect fire once with the pre-hydration empty
   // maps and wipe the stored snapshot. As state, it batches with the hydrated
   // values, so the write effect can never observe hydrated=true + stale data.
-  const [hydrated, setHydrated] = useState(false);
+  // Remote mode is hydrated from mount — its `initial` snapshot is the
+  // server's authoritative state, so there is no async merge to wait on.
+  const [hydrated, setHydrated] = useState(() => persistenceMode !== "local");
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
@@ -307,8 +317,9 @@ export function SeekerStateProvider({
       snapshot,
       setPrimaryState,
       toggleSaved,
+      hydrated,
     }),
-    [primary, saved, activity, snapshot, setPrimaryState, toggleSaved],
+    [primary, saved, activity, snapshot, setPrimaryState, toggleSaved, hydrated],
   );
 
   return (

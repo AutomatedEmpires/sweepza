@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
@@ -57,6 +57,39 @@ export function ListingCard({
   const won = uiState === "won";
   const entered = uiState === "entered";
 
+  // Memory-lifecycle motion. A transient flag plays a celebratory beat only
+  // when a state is *newly reached* in this session — never on mount, and never
+  // for the store's one-time async hydration (which can flip an already-acted
+  // item none -> entered/won without a real user action). `save-pop` is
+  // separate (saved is not part of uiState).
+  const hydrated = store ? store.hydrated : true;
+  const [savePop, setSavePop] = useState(false);
+  const [celebrate, setCelebrate] = useState<"entered" | "won" | null>(null);
+  const prevStateRef = useRef<SeekerUiState>(uiState);
+  const rebasedRef = useRef(false);
+  useEffect(() => {
+    // Hold until the store's authoritative values have landed. The first render
+    // after that rebases the baseline silently, so only transitions that happen
+    // afterward (a real enter/win in this session) celebrate.
+    if (!hydrated) return;
+    if (!rebasedRef.current) {
+      rebasedRef.current = true;
+      prevStateRef.current = uiState;
+      return;
+    }
+    const prev = prevStateRef.current;
+    if (prev === uiState) return;
+    prevStateRef.current = uiState;
+    if (uiState === "won") setCelebrate("won");
+    else if (uiState === "entered") setCelebrate("entered");
+    else setCelebrate(null);
+    // The win sheen runs for 2.4s after a 150ms delay. Keep its host mounted
+    // through the full sweep; the shorter entered pop can clear sooner.
+    const celebrationMs = uiState === "won" ? 2_700 : 900;
+    const t = setTimeout(() => setCelebrate(null), celebrationMs);
+    return () => clearTimeout(t);
+  }, [uiState, hydrated]);
+
   const baseProps = useMemo(
     () => ({
       listing_id: listing.id,
@@ -80,7 +113,11 @@ export function ListingCard({
     const willSave = !saved;
     if (store) store.toggleSaved(listing.id);
     else setLocalSaved(willSave);
-    if (willSave) track("listing_saved", baseProps);
+    if (willSave) {
+      track("listing_saved", baseProps);
+      setSavePop(true);
+      setTimeout(() => setSavePop(false), 360);
+    }
   }
 
   function handleEnter() {
@@ -179,7 +216,8 @@ export function ListingCard({
           aria-pressed={saved}
           aria-label={saved ? `Saved ${listing.title}` : `Save ${listing.title}`}
           className={cn(
-            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full shadow-e1 backdrop-blur transition",
+            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full shadow-e1 backdrop-blur transition active:scale-90",
+            savePop && "animate-save-pop",
             saved
               ? "bg-ember text-white"
               : "bg-surface/85 text-ink hover:bg-surface",
@@ -270,7 +308,7 @@ export function ListingCard({
             onClick={handleEnter}
             disabled={expired || won}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+              "relative flex flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-semibold transition",
               enterState === "won"
                 ? "cursor-default bg-pine text-white"
                 : enterState === "expired"
@@ -278,11 +316,24 @@ export function ListingCard({
                   : enterState === "entered"
                     ? "bg-pine/12 text-pine hover:bg-pine/18"
                     : "bg-ember text-white hover:bg-ember/90",
+              // The recurrence invitation: a calm breathing ring while a
+              // re-entry window is open again.
+              enterState === "again" && "animate-ready-glow",
             )}
           >
+            {/* One-time sheen sweep the moment a win lands. */}
+            {celebrate === "won" && (
+              <span
+                aria-hidden
+                className="animate-sheen pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+              />
+            )}
             {enterState === "won" ? (
               <>
-                <Icon name="trophy" size={16} weight="fill" /> Won
+                <span className={cn(celebrate === "won" && "animate-pop-in")}>
+                  <Icon name="trophy" size={16} weight="fill" />
+                </span>{" "}
+                Won
               </>
             ) : enterState === "expired" ? (
               "Ended"
@@ -292,7 +343,10 @@ export function ListingCard({
               </>
             ) : enterState === "entered" ? (
               <>
-                <Icon name="check" size={16} /> Entered
+                <span className={cn(celebrate === "entered" && "animate-pop-in")}>
+                  <Icon name="check" size={16} />
+                </span>{" "}
+                Entered
               </>
             ) : (
               <>

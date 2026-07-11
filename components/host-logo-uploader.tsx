@@ -45,17 +45,17 @@ export function HostLogoUploader({ initialLogoUrl }: { initialLogoUrl: string | 
 
   return (
     <div className="space-y-3">
-      <div className="h-24 w-24 overflow-hidden rounded-full border border-sand bg-sand/40">
+      <div className="h-24 w-24 overflow-hidden rounded-full border border-line bg-paper">
         {logoUrl ? (
           <Image src={logoUrl} alt="Host logo" width={96} height={96} className="h-full w-full object-cover" unoptimized />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-ink/55">No logo</div>
+          <div className="flex h-full w-full items-center justify-center text-xs text-graphite">No logo</div>
         )}
       </div>
       <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleChange} disabled={busy}
-        className="block text-sm text-ink/70 file:mr-3 file:rounded-full file:border-0 file:bg-moss/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-moss hover:file:bg-moss/20" />
-      {busy ? <p className="text-sm text-ink/60">Uploading…</p> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        className="block text-sm text-ink/75 file:mr-3 file:rounded-full file:border-0 file:bg-pine/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-pine hover:file:bg-pine/20" />
+      {busy ? <p className="text-sm text-graphite">Uploading…</p> : null}
+      {error ? <p className="text-sm text-flame">{error}</p> : null}
     </div>
   );
 }

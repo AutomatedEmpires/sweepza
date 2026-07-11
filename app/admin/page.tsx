@@ -18,20 +18,20 @@ export const dynamic = "force-dynamic";
 function StatCard({
   value,
   label,
-  accent = false,
+  tone,
 }: {
   value: number;
   label: string;
-  accent?: boolean;
+  tone?: "ember" | "flame";
 }) {
+  const toneClass =
+    tone === "flame" ? "text-flame" : tone === "ember" ? "text-ember" : "text-ink";
   return (
-    <div className="rounded-card border border-sand bg-white/80 p-5">
-      <p
-        className={`text-3xl font-bold ${accent ? "text-ember" : "text-ink"}`}
-      >
+    <div className="rounded-card border border-line bg-surface p-5 shadow-e1">
+      <p className={`font-display nums text-3xl font-bold ${toneClass}`}>
         {value}
       </p>
-      <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink/55">
+      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-graphite">
         {label}
       </p>
     </div>
@@ -61,8 +61,10 @@ export default async function AdminDashboardPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">
           Admin
         </p>
-        <h1 className="mt-1 text-2xl font-bold text-ink">Command center</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink/65">
+        <h1 className="mt-1 font-display text-2xl font-bold text-ink">
+          Command center
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-graphite">
           A live snapshot of listings, hosts, winners, and moderation across
           Sweepza.
         </p>
@@ -117,23 +119,23 @@ export default async function AdminDashboardPage() {
 
         return (
           <div className="mt-6">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+            <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
               Needs attention
             </h2>
             {attention.length === 0 ? (
-              <div className="flex items-center gap-3 rounded-card border border-moss/30 bg-moss/5 p-4">
-                <Icon name="check" size={18} className="text-moss" />
-                <p className="text-sm font-medium text-ink">
-                  All queues are clear.
+              <div className="flex items-center gap-3 rounded-card border border-pine/30 bg-pine/5 p-4">
+                <Icon name="check" size={18} className="text-pine" />
+                <p className="text-sm font-medium text-pine">
+                  Queue clear — all caught up.
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-sand overflow-hidden rounded-card border border-ember/25 bg-white/80">
+              <ul className="divide-y divide-line overflow-hidden rounded-card border border-ember/25 bg-surface shadow-e1">
                 {attention.map((item) => (
                   <li key={item.label}>
                     <Link
                       href={item.href}
-                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-ink/5"
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-paper"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ember/10 text-ember">
                         <Icon name={item.icon} size={15} />
@@ -141,13 +143,13 @@ export default async function AdminDashboardPage() {
                       <span className="min-w-0 flex-1 text-sm font-medium text-ink">
                         {item.label}
                       </span>
-                      <span className="rounded-full bg-ember px-2.5 py-0.5 text-xs font-bold text-cream">
+                      <span className="nums rounded-pill bg-ember px-2.5 py-0.5 text-xs font-bold text-white">
                         {item.count}
                       </span>
                       <Icon
                         name="caretRight"
                         size={14}
-                        className="text-ink/35"
+                        className="text-graphite"
                       />
                     </Link>
                   </li>
@@ -160,7 +162,7 @@ export default async function AdminDashboardPage() {
 
       <div className="mt-6 flex flex-col gap-6">
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
             Platform
           </h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -169,18 +171,18 @@ export default async function AdminDashboardPage() {
             <StatCard
               value={platform.pending_review_listings}
               label="Pending review"
-              accent={platform.pending_review_listings > 0}
+              tone={platform.pending_review_listings > 0 ? "ember" : undefined}
             />
             <StatCard
               value={platform.held_listings}
               label="Held (under review)"
-              accent={platform.held_listings > 0}
+              tone={platform.held_listings > 0 ? "flame" : undefined}
             />
           </div>
         </div>
 
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
             Hosts
           </h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -189,20 +191,20 @@ export default async function AdminDashboardPage() {
             <StatCard
               value={hosts.pending_verification}
               label="Pending verification"
-              accent={hosts.pending_verification > 0}
+              tone={hosts.pending_verification > 0 ? "ember" : undefined}
             />
           </div>
         </div>
 
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
             Winners &amp; reports
           </h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
               value={winners.pending_winner_posts}
               label="Pending winner posts"
-              accent={winners.pending_winner_posts > 0}
+              tone={winners.pending_winner_posts > 0 ? "ember" : undefined}
             />
             <StatCard
               value={winners.published_winner_posts}
@@ -211,20 +213,20 @@ export default async function AdminDashboardPage() {
             <StatCard
               value={reports.open_reports}
               label="Open reports"
-              accent={reports.open_reports > 0}
+              tone={reports.open_reports > 0 ? "ember" : undefined}
             />
           </div>
         </div>
 
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-ink/55">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">
             Recent listings
           </h2>
-          <div className="rounded-card border border-sand bg-white/80 p-2">
+          <div className="rounded-card border border-line bg-surface p-2 shadow-e1">
             {recent.length === 0 ? (
-              <p className="p-3 text-sm text-ink/60">No listings yet.</p>
+              <p className="p-3 text-sm text-graphite">No listings yet.</p>
             ) : (
-              <ul className="divide-y divide-sand">
+              <ul className="divide-y divide-line">
                 {recent.map((listing) => (
                   <li
                     key={listing.id}
@@ -234,10 +236,10 @@ export default async function AdminDashboardPage() {
                       {listing.title}
                     </span>
                     <span className="flex shrink-0 items-center gap-3">
-                      <span className="rounded-full bg-ink/5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink/60">
+                      <span className="rounded-pill border border-line px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-graphite">
                         {listing.lifecycle_status}
                       </span>
-                      <span className="text-xs text-ink/55">
+                      <span className="text-xs text-graphite">
                         {formatDate(listing.created_at)}
                       </span>
                     </span>
