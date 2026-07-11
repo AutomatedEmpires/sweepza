@@ -16,6 +16,8 @@ import "server-only";
  */
 
 interface RateLimitOptions {
+  /** Stable endpoint or action namespace for an independent request bucket. */
+  namespace: string;
   /** Maximum number of requests allowed within the window. */
   limit: number;
   /** Sliding window size, in milliseconds. */
@@ -27,7 +29,7 @@ interface RateLimitResult {
   retryAfterSec: number;
 }
 
-// key -> timestamps (ms) of requests within the current window.
+// namespace + client key -> timestamps (ms) within the current window.
 const hits = new Map<string, number[]>();
 
 // Periodically purge stale entries so the map doesn't grow unbounded
@@ -38,17 +40,18 @@ export function rateLimit(
   key: string,
   opts: RateLimitOptions,
 ): RateLimitResult {
-  const { limit, windowMs } = opts;
+  const { namespace, limit, windowMs } = opts;
   const now = Date.now();
   const windowStart = now - windowMs;
+  const bucketKey = `${namespace}\u0000${key}`;
 
-  const existing = hits.get(key) ?? [];
+  const existing = hits.get(bucketKey) ?? [];
   const recent = existing.filter((ts) => ts > windowStart);
 
   if (recent.length >= limit) {
     const oldest = recent[0];
     const retryAfterMs = Math.max(0, oldest + windowMs - now);
-    hits.set(key, recent);
+    hits.set(bucketKey, recent);
     return {
       ok: false,
       retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)),
@@ -56,7 +59,7 @@ export function rateLimit(
   }
 
   recent.push(now);
-  hits.set(key, recent);
+  hits.set(bucketKey, recent);
 
   // Best-effort cleanup to bound memory usage in a long-lived instance.
   if (hits.size > MAX_TRACKED_KEYS) {

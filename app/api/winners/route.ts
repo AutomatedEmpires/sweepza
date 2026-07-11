@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { WinnerPostRow } from "@/lib/db/types";
 import { clientKey, rateLimit } from "@/lib/rate-limit";
-
-// Caption cap mirrors the DB constraint winner_caption_len (<= 500 chars).
-const winnerPostSchema = z.object({
-  listingId: z.string().uuid(),
-  photoUrl: z.string().url(),
-  caption: z.string().max(500).optional(),
-});
+import { winnerSubmissionSchema } from "@/lib/winner-submission-schema";
 
 // NOTE: Clerk auth wiring is Lane B. For now we require an access token header.
 function getAccessToken(req: Request): string | null {
@@ -25,6 +18,7 @@ function getAccessToken(req: Request): string | null {
 export async function POST(req: Request) {
   try {
     const { ok, retryAfterSec } = rateLimit(clientKey(req), {
+      namespace: "winners",
       limit: 3,
       windowMs: 60_000,
     });
@@ -41,7 +35,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => null);
-    const parsed = winnerPostSchema.safeParse(body);
+    const parsed = winnerSubmissionSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.flatten() },
@@ -54,8 +48,8 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("winner_post")
       .insert({
-        listing_id: parsed.data.listingId,
-        photo_url: parsed.data.photoUrl,
+        listing_id: parsed.data.listingId ?? null,
+        photo_url: parsed.data.photoUrl ?? null,
         caption: parsed.data.caption ?? null,
         review_status: "submitted",
       })

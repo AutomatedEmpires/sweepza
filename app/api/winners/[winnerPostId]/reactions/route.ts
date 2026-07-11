@@ -16,6 +16,7 @@ export async function POST(
   context: { params: Promise<{ winnerPostId: string }> },
 ) {
   const { ok, retryAfterSec } = rateLimit(clientKey(request), {
+    namespace: "winner-reactions",
     limit: 20,
     windowMs: 60_000,
   });

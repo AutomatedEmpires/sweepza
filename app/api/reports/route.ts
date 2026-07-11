@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const { ok, retryAfterSec } = rateLimit(clientKey(request), {
+    namespace: "reports",
     limit: 5,
     windowMs: 60_000,
   });

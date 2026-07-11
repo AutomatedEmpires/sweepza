@@ -36,6 +36,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const { ok, retryAfterSec } = rateLimit(clientKey(request), {
+    namespace: "seeker-state",
     limit: 60,
     windowMs: 60_000,
   });

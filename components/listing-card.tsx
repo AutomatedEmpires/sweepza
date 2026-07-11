@@ -83,7 +83,10 @@ export function ListingCard({
     if (uiState === "won") setCelebrate("won");
     else if (uiState === "entered") setCelebrate("entered");
     else setCelebrate(null);
-    const t = setTimeout(() => setCelebrate(null), 900);
+    // The win sheen runs for 2.4s after a 150ms delay. Keep its host mounted
+    // through the full sweep; the shorter entered pop can clear sooner.
+    const celebrationMs = uiState === "won" ? 2_700 : 900;
+    const t = setTimeout(() => setCelebrate(null), celebrationMs);
     return () => clearTimeout(t);
   }, [uiState, hydrated]);
 
