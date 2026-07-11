@@ -25,11 +25,11 @@ export default async function DiscoverPage({
   });
 
   return (
-    <section className="px-4 pb-8 pt-8">
-      <header className="mb-4 flex items-start justify-between gap-3 px-1">
+    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+      <header className="mb-5 flex items-start justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
-          <h1 className="font-display text-3xl text-ink">Discover</h1>
-          <p className="text-sm text-ink/60">
+          <h1 className="font-display text-[26px] leading-none text-ink">Discover</h1>
+          <p className="text-sm text-graphite">
             {q
               ? `Results for “${q}” — title, prize, host, and tags.`
               : "Scroll the feed, filter fast, and track what you enter."}

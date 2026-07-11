@@ -22,11 +22,11 @@ export default async function SwipePage({
   ).filter((listing) => !isExpired(listing));
 
   return (
-    <section className="flex flex-col pt-6">
-      <header className="mb-2 flex items-start justify-between gap-3 px-5">
+    <section className="flex flex-col pt-6 lg:mx-auto lg:max-w-5xl lg:px-8">
+      <header className="mb-2 flex items-start justify-between gap-3 px-5 lg:px-0">
         <div className="flex flex-col gap-1">
-          <h1 className="font-display text-3xl text-ink">Discover</h1>
-          <p className="text-sm text-ink/60">
+          <h1 className="font-display text-[26px] leading-none text-ink">Discover</h1>
+          <p className="text-sm text-graphite">
             {q
               ? `Swiping results for “${q}”.`
               : "Pass, save, or enter — one sweep at a time."}

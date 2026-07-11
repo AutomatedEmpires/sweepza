@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Patrick_Hand } from "next/font/google";
+import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
 import { ObservabilityProviders } from "@/components/observability-providers";
@@ -14,10 +14,19 @@ import {
   SITE_URL,
 } from "@/lib/site";
 
-const display = Patrick_Hand({
-  weight: "400",
+// Editorial display face — high-contrast, optical-sizing serif for headlines,
+// prize values, and large numerals. Authoritative, not handwritten.
+const display = Fraunces({
   subsets: ["latin"],
   variable: "--font-display",
+  display: "swap",
+  axes: ["opsz", "SOFT"],
+});
+
+// UI face — clean, legible grotesque for all functional text and data.
+const sans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
   display: "swap",
 });
 
@@ -38,10 +47,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#e2622f",
+  themeColor: "#17130f",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default async function RootLayout({
@@ -55,7 +63,7 @@ export default async function RootLayout({
     : { primary: {}, saved: {}, activity: {} };
 
   return (
-    <html lang="en" className={display.variable}>
+    <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <body>
         <ObservabilityProviders>
           <SweepzaProviders

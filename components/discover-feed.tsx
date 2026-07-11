@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { FilterChips } from "@/components/filter-chips";
 import { FilterDrawer } from "@/components/filter-drawer";
 import { SearchInput } from "@/components/search-input";
@@ -85,12 +86,12 @@ export function DiscoverFeed({
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-haspopup="dialog"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sand bg-white px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/20"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/25"
         >
           <Icon name="filter" size={14} />
           Filters
           {active.length > 0 ? (
-            <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-ember px-1 text-[10px] font-bold text-cream">
+            <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-ember px-1 text-[10px] font-bold text-white">
               {active.length}
             </span>
           ) : null}
@@ -98,7 +99,7 @@ export function DiscoverFeed({
       </div>
 
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-xs text-ink/60">{countLabel}</span>
+        <span className="text-xs text-graphite">{countLabel}</span>
         {hasActiveControls ? (
           <button
             type="button"
@@ -111,30 +112,39 @@ export function DiscoverFeed({
       </div>
 
       {visible.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-sand bg-white/60 px-6 py-12 text-center">
-          <Icon name={query ? "search" : "gift"} size={40} className="text-ink/30" />
-          <p className="text-sm font-medium text-ink">
+        <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-6 py-14 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-ember/10 text-ember">
+            <Icon name={query ? "search" : "gift"} size={26} />
+          </span>
+          <p className="font-display text-xl text-ink">
             {query
               ? `Nothing matches “${query}”`
               : "No sweepstakes match your filters"}
           </p>
-          <p className="text-xs text-ink/55">
+          <p className="max-w-xs text-sm text-graphite">
             {query
               ? "Try fewer words, a host name, or a prize category."
               : "Try clearing filters or browsing a broader set."}
           </p>
-          {hasActiveControls && (
+          {hasActiveControls ? (
             <button
               type="button"
               onClick={clearAll}
-              className="rounded-full bg-ember px-4 py-2 text-xs font-semibold text-cream"
+              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
             >
               Clear filters
             </button>
-          )}
+          ) : query ? (
+            <Link
+              href="/discover"
+              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            >
+              Browse all sweeps
+            </Link>
+          ) : null}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((listing) => (
             <ListingCard key={listing.id} listing={listing} surface="scroll" />
           ))}

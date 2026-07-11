@@ -5,16 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { canOptimizeImage } from "@/lib/image";
+import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
-import { ListingBadge } from "@/components/listing-badge";
 import { ListingReportButton } from "@/components/listing-report-button";
 import { track } from "@/lib/analytics";
-import {
-  SOURCE_LABEL_TEXT,
-  computeBadges,
-  daysUntil,
-  isExpired,
-} from "@/lib/listing-badges";
+import { SOURCE_LABEL_TEXT, daysUntil, isExpired } from "@/lib/listing-badges";
+import { pickListingContext } from "@/lib/listing-context";
 import {
   ENTRY_FREQUENCY_LABEL,
   formatEndDate,
@@ -22,30 +18,54 @@ import {
   formatRelativeTime,
 } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
+import { nextEntryAt } from "@/lib/sweep-routine";
 import { useSeekerState } from "@/lib/seeker-state";
 import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
-  found_by_sweepza: "Curated and listed by the Sweepza team.",
-  host_submitted: "Submitted directly by the host.",
-  claimed_by_host:
-    "Originally found by Sweepza and later claimed by the host.",
+  found_by_sweepza: "Curated and listed by the Sweepza team from an official source.",
+  host_submitted: "Submitted directly by the host running this sweepstakes.",
+  claimed_by_host: "Originally found by Sweepza and later claimed by the host.",
 };
 
-interface RuleRow {
-  id: string;
-  icon: IconName;
-  label: string;
-  value: string;
-}
-
 function countdownLabel(listing: Listing, now: Date): string {
-  if (isExpired(listing, now)) return "Ended";
+  if (isExpired(listing, now)) return "This sweepstakes has ended";
   const days = daysUntil(listing.endDate, now);
   if (days <= 0) return "Ends today";
-  if (days === 1) return "1 day left";
-  return `${days} days left`;
+  if (days === 1) return "Ends tomorrow";
+  if (days <= 21) return `${days} days left to enter`;
+  return `Ends ${formatEndDate(listing.endDate)}`;
+}
+
+function Fact({
+  icon,
+  label,
+  children,
+}: {
+  icon: IconName;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3 py-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink/[0.04] text-ink/60">
+        <Icon name={icon} size={16} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-graphite">
+          {label}
+        </div>
+        <div className="mt-0.5 text-sm text-ink">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 font-display text-2xl text-ink">{children}</h2>
+  );
 }
 
 export function ListingDetail({
@@ -60,17 +80,16 @@ export function ListingDetail({
   const store = useSeekerState();
   const now = useNow();
   const expired = isExpired(listing, now);
-  const initialState: SeekerUiState =
-    listing.seekerState?.primaryUiState ?? "none";
+  const initialState: SeekerUiState = listing.seekerState?.primaryUiState ?? "none";
 
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
-  const [hostOpen, setHostOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
   const [shareFlash, setShareFlash] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
+  const won = uiState === "won";
+  const entered = uiState === "entered";
 
   const baseProps = useMemo(
     () => ({
@@ -90,16 +109,14 @@ export function ListingDetail({
     if (store) store.setPrimaryState(listing.id, next);
     else setLocalState(next);
   }
-
   function toggleSaved() {
     const willSave = !saved;
     if (store) store.toggleSaved(listing.id);
     else setLocalSaved(willSave);
     if (willSave) track("listing_saved", baseProps);
   }
-
   function handleEnter() {
-    if (expired || uiState === "won") return;
+    if (expired || won) return;
     track("listing_enter_clicked", baseProps);
     if (typeof window !== "undefined") {
       window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
@@ -107,18 +124,10 @@ export function ListingDetail({
     setPrimary("entered");
     track("listing_marked_entered", { listing_id: listing.id });
   }
-
-  function handleSkip() {
-    const next = uiState === "skipped" ? "none" : "skipped";
-    setPrimary(next);
-    if (next === "skipped") track("listing_skipped", baseProps);
-  }
-
   function handleMarkWon() {
     setPrimary("won");
     track("listing_marked_won", baseProps);
   }
-
   async function handleShare() {
     const outcome = await shareLink({
       title: listing.title,
@@ -132,497 +141,422 @@ export function ListingDetail({
     }
   }
 
-  const badges = useMemo(() => computeBadges(listing, now), [listing, now]);
-  const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
+  const context = useMemo(
+    () =>
+      pickListingContext(
+        listing,
+        { uiState, saved, activity: store?.getActivity(listing.id) },
+        now,
+      ),
+    [listing, uiState, saved, store, now],
+  );
+
   const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
-  // Attribution name: claimed host first, then the original sponsor for
-  // Sweepza-found listings. When neither exists the source label stands alone.
   const attributionName = listing.host?.name ?? listing.originalSponsorName;
-  const hostName = attributionName ?? sourceText;
   const hostVerified =
     listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
-
-  const entered = uiState === "entered";
-  const won = uiState === "won";
-  const skipped = uiState === "skipped";
-
-  const startLabel = listing.startDate ? formatEndDate(listing.startDate) : "—";
-  const endLabel = formatEndDate(listing.endDate);
+  const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const countdown = countdownLabel(listing, now);
+  const days = daysUntil(listing.endDate, now);
+  const urgentEnd = !expired && days <= 3;
 
-  const prizeMeta = [
-    listing.prizeCategory,
-    listing.winnerCount
-      ? `${listing.winnerCount} winner${listing.winnerCount > 1 ? "s" : ""}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const rules: RuleRow[] = [];
-  rules.push({
-    id: "ends",
-    icon: "calendar",
-    label: expired ? "Ended" : "End date",
-    value: formatEndDate(listing.endDate),
-  });
-  if (listing.startDate) {
-    rules.push({
-      id: "opens",
-      icon: "calendar",
-      label: "Opens",
-      value: formatEndDate(listing.startDate),
-    });
-  }
-  rules.push({
-    id: "entry",
-    icon: "repeat",
-    label: "Entry",
-    value: ENTRY_FREQUENCY_LABEL[listing.entryFrequency],
-  });
-  if (listing.entryLimitNotes) {
-    rules.push({
-      id: "entry-limit",
-      icon: "repeat",
-      label: "Entry limit",
-      value: listing.entryLimitNotes,
-    });
-  }
   const eligibility = [
     listing.eligibilityCountry,
     listing.ageRequirement ? `${listing.ageRequirement}+` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  if (eligibility) {
-    rules.push({
-      id: "eligibility",
-      icon: "location",
-      label: "Eligibility",
-      value: eligibility,
-    });
-  }
-  if (listing.eligibilityStates && listing.eligibilityStates.length > 0) {
-    rules.push({
-      id: "states",
-      icon: "location",
-      label: "States",
-      value: listing.eligibilityStates.join(", "),
-    });
-  }
+  ].filter(Boolean).join(" · ");
+
+  // Ready-again integration for entered recurring sweeps.
+  const readyAgainAt = entered
+    ? nextEntryAt(store?.getActivity(listing.id)?.enteredAt ?? "", listing.entryFrequency)
+    : null;
+
+  const enterLabel = won
+    ? "You won this"
+    : expired
+      ? "Sweepstakes ended"
+      : entered
+        ? "Entered — enter again"
+        : "Enter now";
+
+  // ---- Action block, reused in the sticky rail (desktop) and inline (mobile) ----
+  const actionBlock = (
+    <div className="flex flex-col gap-3">
+      {prizeValue && (
+        <div>
+          <div className="font-display text-[34px] leading-none text-ink">
+            {prizeValue}
+          </div>
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-graphite">
+            estimated prize value
+          </div>
+        </div>
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-1.5 text-sm font-semibold",
+          expired ? "text-graphite" : urgentEnd ? "text-flame" : "text-ink",
+        )}
+      >
+        <Icon name="clock" size={15} />
+        <span className="nums">{countdown}</span>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleEnter}
+        disabled={expired || won}
+        className={cn(
+          "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-base font-semibold transition",
+          won
+            ? "cursor-default bg-pine text-white"
+            : expired
+              ? "cursor-not-allowed bg-line text-graphite"
+              : entered
+                ? "bg-pine/12 text-pine hover:bg-pine/18"
+                : "bg-ember text-white hover:bg-ember/90",
+        )}
+      >
+        {won ? (
+          <>
+            <Icon name="trophy" size={18} weight="fill" /> {enterLabel}
+          </>
+        ) : entered && !expired ? (
+          <>
+            <Icon name="repeat" size={17} /> {enterLabel}
+          </>
+        ) : expired ? (
+          enterLabel
+        ) : (
+          <>
+            {enterLabel} <Icon name="send" size={16} />
+          </>
+        )}
+      </button>
+
+      <p className="text-center text-[11px] text-graphite">
+        Opens the host&apos;s official entry page · Sweepza never charges to enter
+      </p>
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={toggleSaved}
+          aria-pressed={saved}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition",
+            saved
+              ? "border-ember bg-ember/8 text-ember"
+              : "border-line text-ink/75 hover:border-ink/25",
+          )}
+        >
+          <Icon name="bookmark" size={16} weight={saved ? "fill" : "regular"} />
+          {saved ? "Saved" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={handleShare}
+          aria-label="Share this sweepstakes"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-line py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
+        >
+          <Icon name={shareFlash ? "check" : "share"} size={16} />
+          {shareFlash ? "Copied" : "Share"}
+        </button>
+      </div>
+
+      {listing.officialRulesUrl && (
+        <a
+          href={listing.officialRulesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-ink/[0.04] py-2.5 text-sm font-semibold text-ink/80 transition hover:bg-ink/[0.07]"
+        >
+          <Icon name="rules" size={15} /> Read the official rules
+          <Icon name="caretRight" size={12} className="-rotate-45" />
+        </a>
+      )}
+
+      {entered && !won && (
+        <button
+          type="button"
+          onClick={handleMarkWon}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold/40 bg-gold/[0.07] py-2.5 text-sm font-semibold text-gold transition hover:bg-gold/[0.12]"
+        >
+          <Icon name="trophy" size={16} /> I won this sweepstakes
+        </button>
+      )}
+      {won && (
+        <Link
+          href="/winners/new"
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gold py-2.5 text-sm font-semibold text-white transition hover:bg-gold/90"
+        >
+          <Icon name="trophy" size={16} weight="fill" /> Share it on the Winner Wall
+        </Link>
+      )}
+
+      {readyAgainAt && (
+        <p className="rounded-xl bg-pine/[0.06] px-3 py-2 text-center text-xs font-medium text-pine">
+          {readyAgainAt.getTime() <= now.getTime()
+            ? "Ready to enter again now"
+            : `Ready again ${formatRelativeTime(readyAgainAt.toISOString(), now).replace(" ago", "")}`}
+        </p>
+      )}
+    </div>
+  );
 
   return (
-    <section className="px-4 pb-12 pt-6">
+    <section className="px-4 pb-28 pt-5 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pb-12">
       <Link
         href="/discover"
-        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-ink/60 transition hover:text-ink"
+        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-graphite transition hover:text-ink"
       >
-        <Icon name="caretRight" size={16} className="rotate-180" />
-        Discover
+        <Icon name="caretRight" size={15} className="rotate-180" /> Discover
       </Link>
 
-      {/* Hero card */}
-      <div className="overflow-hidden rounded-card border border-sand bg-cream shadow-sm">
-        {/* Photo + overlays */}
-        <div className="relative aspect-[4/3] w-full bg-sand">
-          {imageUrl ? (
-            <Image
-              src={imageUrl}
-              alt={listing.imageAltText ?? listing.prizeName}
-              fill
-              priority
-              className="object-cover"
-              sizes="(min-width: 1024px) 672px, 100vw"
-              unoptimized={!canOptimizeImage(imageUrl)}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-ink/30">
-              <Icon name="gift" size={64} />
-            </div>
-          )}
-
-          {/* Host seal */}
-          <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-cream/90 py-1 pl-1 pr-2.5 shadow-sm backdrop-blur">
-            {listing.host?.logoUrl ? (
+      <div className="lg:grid lg:grid-cols-[1.7fr_1fr] lg:items-start lg:gap-10">
+        {/* ---- Editorial record ---- */}
+        <div className="min-w-0">
+          {/* Hero */}
+          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-card bg-line">
+            {imageUrl ? (
               <Image
-                src={listing.host.logoUrl}
-                alt={listing.host.name}
-                width={28}
-                height={28}
-                className="h-7 w-7 rounded-full object-cover"
-                unoptimized={!canOptimizeImage(listing.host.logoUrl)}
+                src={imageUrl}
+                alt={listing.imageAltText ?? listing.prizeName}
+                fill
+                priority
+                className="object-cover"
+                sizes="(min-width:1024px) 640px, 100vw"
+                unoptimized={!canOptimizeImage(imageUrl)}
               />
             ) : (
-              <span className="grid h-7 w-7 place-items-center rounded-full bg-sand text-[11px] font-bold text-ink/60">
-                {hostName.charAt(0)}
-              </span>
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-line to-paper text-ink/25">
+                <Icon name="gift" size={64} />
+              </div>
             )}
-            <span className="max-w-[7rem] truncate text-xs font-semibold text-ink">
-              {hostName}
-            </span>
-            {hostVerified && (
-              <Icon name="verified" size={14} className="text-moss" />
-            )}
-          </div>
-
-          {/* Category ribbon */}
-          {listing.prizeCategory && (
-            <span className="absolute left-1/2 top-3 -translate-x-1/2 -rotate-1 rounded-md bg-moss px-3 py-1 font-display text-sm uppercase tracking-wide text-cream shadow-sm">
-              {listing.prizeCategory}
-            </span>
-          )}
-
-          {/* Save */}
-          <button
-            type="button"
-            onClick={toggleSaved}
-            aria-pressed={saved}
-            aria-label={saved ? "Saved" : "Save listing"}
-            className={cn(
-              "absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full shadow-sm backdrop-blur transition",
-              saved ? "bg-ember text-cream" : "bg-cream/90 text-ink",
-            )}
-          >
-            <Icon name="bookmark" size={20} />
-          </button>
-
-          <ListingReportButton
-            listingId={listing.id}
-            clerkConfigured={clerkConfigured}
-            isSignedIn={isSignedIn}
-          />
-
-          {/* Urgency / trust badges */}
-          {badges.length > 0 && (
-            <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 pr-3">
-              {badges.slice(0, 4).map((badge) => (
-                <ListingBadge key={badge.id} badge={badge} />
-              ))}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/45 to-transparent" />
+            <div className="absolute left-4 bottom-4">
+              <ContextTag context={context} variant="chip" />
             </div>
-          )}
-        </div>
-
-        {/* Cream content panel */}
-        <div className="relative -mt-5 rounded-t-[2rem] bg-cream px-5 pb-5 pt-5">
-          <h1 className="font-display text-3xl leading-tight text-ink">
-            <span className="box-decoration-clone bg-gradient-to-b from-transparent to-moss/25 px-0.5">
-              {listing.title}
-            </span>
-          </h1>
-
-          <p className="mt-1 text-xs font-medium text-ink/60">
-            {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
-          </p>
-
-          <p className="mt-2 text-sm leading-relaxed text-ink/70">
-            {listing.shortDescription}
-          </p>
-
-          {/* Dashed divider with doodle */}
-          <div className="relative my-4 flex items-center justify-center">
-            <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-sand" />
-            <span className="relative bg-cream px-2 text-moss">
-              <Icon name="gift" size={16} />
-            </span>
-          </div>
-
-          {/* Begins / Ends */}
-          <div className="flex items-stretch text-center">
-            <div className="flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
-                Begins
-              </p>
-              <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
-                <Icon name="calendar" size={14} className="text-ink/55" />
-                {startLabel}
-              </p>
-            </div>
-            <div className="mx-3 w-px bg-sand" />
-            <div className="flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/55">
-                Ends
-              </p>
-              <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink/75">
-                <Icon name="calendar" size={14} className="text-ink/55" />
-                {endLabel}
-              </p>
-              <p
-                className={cn(
-                  "text-[11px] font-semibold",
-                  expired ? "text-ink/55" : "text-ember",
-                )}
-              >
-                {countdown}
-              </p>
-            </div>
-          </div>
-
-          {/* Official rules pill */}
-          {listing.officialRulesUrl && (
-            <a
-              href={listing.officialRulesUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:bg-ink/5"
-            >
-              <Icon name="rules" size={14} /> Official Rules
-            </a>
-          )}
-
-          {/* Enter + info */}
-          <div className="mt-3 flex items-center gap-2">
             <button
               type="button"
-              onClick={handleEnter}
-              disabled={expired || won}
+              onClick={toggleSaved}
+              aria-pressed={saved}
+              aria-label={saved ? "Saved" : "Save this sweepstakes"}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-3 text-base font-semibold transition",
-                // Won outranks expired — the outcome is the seeker's permanent
-                // record; that the sweepstake later ended is secondary.
-                won
-                  ? "cursor-default bg-moss text-cream"
-                  : expired
-                    ? "cursor-not-allowed bg-ink/10 text-ink/55"
-                    : entered
-                      ? "bg-moss/15 text-moss"
-                      : "bg-moss text-cream hover:bg-moss/90",
+                "absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full shadow-e1 backdrop-blur transition",
+                saved ? "bg-ember text-white" : "bg-surface/85 text-ink hover:bg-surface",
               )}
             >
-              {won ? (
-                <>
-                  <Icon name="trophy" size={18} /> Won
-                </>
-              ) : expired ? (
-                "Sweepstakes ended"
-              ) : entered ? (
-                <>
-                  <Icon name="check" size={18} /> Entered — enter again
-                </>
-              ) : (
-                <>
-                  Enter Now <Icon name="send" size={18} />
-                </>
-              )}
+              <Icon name="bookmark" size={18} weight={saved ? "fill" : "regular"} />
             </button>
-
-            <button
-              type="button"
-              onClick={() => setInfoOpen((o) => !o)}
-              aria-expanded={infoOpen}
-              aria-label="About entering"
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-sand text-ink/60 transition hover:bg-ink/5"
-            >
-              <Icon name="info" size={20} />
-            </button>
+            <ListingReportButton
+              listingId={listing.id}
+              clerkConfigured={clerkConfigured}
+              isSignedIn={isSignedIn}
+            />
           </div>
 
-          {infoOpen && (
-            <p className="mt-2 rounded-card border border-sand bg-cream/70 p-3 text-xs leading-relaxed text-ink/65">
-              Entering opens the host&apos;s official entry page in a new tab and
-              marks this sweepstakes as entered for you. Always read the official
-              rules — Sweepza never charges to enter.
+          {/* Title + attribution */}
+          <div className="mt-5">
+            <h1 className="font-display text-[34px] font-medium leading-[1.08] tracking-tightest text-ink lg:text-[42px]">
+              {listing.title}
+            </h1>
+            <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-sm text-graphite">
+              <span className="font-medium text-ink/80">
+                {attributionName ?? sourceText}
+              </span>
+              {hostVerified && (
+                <span className="inline-flex items-center gap-0.5 text-pine">
+                  <Icon name="verified" size={13} weight="fill" /> Verified
+                </span>
+              )}
+              <span aria-hidden>·</span>
+              <span>{sourceText}</span>
             </p>
+          </div>
+
+          {/* Mobile action block sits right under the title. */}
+          <div className="mt-5 rounded-card border border-line bg-surface p-5 shadow-e1 lg:hidden">
+            {actionBlock}
+          </div>
+
+          {/* Long description */}
+          <div className="mt-8">
+            <SectionHeading>About this prize</SectionHeading>
+            <p className="whitespace-pre-line text-[15px] leading-relaxed text-ink/80">
+              {listing.longDescription ?? listing.shortDescription}
+            </p>
+          </div>
+
+          {/* Facts: timeline / eligibility / entry / prize */}
+          <div className="mt-8 grid gap-x-8 sm:grid-cols-2">
+            <div className="divide-y divide-line">
+              <Fact icon="calendar" label="Opens">
+                {listing.startDate ? formatEndDate(listing.startDate) : "—"}
+              </Fact>
+              <Fact icon="clock" label={expired ? "Ended" : "Ends"}>
+                <span className={cn("nums", urgentEnd && "font-semibold text-flame")}>
+                  {formatEndDate(listing.endDate)}
+                </span>
+              </Fact>
+              <Fact icon="repeat" label="Entry">
+                {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
+                {listing.entryLimitNotes ? ` · ${listing.entryLimitNotes}` : ""}
+              </Fact>
+            </div>
+            <div className="divide-y divide-line">
+              {eligibility && (
+                <Fact icon="location" label="Eligibility">
+                  {eligibility}
+                </Fact>
+              )}
+              {listing.eligibilityStates && listing.eligibilityStates.length > 0 && (
+                <Fact icon="location" label="States">
+                  {listing.eligibilityStates.join(", ")}
+                </Fact>
+              )}
+              <Fact icon="gift" label="Prize">
+                {listing.prizeName}
+                {listing.winnerCount
+                  ? ` · ${listing.winnerCount} winner${listing.winnerCount > 1 ? "s" : ""}`
+                  : ""}
+              </Fact>
+            </div>
+          </div>
+
+          {/* Tags */}
+          {listing.tags && listing.tags.length > 0 && (
+            <div className="mt-8">
+              <SectionHeading>Tags</SectionHeading>
+              <div className="flex flex-wrap gap-2">
+                {listing.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-pill bg-ink/[0.05] px-3 py-1.5 text-xs font-medium text-ink/75"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
-          {/* Win reporting — user-reported state that feeds the Won view and
-              the Winner Wall. Entered sweeps stay winnable after they end
-              (winners are usually announced later). */}
-          {entered && !won && (
-            <button
-              type="button"
-              onClick={handleMarkWon}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-moss/40 bg-moss/5 px-4 py-2.5 text-sm font-semibold text-moss transition hover:bg-moss/10"
-            >
-              <Icon name="trophy" size={16} /> I won this sweepstakes
-            </button>
-          )}
-          {won && (
+          {/* Host / source & trust */}
+          <div className="mt-8">
+            <SectionHeading>Source &amp; trust</SectionHeading>
+            <div className="rounded-card border border-line bg-surface p-5 shadow-e1">
+              <div className="flex items-center gap-3">
+                {listing.host?.logoUrl ? (
+                  <Image
+                    src={listing.host.logoUrl}
+                    alt={listing.host.name}
+                    width={44}
+                    height={44}
+                    className="h-11 w-11 rounded-full object-cover"
+                    unoptimized={!canOptimizeImage(listing.host.logoUrl)}
+                  />
+                ) : (
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-ink/[0.05] text-base font-bold text-ink/50">
+                    {(attributionName ?? "S").charAt(0)}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                    {attributionName ?? sourceText}
+                    {hostVerified && (
+                      <Icon name="verified" size={14} weight="fill" className="text-pine" />
+                    )}
+                  </div>
+                  <div className="text-xs text-graphite">
+                    {hostVerified ? "Verified host" : sourceText}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-ink/75">
+                {SOURCE_LABEL_NOTE[listing.sourceLabel]}
+                {hostVerified
+                  ? " This host has completed Sweepza verification."
+                  : ""}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-graphite">
+                {listing.originalSponsorName && (
+                  <span>Original sponsor: {listing.originalSponsorName}</span>
+                )}
+                {listing.publishedAt && (
+                  <span>Listed {formatRelativeTime(listing.publishedAt, now)}</span>
+                )}
+                {expired && <span className="text-flame">Closed for entry</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Winner wall */}
+          {listing.winnerReported && (
             <Link
-              href="/winners/new"
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full bg-ember px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-ember/90"
+              href="/winners"
+              className="mt-6 flex items-center gap-3 rounded-card border border-gold/25 bg-gold/[0.06] p-4 transition hover:bg-gold/[0.1]"
             >
-              <Icon name="trophy" size={16} /> You won — share it on the Winner
-              Wall
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold/15 text-gold">
+                <Icon name="trophy" size={18} weight="fill" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-ink">Winners reported</p>
+                <p className="text-xs text-graphite">
+                  Members have shared wins from this sweepstakes.
+                </p>
+              </div>
+              <Icon name="caretRight" size={16} className="text-ink/30" />
             </Link>
           )}
 
-          {/* Secondary actions */}
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={handleSkip}
-              aria-pressed={skipped}
-              aria-label="Skip listing"
-              className={cn(
-                "inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink",
-                skipped && "text-ink",
-              )}
-            >
-              <Icon name="skip" size={15} /> {skipped ? "Skipped" : "Skip"}
-            </button>
-            <span className="text-ink/20">·</span>
-            <button
-              type="button"
-              onClick={handleShare}
-              aria-label="Share listing"
-              className={cn(
-                "inline-flex items-center gap-1.5 text-xs font-medium text-ink/55 transition hover:text-ink",
-                shareFlash && "text-moss",
-              )}
-            >
-              <Icon name={shareFlash ? "check" : "share"} size={15} />{" "}
-              {shareFlash ? "Link copied" : "Share"}
-            </button>
-            <span aria-live="polite" className="sr-only">
-              {shareFlash ? "Link copied to clipboard" : ""}
-            </span>
-          </div>
-
-          {/* Footer microcopy */}
-          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.15em] text-ink/55">
-            No purchase necessary
+          <p className="mt-8 text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
+            No purchase necessary · See official rules
           </p>
         </div>
-      </div>
 
-      {/* Prize summary */}
-      <div className="mt-4 rounded-card border border-sand bg-cream/60 p-4">
-        <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-moss/10 text-moss">
-            <Icon name="gift" size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/60">
-              Prize
-            </p>
-            <p className="text-base font-semibold text-ink">
-              {listing.prizeName}
-            </p>
-            {prizeValue && (
-              <p className="text-sm font-semibold text-ink">{prizeValue} value</p>
-            )}
-            {prizeMeta && (
-              <p className="mt-0.5 text-xs text-ink/55">{prizeMeta}</p>
-            )}
+        {/* ---- Sticky action rail (desktop) ---- */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-6 rounded-card border border-line bg-surface p-6 shadow-e2">
+            {actionBlock}
           </div>
-        </div>
+        </aside>
       </div>
 
-      {/* Rules snapshot */}
-      <div className="mt-6">
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/60">
-          Rules snapshot
-        </h2>
-        <dl className="divide-y divide-sand overflow-hidden rounded-card border border-sand">
-          {rules.map((row) => (
-            <div
-              key={row.id}
-              className="flex items-center gap-3 px-4 py-3 text-sm"
-            >
-              <Icon name={row.icon} size={16} className="shrink-0 text-ink/55" />
-              <dt className="text-ink/60">{row.label}</dt>
-              <dd className="ml-auto text-right font-medium text-ink">
-                {row.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      {/* Host popup access */}
-      {listing.host ? (
-        <div className="mt-6">
+      {/* ---- Mobile sticky enter bar ---- */}
+      {!won && (
+        <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
           <button
             type="button"
-            onClick={() => setHostOpen((o) => !o)}
-            aria-expanded={hostOpen}
-            className="flex w-full items-center gap-3 rounded-card border border-sand px-4 py-3 text-left transition hover:bg-ink/5"
-          >
-            {listing.host.logoUrl ? (
-              <Image
-                src={listing.host.logoUrl}
-                alt={listing.host.name}
-                width={36}
-                height={36}
-                className="h-9 w-9 rounded-full object-cover"
-                unoptimized={!canOptimizeImage(listing.host.logoUrl)}
-              />
-            ) : (
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-sand text-sm font-bold text-ink/60">
-                {listing.host.name.charAt(0)}
-              </span>
+            onClick={handleEnter}
+            disabled={expired}
+            className={cn(
+              "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
+              expired
+                ? "cursor-not-allowed bg-line text-graphite"
+                : entered
+                  ? "bg-pine text-white"
+                  : "bg-ember text-white",
             )}
-            <span className="min-w-0">
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-                {listing.host.name}
-                {hostVerified && (
-                  <Icon name="verified" size={14} className="text-moss" />
-                )}
-              </span>
-              <span className="block text-xs text-ink/55">
-                {hostVerified ? "Verified host" : "Host"} · {sourceText}
-              </span>
-            </span>
-            <span className="ml-auto text-xs font-medium text-sky">
-              {hostOpen ? "Hide" : "About"}
-            </span>
+          >
+            {expired ? (
+              "Sweepstakes ended"
+            ) : entered ? (
+              <>
+                <Icon name="repeat" size={17} /> Enter again
+              </>
+            ) : (
+              <>
+                Enter now <Icon name="send" size={16} />
+              </>
+            )}
           </button>
-          {hostOpen && (
-            <div className="mt-2 rounded-card border border-sand bg-cream/50 p-4 text-sm leading-relaxed text-ink/70">
-              <p>
-                {hostVerified
-                  ? "This host has completed Sweepza verification."
-                  : "This host has not completed verification yet."}
-              </p>
-              <p className="mt-2">{SOURCE_LABEL_NOTE[listing.sourceLabel]}</p>
-              {listing.originalSponsorName && (
-                <p className="mt-2">
-                  Original sponsor: {listing.originalSponsorName}
-                </p>
-              )}
-              {listing.publishedAt && (
-                <p className="mt-2 text-xs text-ink/50">
-                  Listed on Sweepza {formatRelativeTime(listing.publishedAt, now)}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="mt-6 rounded-card border border-sand bg-cream/50 p-4 text-sm leading-relaxed text-ink/70">
-          <p className="font-semibold text-ink">{sourceText}</p>
-          <p className="mt-1">{SOURCE_LABEL_NOTE[listing.sourceLabel]}</p>
-          {listing.originalSponsorName && (
-            <p className="mt-1">Original sponsor: {listing.originalSponsorName}</p>
-          )}
-          {listing.publishedAt && (
-            <p className="mt-2 text-xs text-ink/50">
-              Listed on Sweepza {formatRelativeTime(listing.publishedAt)}
-            </p>
-          )}
         </div>
       )}
 
-      {/* Related Winner Wall */}
-      {listing.winnerReported && (
-        <div className="mt-6 rounded-card border border-moss/30 bg-moss/5 p-4">
-          <div className="flex items-center gap-2 text-moss">
-            <Icon name="trophy" size={18} />
-            <span className="text-sm font-semibold">Winners reported</span>
-          </div>
-          <p className="mt-1 text-sm text-ink/70">
-            Seekers have shared wins from this sweepstakes.
-          </p>
-          <Link
-            href="/winners"
-            className="mt-2 inline-block text-sm font-medium text-sky transition hover:underline"
-          >
-            See the Winner Wall
-          </Link>
-        </div>
-      )}
+      <span aria-live="polite" className="sr-only">
+        {shareFlash ? "Link copied to clipboard" : ""}
+      </span>
     </section>
   );
 }

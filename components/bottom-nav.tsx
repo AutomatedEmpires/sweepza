@@ -14,7 +14,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-stretch border-t border-sand bg-cream/95 backdrop-blur lg:hidden"
+      className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-stretch border-t border-line bg-paper/95 backdrop-blur lg:hidden"
     >
       {CONSUMER_NAV_ITEMS.map((item) => {
         const active = isNavItemActive(item, pathname);
@@ -24,8 +24,8 @@ export function BottomNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-0.5 pb-2.5 pt-2 text-[10px] font-semibold",
-              active ? "text-ember" : "text-ink/55",
+              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 pb-2.5 pt-2 text-[10px] font-semibold",
+              active ? "text-ember" : "text-graphite",
             )}
           >
             <Icon

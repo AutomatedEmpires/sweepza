@@ -22,7 +22,7 @@ export function DiscoverModeToggle() {
     <div
       role="group"
       aria-label="Discovery mode"
-      className="flex shrink-0 items-center rounded-full border border-sand bg-white p-0.5"
+      className="flex shrink-0 items-center rounded-pill border border-line bg-surface p-0.5"
     >
       {MODES.map((mode) => {
         const active = pathname === mode.href;
@@ -32,8 +32,8 @@ export function DiscoverModeToggle() {
             href={`${mode.href}${suffix}`}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition",
-              active ? "bg-ink text-cream" : "text-ink/60 hover:text-ink",
+              "inline-flex min-h-11 items-center gap-1.5 rounded-pill px-4 text-xs font-semibold transition",
+              active ? "bg-ink text-paper" : "text-graphite hover:text-ink",
             )}
           >
             <Icon name={mode.icon} size={14} />

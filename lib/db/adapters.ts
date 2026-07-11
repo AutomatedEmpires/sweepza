@@ -110,6 +110,7 @@ export function toListing(
     slug: row.slug,
     title: row.title,
     shortDescription: row.short_description,
+    longDescription: opt(row.long_description),
 
     prizeName: row.prize_name,
     prizeValue: opt(row.prize_value),

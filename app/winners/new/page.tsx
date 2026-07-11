@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Icon } from "@/components/icon";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { WinnerSubmissionForm, type WinnerListingOption } from "@/components/winner-submission-form";
 import { getSeekerStatesForAppUser } from "@/lib/db/seeker-state";
@@ -47,10 +48,12 @@ export default async function NewWinnerPostPage() {
 
   if (!clerkConfigured) {
     return (
-      <section className="px-4 pb-8 pt-8">
-        <div className="rounded-card border border-sand bg-white/80 p-4">
-          <h1 className="text-xl font-semibold text-ink">Winner posts are unavailable</h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink/60">
+      <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+        <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
+          <h1 className="font-display text-[20px] leading-none text-ink">
+            Winner posts are unavailable
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-graphite">
             Clerk is not configured in this environment yet, so Sweepza cannot attach winner posts to an account.
           </p>
         </div>
@@ -65,17 +68,29 @@ export default async function NewWinnerPostPage() {
   const listings = await getWinnerListingOptions(authUser.appUserId);
 
   return (
-    <section className="px-4 pb-8 pt-8">
-      <div className="mb-4">
-        <Link
-          href="/winners"
-          className="text-sm font-semibold text-moss transition hover:underline"
-        >
-          Back to Winner Wall
-        </Link>
-      </div>
+    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+      <div className="mx-auto max-w-xl">
+        <div className="mb-4">
+          <Link
+            href="/winners"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-graphite transition hover:text-ink"
+          >
+            <Icon name="caretRight" size={14} className="rotate-180" />
+            Back to Winner Wall
+          </Link>
+        </div>
 
-      <WinnerSubmissionForm listings={listings} />
+        <header className="mb-4">
+          <h1 className="font-display text-[26px] leading-none text-ink">
+            Share your win
+          </h1>
+          <p className="mt-1 text-sm text-graphite">
+            Real wins, verified by the community. Tell us what you won.
+          </p>
+        </header>
+
+        <WinnerSubmissionForm listings={listings} />
+      </div>
     </section>
   );
 }

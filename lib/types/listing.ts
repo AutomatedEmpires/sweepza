@@ -98,6 +98,7 @@ export interface Listing {
   slug: string;
   title: string;
   shortDescription: string;
+  longDescription?: string;
 
   // Prize
   prizeName: string;

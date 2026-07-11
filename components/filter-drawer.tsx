@@ -112,7 +112,7 @@ export function FilterDrawer({
       />
       <div
         ref={panelRef}
-        className="relative mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto rounded-t-3xl bg-cream px-5 pb-6 pt-3 shadow-2xl"
+        className="relative mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto rounded-t-sheet bg-surface px-5 pb-6 pt-3 shadow-e3"
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-ink/15" />
         <div className="mb-4 flex items-center justify-between">
@@ -121,7 +121,7 @@ export function FilterDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="grid h-8 w-8 place-items-center rounded-full text-ink/50 transition hover:bg-ink/5"
+            className="grid h-8 w-8 place-items-center rounded-full text-graphite transition hover:bg-ink/5"
           >
             <Icon name="skip" size={18} />
           </button>
@@ -133,7 +133,7 @@ export function FilterDrawer({
 
             return (
               <section key={group} className="flex flex-col gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-graphite">
                   {GROUP_LABELS[group]}
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -146,10 +146,10 @@ export function FilterDrawer({
                         onClick={() => onToggle(chip.id)}
                         aria-pressed={isActive}
                         className={cn(
-                          "rounded-full border px-3 py-1.5 text-sm font-semibold transition",
+                          "rounded-pill border px-3 py-1.5 text-sm font-semibold transition",
                           isActive
-                            ? "border-ember bg-ember text-cream"
-                            : "border-sand bg-white text-ink/70 hover:border-ink/20",
+                            ? "border-ink bg-ink text-paper"
+                            : "border-line bg-surface text-ink/70 hover:border-ink/25",
                         )}
                       >
                         {chip.label}
@@ -162,7 +162,7 @@ export function FilterDrawer({
           })}
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-graphite">
               Sort by
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -175,10 +175,10 @@ export function FilterDrawer({
                     onClick={() => onSort(option.id)}
                     aria-pressed={isActive}
                     className={cn(
-                      "rounded-full border px-3 py-1.5 text-sm font-semibold transition",
+                      "rounded-pill border px-3 py-1.5 text-sm font-semibold transition",
                       isActive
-                        ? "border-ink bg-ink text-cream"
-                        : "border-sand bg-white text-ink/70 hover:border-ink/20",
+                        ? "border-ink bg-ink text-paper"
+                        : "border-line bg-surface text-ink/70 hover:border-ink/25",
                     )}
                   >
                     {option.label}
@@ -193,14 +193,14 @@ export function FilterDrawer({
           <button
             type="button"
             onClick={onClear}
-            className="rounded-full border border-sand px-4 py-2.5 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
+            className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
           >
             Clear all
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-full bg-moss px-4 py-2.5 text-sm font-semibold text-cream transition hover:bg-moss/90"
+            className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
           >
             Show {countLabel}
           </button>
