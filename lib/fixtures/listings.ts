@@ -20,6 +20,7 @@ interface Spec {
   publishedAgoDays?: number;
   image?: string | null;
   hosted?: string; // host display name
+  originalSponsor?: string;
   verified?: boolean;
   featured?: boolean;
   rules?: boolean;
@@ -201,6 +202,7 @@ const SPECS: Spec[] = [
     publishedAgoDays: 30,
     image: img("dreamcash"),
     hosted: "Sweepza",
+    originalSponsor: "Dream Cash Promotions",
     rules: true,
     note: "won",
   },
@@ -245,7 +247,7 @@ export function buildFixtureListings(now: Date = new Date()): Listing[] {
       eligibilityCountry: "US",
       ageRequirement: 18,
       sourceLabel: s.hosted && s.hosted !== "Sweepza" ? "host_submitted" : "found_by_sweepza",
-      originalSponsorName: s.hosted && s.hosted !== "Sweepza" ? undefined : undefined,
+      originalSponsorName: s.originalSponsor,
       host:
         s.hosted && s.hosted !== "Sweepza"
           ? {

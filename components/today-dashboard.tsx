@@ -220,6 +220,14 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           : null;
 
   const clearForToday = !nba;
+  const surfacedListingId = nba?.listing.id;
+  const withoutSurfacedListing = (items: Listing[]) =>
+    surfacedListingId
+      ? items.filter((listing) => listing.id !== surfacedListingId)
+      : items;
+  const readyAgainRest = withoutSurfacedListing(buckets.readyAgain);
+  const endingTodayRest = withoutSurfacedListing(endingToday);
+  const readyRest = withoutSurfacedListing(buckets.ready);
 
   return (
     <div className="flex flex-col gap-9">
@@ -303,37 +311,37 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
         </section>
       )}
 
-      {/* Routine sections (skip the one already surfaced as NBA) */}
-      {buckets.readyAgain.length > 0 && nba?.tone !== "again" && (
+      {/* Routine sections (skip only the listing already surfaced as NBA) */}
+      {readyAgainRest.length > 0 && (
         <Section
           icon="repeat"
           title="Ready again"
           subtitle="Entry windows that just re-opened for you"
-          count={buckets.readyAgain.length}
+          count={readyAgainRest.length}
         >
-          <Rail listings={buckets.readyAgain.slice(0, MAX_SECTION_CARDS)} />
+          <Rail listings={readyAgainRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
-      {endingToday.length > 0 && nba?.tone !== "urgent" && (
+      {endingTodayRest.length > 0 && (
         <Section
           icon="clock"
           title="Ending today"
           subtitle="Last call on sweeps you're tracking"
-          count={endingToday.length}
+          count={endingTodayRest.length}
         >
-          <Rail listings={endingToday.slice(0, MAX_SECTION_CARDS)} />
+          <Rail listings={endingTodayRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
-      {buckets.ready.length > 0 && nba?.tone !== "open" && (
+      {readyRest.length > 0 && (
         <Section
           icon="bookmark"
           title="Saved, not entered"
           subtitle="You saved these — they're still open"
-          count={buckets.ready.length}
+          count={readyRest.length}
         >
-          <Rail listings={buckets.ready.slice(0, MAX_SECTION_CARDS)} />
+          <Rail listings={readyRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 

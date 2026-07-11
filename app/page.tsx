@@ -3,7 +3,11 @@ import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
 import { ensureCurrentAppUser } from "@/lib/auth";
-import { getPublicListings } from "@/lib/db/listings";
+import {
+  getPublicListings,
+  getSeekerHistoryListingsByIds,
+} from "@/lib/db/listings";
+import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import type { Listing } from "@/lib/types/listing";
 
@@ -107,6 +111,32 @@ export default async function TodayPage() {
     ensureCurrentAppUser(),
     getPublicListings({ limit: 100 }),
   ]);
+
+  // The public feed is intentionally bounded, but a seeker's routine is not.
+  // Hydrate touched listings that have expired, been archived, or fallen
+  // outside the feed window so Today never loses saved/entered/won history.
+  let routineListings = listings;
+  if (authUser) {
+    const snapshot = await getSeekerStateSnapshotForAppUser(authUser.appUserId);
+    const known = new Set(listings.map((listing) => listing.id));
+    const touched = new Set([
+      ...Object.keys(snapshot.saved),
+      ...Object.keys(snapshot.activity),
+      ...Object.keys(snapshot.primary).filter(
+        (id) => snapshot.primary[id] !== "none",
+      ),
+    ]);
+    const missing = [...touched].filter((id) => !known.has(id));
+
+    if (missing.length > 0) {
+      const history = await getSeekerHistoryListingsByIds(missing);
+      routineListings = [
+        ...listings,
+        ...history.filter((listing) => !known.has(listing.id)),
+      ];
+    }
+  }
+
   const active = listings.filter((l) => !isExpired(l, now));
   const endingSoon = [...active]
     .sort((a, b) => daysUntil(a.endDate, now) - daysUntil(b.endDate, now))
@@ -136,7 +166,7 @@ export default async function TodayPage() {
           </p>
         </header>
 
-        <TodayDashboard listings={listings} />
+        <TodayDashboard listings={routineListings} />
 
         <RailSection title="Worth a look" href="/discover" listings={endingSoon} />
         {featured.length > 0 && (
