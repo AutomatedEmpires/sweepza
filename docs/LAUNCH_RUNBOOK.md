@@ -78,9 +78,11 @@ doppler run --project sweepza --config prd -- node scripts/verify-live-checkout.
 ```
 
 It confirms, from live Stripe + production Supabase (no secrets printed): the
-live customer + active subscription exist, the local `subscription` row matches
-with `status=active` and `max_active_listings=3`, and the webhook's most recent
-delivery to `sweepza.com` returned 2xx.
+live customer + Sweepza subscription exist, the local `subscription` row matches
+Stripe's current status (active before cancellation, canceled afterward), the
+baseline entitlement has `included_active_listings=3` and
+`max_active_listings=3`, both configured recurring prices are live and
+Sweepza-owned, and recent subscription webhook deliveries are not stuck.
 
 ### Cancellation proof (do this second)
 

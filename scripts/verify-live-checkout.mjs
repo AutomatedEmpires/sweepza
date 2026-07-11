@@ -13,6 +13,13 @@
 
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import {
+  BASELINE_INCLUDED_ACTIVE_LISTINGS,
+  inspectSubscriptionEntitlement,
+  isExpectedRecurringPrice,
+  isLiveStripeKey,
+  toLocalSubscriptionStatus,
+} from "./verify-live-checkout-helpers.mjs";
 
 const SWEEPZA_WEBHOOK_URL = "https://sweepza.com/api/webhooks/stripe";
 
@@ -20,13 +27,30 @@ const stripeKey = process.env.STRIPE_SECRET_KEY;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const baselinePrice = process.env.STRIPE_PRICE_HOST_BASELINE;
+const additionalPrice = process.env.STRIPE_PRICE_ADDITIONAL_LISTING;
 
-if (!stripeKey || !supabaseUrl || !supabaseKey) {
-  console.error("Missing STRIPE_SECRET_KEY / Supabase env (run under doppler).");
+const missingEnv = [
+  ["STRIPE_SECRET_KEY", stripeKey],
+  ["NEXT_PUBLIC_SUPABASE_URL", supabaseUrl],
+  ["SUPABASE_SERVICE_ROLE_KEY", supabaseKey],
+  ["STRIPE_PRICE_HOST_BASELINE", baselinePrice],
+  ["STRIPE_PRICE_ADDITIONAL_LISTING", additionalPrice],
+]
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (missingEnv.length > 0) {
+  console.error(`Missing required env: ${missingEnv.join(", ")} (run under doppler).`);
   process.exit(1);
 }
 
-const mode = stripeKey.startsWith("sk_live_") ? "LIVE" : "TEST";
+if (!isLiveStripeKey(stripeKey)) {
+  console.error(
+    "FAIL  Stripe mode — a live Stripe key is required; no provider checks were run.",
+  );
+  process.exit(1);
+}
+
 const stripe = new Stripe(stripeKey);
 const sb = createClient(supabaseUrl, supabaseKey);
 
@@ -36,7 +60,7 @@ const check = (name, ok, detail) => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? " — " + detail : ""}`);
 };
 
-console.log(`\n=== Sweepza live-checkout verification (Stripe mode: ${mode}) ===\n`);
+console.log("\n=== Sweepza live-checkout verification (Stripe mode: LIVE) ===\n");
 
 // 1. Stripe account is charge-ready
 const account = await stripe.accounts.retrieve();
@@ -46,67 +70,139 @@ check(
   `acct ${account.id} charges=${account.charges_enabled} payouts=${account.payouts_enabled}`,
 );
 
-// 2. Sweepza baseline price is live and $19/mo
-if (baselinePrice) {
+// 2. Both Sweepza prices are live, active, recurring, and venture-scoped.
+async function verifyPrice(label, priceId, unitAmount, lookupKey) {
   try {
-    const price = await stripe.prices.retrieve(baselinePrice);
+    const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
     check(
-      "Baseline price live + $19/mo",
-      price.active && price.unit_amount === 1900 && price.recurring?.interval === "month",
-      `${price.id} ${price.unit_amount} ${price.currency}/${price.recurring?.interval}`,
+      label,
+      isExpectedRecurringPrice(price, { unitAmount, lookupKey }),
+      `${price.id} live=${price.livemode} active=${price.active} ${price.unit_amount} ${price.currency}/${price.recurring?.interval}`,
     );
+    return price;
   } catch (e) {
-    check("Baseline price live + $19/mo", false, e.message);
+    check(label, false, e instanceof Error ? e.message : "price lookup failed");
+    return null;
   }
 }
 
-// 3. Sweepza-namespaced active subscriptions in Stripe
-const subs = await stripe.subscriptions.list({ status: "active", limit: 100 });
+const [verifiedBaselinePrice, verifiedAdditionalPrice] = await Promise.all([
+  verifyPrice(
+    "Baseline price live + $19/mo + Sweepza-owned",
+    baselinePrice,
+    1900,
+    "sweepza_host_baseline",
+  ),
+  verifyPrice(
+    "Add-on price live + $5/mo + Sweepza-owned",
+    additionalPrice,
+    500,
+    "sweepza_additional_listing",
+  ),
+]);
+check(
+  "Baseline and add-on use distinct prices/products",
+  Boolean(verifiedBaselinePrice) &&
+    Boolean(verifiedAdditionalPrice) &&
+    verifiedBaselinePrice.id !== verifiedAdditionalPrice.id &&
+    (typeof verifiedBaselinePrice.product === "object"
+      ? verifiedBaselinePrice.product.id
+      : verifiedBaselinePrice.product) !==
+      (typeof verifiedAdditionalPrice.product === "object"
+        ? verifiedAdditionalPrice.product.id
+        : verifiedAdditionalPrice.product),
+  `${baselinePrice} / ${additionalPrice}`,
+);
+
+// 3. Sweepza-namespaced subscriptions in Stripe, including canceled ones so
+// the same command proves both activation and cancellation synchronization.
+const subs = await stripe.subscriptions.list({ status: "all", limit: 100 });
 const sweepzaSubs = subs.data.filter(
   (s) =>
     s.metadata?.venture === "sweepza" ||
     s.items.data.some((i) => i.price.id === baselinePrice),
 );
 check(
-  "Active Sweepza subscription in Stripe",
+  "Sweepza subscription in Stripe (active or canceled)",
   sweepzaSubs.length > 0,
   sweepzaSubs.length === 0
     ? "none yet — run AFTER a real checkout"
-    : sweepzaSubs.map((s) => `${s.id}(${s.status})`).join(", "),
+    : sweepzaSubs
+        .map(
+          (s) =>
+            `${s.id}(${s.status}${s.cancel_at_period_end ? ", cancel_at_period_end" : ""})`,
+        )
+        .join(", "),
+);
+check(
+  "Sweepza subscription objects are live",
+  sweepzaSubs.length > 0 && sweepzaSubs.every((s) => s.livemode === true),
+  sweepzaSubs.length === 0
+    ? "no Sweepza subscription objects"
+    : `checked=${sweepzaSubs.length}`,
 );
 
 // 4. Cross-check each Stripe sub against the production DB
 for (const s of sweepzaSubs) {
+  const entitlement = inspectSubscriptionEntitlement(
+    s,
+    baselinePrice,
+    additionalPrice,
+  );
+  check(
+    `Stripe entitlement metadata matches line items ${s.id}`,
+    entitlement.valid,
+    `baseline_qty=${entitlement.baselineQuantity} included=${entitlement.included} additional_qty=${entitlement.additionalQuantity} purchased=${entitlement.purchased} max=${entitlement.max}`,
+  );
+
   const customerId = typeof s.customer === "string" ? s.customer : s.customer.id;
-  const { data: host } = await sb
+  const { data: host, error: hostError } = await sb
     .from("host")
-    .select("id, display_name")
+    .select("id")
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
   check(
     `DB host matches customer ${customerId}`,
-    Boolean(host),
-    host ? `host ${host.id} (${host.display_name})` : "no host row — webhook desync",
+    !hostError && Boolean(host),
+    hostError
+      ? `host lookup failed: ${hostError.message}`
+      : host
+        ? `host ${host.id}`
+        : "no host row — webhook desync",
   );
   if (!host) continue;
 
-  const { data: row } = await sb
+  const { data: row, error: rowError } = await sb
     .from("subscription")
-    .select("status, stripe_subscription_id, max_active_listings, included_active_listings")
-    .eq("host_id", host.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .select(
+      "host_id, status, stripe_subscription_id, max_active_listings, included_active_listings, purchased_additional_listings",
+    )
+    .eq("stripe_subscription_id", s.id)
     .maybeSingle();
-  const localStatus =
-    s.status === "active" || s.status === "trialing" ? "active" : row?.status;
+  const localStatus = toLocalSubscriptionStatus(s.status);
   check(
     `DB subscription synced for host ${host.id}`,
-    Boolean(row) &&
+    !rowError &&
+      Boolean(row) &&
+      row.host_id === host.id &&
       row.stripe_subscription_id === s.id &&
       row.status === localStatus,
+    rowError
+      ? `subscription lookup failed: ${rowError.message}`
+      : row
+        ? `stripe status=${s.status} local status=${row.status} sub=${row.stripe_subscription_id}`
+        : "no local subscription row — webhook did not sync",
+  );
+  check(
+    `DB slot entitlement synced for host ${host.id}`,
+    !rowError &&
+      Boolean(row) &&
+      row.included_active_listings === BASELINE_INCLUDED_ACTIVE_LISTINGS &&
+      row.purchased_additional_listings === entitlement.additionalQuantity &&
+      row.max_active_listings === entitlement.expectedMax,
     row
-      ? `local status=${row.status} sub=${row.stripe_subscription_id} max_slots=${row.max_active_listings}`
-      : "no local subscription row — webhook did not sync",
+      ? `included=${row.included_active_listings} purchased=${row.purchased_additional_listings} max=${row.max_active_listings} expected_max=${entitlement.expectedMax}`
+      : "no local subscription row — entitlement unavailable",
   );
 }
 
@@ -114,9 +210,11 @@ for (const s of sweepzaSubs) {
 const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
 const wh = endpoints.data.find((e) => e.url === SWEEPZA_WEBHOOK_URL);
 check(
-  "Sweepza webhook endpoint enabled",
-  Boolean(wh) && wh.status === "enabled",
-  wh ? `${wh.id} events=${wh.enabled_events.length}` : "not registered",
+  "Sweepza live webhook endpoint enabled",
+  Boolean(wh) && wh.status === "enabled" && wh.livemode === true,
+  wh
+    ? `${wh.id} live=${wh.livemode} events=${wh.enabled_events.length}`
+    : "not registered",
 );
 
 // 6. Recent subscription events + pending-webhook backlog
@@ -126,8 +224,8 @@ const events = await stripe.events.list({
 });
 const backlog = events.data.reduce((n, e) => n + (e.pending_webhooks || 0), 0);
 check(
-  "No stuck subscription webhook deliveries",
-  backlog === 0,
+  "No stuck live subscription webhook deliveries",
+  events.data.every((event) => event.livemode === true) && backlog === 0,
   events.data.length === 0
     ? "no subscription.created events yet"
     : `recent=${events.data.length} pending_webhooks=${backlog}`,
