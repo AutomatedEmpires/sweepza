@@ -30,7 +30,7 @@ This pass is a preflight, not a launch. Production was not promoted, live paymen
 
 ## Current-main Preview
 
-The branch was created at exact `main`, but branch creation alone did not trigger a Vercel Preview. The docs-only commit from this preflight should trigger the normal Git integration; its app code remains identical to the baseline. Record the resulting deployment ID and URL in `SWEEPZA_PRODUCTION_GATE_STATUS.md` before treating this gate as passed.
+The docs-only branch commit triggered Preview deployment `dpl_BAt7u8vL5ZRJ3kN384KPfuW3Mdpv`; its application code is identical to the `main` baseline. The build failed closed while collecting page data because the Vercel Preview value for `NEXT_PUBLIC_POSTHOG_HOST` is not a valid URL. No Preview URL became testable and Production remained unchanged. Correct the Preview-scoped value through the approved secret-management workflow and redeploy; do not copy a secret or value from Explore&Earn.
 
 Production remained unchanged throughout. The documented rollback candidate is the prior `READY` Production deployment `dpl_6epZN9Y8Z7byQ7Rsf9LRN4zRPNQz` (SHA `005af4fdd09ffab279ece37e8d0426847b02ff5b`). A real rollback proof still requires a non-production rehearsal or an approved Production rollback exercise.
 

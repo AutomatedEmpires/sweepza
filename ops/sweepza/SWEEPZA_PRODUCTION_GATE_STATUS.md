@@ -5,7 +5,7 @@ Overall: **NO-GO**
 
 | Gate | Status | Evidence | Blocker | Next action |
 | --- | --- | --- | --- | --- |
-| current-main Preview | BLOCKED | Branch created at exact `main` SHA; current Production is `READY` at that SHA | Branch creation did not itself trigger Preview; deployment ID pending | Push docs-only commit, wait for Preview, smoke-test, record ID |
+| current-main Preview | FAIL | `dpl_BAt7u8vL5ZRJ3kN384KPfuW3Mdpv` built the docs-only branch whose app code matches `main` | Build failed: Preview `NEXT_PUBLIC_POSTHOG_HOST` is not a valid URL; no smoke-testable URL | Correct the Preview-scoped value through approved secret management, redeploy, and smoke-test |
 | rollback proof | PARTIAL | Prior Production candidate `dpl_6epZN9Y8Z7byQ7Rsf9LRN4zRPNQz` recorded | No non-production rollback rehearsal | Rehearse env/deployment rollback in dark lane |
 | Clerk dark Preview | FAIL | Production renders but logs development-key warning; health says Clerk webhook false | Dark Production app not proven end-to-end | Execute the dark Preview plan |
 | Stripe sandbox + residue classification | PARTIAL | Accepted residue snapshot classified without deletion | Correct Sweepza Stripe account unavailable; no sandbox Checkout proof | Reconnect correct account and prove sandbox Checkout |
