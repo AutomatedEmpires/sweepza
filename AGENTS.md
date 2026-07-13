@@ -1,61 +1,104 @@
-# Sweepza — Agent & Contributor Guide
+# Sweepza — Agent and Contributor Contract
 
-This file is binding for every contributor, human or AI (Copilot or Claude). Read it before writing code.
+This contract binds human and automated contributors. Read it before inspecting or changing the repository. The approved Notion canon is product truth; this repository and its GitHub artifacts are implementation truth. Record and reconcile any gap between them.
 
-## The machine & runtime (pinned — do not drift)
+## 1. App purpose
 
-Sweepza is one app in the AutomatedEmpires venture system; **Explore&Earn (E&E) is the reference implementation**. All apps share one machine, one runtime, and one integration spine so an agent moving between repos reads one contract.
+Sweepza is a sweepstakes and giveaway discovery and management platform. The domain is legal- and compliance-sensitive: eligibility, entry mechanics, prize claims, disclosures, host rights, and money flows must remain explicit and reviewable. Current production users and customers: **none**.
 
-- **Machine:** Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code. Working path `/home/jackson/automatedempires/ventures/sweepza`. 16 GB RAM — **one agent at a time**; do not assume parallel heavy builds or long-running watchers.
-- **Runtime (pinned):** Node **24.16.0** (`.nvmrc`) · pnpm **10.12.4** (`packageManager`) · TypeScript end-to-end. Any version change requires a dated decision in the locked Notion canon.
-- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary · Observability = PostHog + Sentry · Icons = Phosphor (semantic registry in components/icon.tsx) · Email = Resend.
-- **CI & agent routing:** CI runs through the org reusable workflow (`.github/workflows/ci.yml` → `AutomatedEmpires/.github` reusable-ci). Agent routing (build-task router, PR agent router/dispatch) mirrors E&E. Notion decides product truth; this repo decides implementation truth.
+One canonical `listing` object must drive cards, details, Discover, host and owner surfaces, Winner Wall attachments, sharing, and analytics. Seeker-specific state belongs in `listing_seeker_state`, never on `listing`.
 
-## Source of truth
+## 2. Business vision
 
-**Doctrine: Notion decides and builds. GitHub reviews and ships. Figma shows. Everything else runs.** The bulk of the build — specs, data model, copy — is authored in the locked Notion canon first; this repo validates, reviews, and ships it.
+Build a trustworthy, mobile-first marketplace in which authorized hosts submit and manage legitimate giveaways and seekers can understand entry and eligibility without dark patterns. Controlled taxonomies, transparent lifecycle state, and server-enforced permissions are product fundamentals.
 
-The **locked Notion canon** is authoritative. This repo implements it; it does not redefine it. Where code and canon disagree, the canon wins. The canonical specs are: Locked Product Doctrine, Audit Response & Decision Locks, Canonical Listing Object, Canonical Data Model & RLS, Listing States & Quality Gate, Trust/Verification & Badge Naming, Billing & Entitlements, Analytics Event Dictionary, Notification Matrix, Legal & Disclosure Registry, and Controlled Dictionaries & Taxonomy Governance.
+Do not scrape or repost giveaways. External giveaway pages may be lawful prospect or research inputs only; they are not marketplace inventory and may not be published without host submission, rights, provenance, and the required review.
 
-## Core rule (no exceptions)
+The build order keeps the canonical listing object and listing card ahead of billing, Winner Wall expansion, or host analytics. Legal, payment, and prize-promotion gates take precedence over feature momentum.
 
-No one codes from vague ideas. Every slice moves through:
+## 3. Current rollout status
 
-**Spec → Acceptance Criteria → Branch → Implementation → PR → Review → CI → Merge → Deploy → Notion status update.**
+Snapshot: **2026-07-12**. Status: **next · active · blocked**. There are **no open PRs** and **zero production customers/users** at this snapshot. Refresh current branch, HEAD, PR, issue, acceptance-criteria, ownership, and rollout data before acting. Do not inflate zero-customer/user status or treat this snapshot as current without checking.
 
-- One feature branch per slice: `feat/<lane>/<slug>` (e.g. `feat/card-system/listing-card`).
-- Open a PR against `main`. Reference the issue and its acceptance criteria.
-- Nothing merges to `main` without a PR + at least one independent review (**Claude** primary, **Copilot** secondary) + green CI. The builder is not the sole approver. **Codex was retired 2026-06-06.**
-- Squash-merge only. Merged branches are auto-deleted.
+Known blockers are production using Clerk development mode; incomplete preflight/current-main Preview evidence; foreign Explore&Earn Stripe residue; a separate Sweepza email activation and capacity path; and missing rollback, data, and telemetry proof.
 
-## Architectural law
+## 4. Branch naming rules
 
-- **One canonical `listing` object** drives card, detail, Discover, host area, owner area, Winner Wall attachment, sharing, and analytics. Never create parallel listing models for seeded vs. host vs. card.
-- Seeker-specific state lives in `listing_seeker_state`, never on `listing`.
-- **Controlled values** (category, tag, badge, eligibility, entry_frequency, report_reason, reaction, source_label) come from the dictionary registry — never free text. Hosts select; they never create taxonomy.
-- Keep it boring, clear, stable. Polish comes from a clean object model, not a complex stack.
+Before work, record `git status -sb`, the current branch and HEAD, open PRs, the issue and acceptance criteria, and artifact ownership. One agent owns one task, one branch, and one artifact set at a time. Hand off through durable repo artifacts such as issues, PRs, and documentation.
 
-## Security & access (server-enforced)
+- Agent work: `agent/<scope>-<short-description>`
+- Normal feature work: `feat/<lane>/<slug>`
+- Fixes: `fix/<lane>/<slug>`
+- Documentation: `docs/<lane>/<slug>`
+- Chores: `chore/<lane>/<slug>`
 
-- Roles are enforced via Supabase **RLS** keyed on Clerk identity. Client-side role checks are advisory only.
-- Seekers can manage only their own seeker state and their own Winner Wall posts.
-- Hosts can manage only their own listings; they cannot write moderation/verification/featured fields.
-- Hosts must never post Winner Wall content as advertising.
-- Public users see only `visibility_status = public` and `lifecycle_status = active` listings, and only `published` Winner posts.
-- The active-listing entitlement cap (≤10) is enforced in the database, never client-side.
-- **Never commit secrets.** All keys live in GitHub Actions secrets and Vercel env, referenced through `lib/env.ts`.
+Use kebab case. Never direct-push `main`, merge, delete branches, rewrite history, force-push, or overwrite another agent’s lane or artifact. Keep PRs small and tied to a documented spec, issue, and acceptance criteria. The stale claim that Codex is retired is not policy and must not be reintroduced.
 
-## Quality bar
+## 5. Required checks before PR
 
-- TypeScript strict. Mobile-first. Accessible (semantic HTML, labels, `aria-current`, focus states, color-contrast).
-- SEO: per-route metadata, Open Graph, canonical URLs, semantic headings.
-- Touch: 44px+ targets, no hover-only affordances.
-- CI (lint + build) must pass. Add tests for non-trivial logic.
+Run from the repository root and report the exact command and result:
 
-## Lanes
+```text
+pnpm install --frozen-lockfile
+pnpm validate
+git diff --check
+```
 
-A Foundation · B Data/Auth/Permissions · C Card System · D Seeker Experience · E Host Experience · F Winner Wall · G Billing/Entitlements · H Observability · I QA/Review. One lane owns a slice; adjacent lanes review but do not overwrite.
+Run focused tests for every non-trivial change. Include screenshots and accessibility evidence for UI work. If a check cannot run, report why; do not describe an unrun check as passing.
 
-## Build order guardrail
+## 6. Forbidden actions
 
-Do not build billing, Winner Wall, or host analytics before the listing card and canonical listing object are solid.
+- Do not scrape or repost external giveaways or turn prospect/research inputs into inventory without rights and host submission.
+- Do not launch live paid campaigns, entries tied to consideration, subscriptions or charges, or prize promotions without explicit legal and payment approval.
+- Do not bypass the canonical listing object, store seeker state on listings, create free-text alternatives to controlled taxonomies, weaken RLS, or rely on client-only authorization.
+- Do not build billing, Winner Wall expansion, or host analytics ahead of the listing card and canonical object.
+- Do not delete live data, drop schemas, bypass review, deploy, alter domains/DNS, expose secrets, or perform unscoped production mutations.
+
+## 7. Provider no-touch zones
+
+Doppler, Vercel, Supabase, Clerk, Stripe, Resend and DNS, Mapbox, Cloudinary, PostHog, Sentry, and all provider-specific resources are no-touch unless the task explicitly approves the exact action. No deploy, environment, domain, DNS, secret, live migration or SQL, auth, storage, product, price, webhook, email, or telemetry writes are authorized by ordinary repository work.
+
+Stripe Connect may appear in architecture documentation only as intended and **blocked/not authorized**; the provider spine must never imply Connect approval. Foreign Explore&Earn Stripe configuration or residue must not be reused or “cleaned up” without a separately approved provider task.
+
+`support@sweepza.com` is owned, but ownership is not activation or sending authority. Sweepza requires a separate Resend/email path; never reuse another venture’s sender, account, domain, credentials, capacity, or reputation path.
+
+## 8. Data, money, email, and auth guardrails
+
+Never use or expose secrets, live data, private user or customer data, real money, real email, or production auth. Use fixtures and non-production resources only when the task explicitly permits them.
+
+- **Data:** Preserve the canonical listing model, controlled dictionary registry, and server-enforced Supabase RLS keyed to Clerk identity. No live SQL, migration, storage, customer-data, entitlement, moderation, or visibility mutation without approval.
+- **Money and prizes:** No live payments, consideration-linked entries, subscription or campaign charges, prize promotion, product/price creation, Connect action, payout, refund, or webhook change without legal and payment approval.
+- **Email:** No production sending, sender/domain activation, DNS change, recipient import, or capacity change. A dedicated Sweepza Resend path and approved consent, suppression, and reply handling are required.
+- **Auth:** Production currently uses Clerk development mode. Do not activate production Clerk or mutate users, roles, RLS identity mapping, permissions, or sessions without approval and evidence.
+
+Public access must remain limited to public/active listings and published Winner posts. Hosts may manage only their own listings and may not write moderation, verification, or featured fields. Seekers may manage only their own state and Winner Wall posts.
+
+## 9. Design notes
+
+Preserve the current mobile-first, card-first, accessible interface and Phosphor semantic icon system. Avoid incidental redesign or a competing component/icon library.
+
+- Maintain semantic HTML, labels, `aria-current`, visible focus states, contrast, and 44px-or-larger touch targets; never rely on hover alone.
+- Preserve the one-card/one-canonical-listing composition across surfaces.
+- Use controlled taxonomies for category, tag, badge, eligibility, entry frequency, report reason, reaction, and source label; hosts select values and do not invent taxonomy.
+- Keep strict TypeScript and server-enforced permissions. Add per-route metadata, Open Graph data, canonical URLs, and semantic headings where relevant.
+
+The pinned baseline remains Windows 11 ARM64 → WSL2 Ubuntu 24.04, Node 24.16.0, pnpm 10.12.4, and TypeScript end to end. CI routes through the organization reusable workflow. Runtime, provider, or architectural alternatives require an explicit dated decision.
+
+## 10. Current known PRs and blockers
+
+As of **2026-07-12**, there are no open PRs. Re-check before starting or reporting work.
+
+Known blockers are Clerk development mode in production; incomplete preflight and current-main Preview proof; foreign Explore&Earn Stripe residue; separate Sweepza email activation and capacity; and rollback, data, and telemetry evidence. Zero production users/customers is the current baseline and must not be presented otherwise.
+
+## 11. Output format for future agents
+
+Every handoff or PR report must include:
+
+- branch and HEAD;
+- scope, owned artifacts, and files changed;
+- exact commands run and their results;
+- explicit provider/live actions (`none` normally);
+- data, money, email, and auth impact;
+- screenshots and accessibility evidence for UI work;
+- risks, blockers, assumptions, and unrun checks; and
+- PR URL, or `none` with the reason.
