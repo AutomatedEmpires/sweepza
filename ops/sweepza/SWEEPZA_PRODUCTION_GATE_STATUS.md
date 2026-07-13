@@ -3,35 +3,36 @@
 Date: 2026-07-12  
 Overall: **NO-GO**
 
-| Gate | Status | Evidence | Blocker | Next action |
-| --- | --- | --- | --- | --- |
-| current-main Preview | FAIL | `dpl_BAt7u8vL5ZRJ3kN384KPfuW3Mdpv` built the docs-only branch whose app code matches `main` | Build failed: Preview `NEXT_PUBLIC_POSTHOG_HOST` is not a valid URL; no smoke-testable URL | Correct the Preview-scoped value through approved secret management, redeploy, and smoke-test |
-| rollback proof | PARTIAL | Prior Production candidate `dpl_6epZN9Y8Z7byQ7Rsf9LRN4zRPNQz` recorded | No non-production rollback rehearsal | Rehearse env/deployment rollback in dark lane |
-| Clerk dark Preview | FAIL | Production renders but logs development-key warning; health says Clerk webhook false | Dark Production app not proven end-to-end | Execute the dark Preview plan |
-| Stripe sandbox + residue classification | PARTIAL | Accepted residue snapshot classified without deletion | Correct Sweepza Stripe account unavailable; no sandbox Checkout proof | Reconnect correct account and prove sandbox Checkout |
-| foreign webhook replacement plan | PASS-PLAN | Ordered replacement and rollback path documented | No replacement delivery proof | Execute in sandbox, then approved live change window |
-| email alias plan | PASS-PLAN | `support@sweepza.com` ownership and nine-address plan recorded | Owners, mailbox behavior, and alias approvals open | Founder assigns owners and approves creation |
-| Resend capacity decision | FAIL | Code gracefully no-ops if unset; Production activation not attempted | Plan/budget/domain/suppression ownership undecided | Approve capacity and dark-lane proof |
-| Supabase/RLS | PARTIAL | Dedicated healthy project; all public tables RLS-enabled; policies inspected | Remote history lacks eight repo migrations; ordinary-user proof not run | Reconcile migration history and run disposable-role matrix |
-| Sentry event | FAIL | Sentry code installed and env-gated | Production health says false; no controlled event | Configure dark Preview and capture one non-sensitive event |
-| PostHog event | FAIL | Dedicated `Sweepza` project exists; autocapture and automatic pageviews disabled in code | Project reports no ingested event; Production health says false | Configure dark Preview and capture one allowlisted event |
-| domain/DNS | PARTIAL | `https://sweepza.com` serves the Vercel app | DNS ownership/redirect/TLS inventory not captured; DNS changes prohibited | Read-only inventory in next approved pass |
-| support/privacy/legal pages | FAIL | About, Privacy, and Terms routes load/link; support address ownership recorded | Privacy and Terms explicitly say reviewed legal text is still required | Obtain legal review and prove support workflow |
-| admin/recovery | FAIL | Admin route and DB roles exist in source/policies | Break-glass owner, recovery drill, audit trail, and runbook unproven | Document and rehearse non-destructive recovery |
-| transfer-readiness | FAIL | Dedicated GitHub, Vercel, Supabase, and PostHog identities observed | Provider custody, billing, auth, telemetry, email, recovery, and legal package incomplete | Build signed ownership/access inventory and handoff runbook |
+| Gate | Status | Evidence / blocker |
+| --- | --- | --- |
+| fresh Preview build | PASS | `dpl_HLrzHx9Wz7VFgupVu25pBbjgDihe` reached `READY`; local and Vercel production builds passed |
+| Preview smoke | PASS | homepage, health, Privacy, and Terms rendered; no browser warnings/errors and no error/fatal runtime logs |
+| PostHog configuration | PASS | correct project/host configured; one controlled anonymous event verified at `2026-07-13T00:07:54.210Z` |
+| Sentry | FAIL | staging DSN, auth token, and org are empty; no event proof |
+| Clerk dark Preview | FAIL | staging keys are development-family; webhook secret absent; Preview fails closed |
+| Stripe sandbox catalog | PASS | dedicated sandbox, two active recurring prices, unpaid Checkout Session |
+| Stripe signed webhook | PASS | replacement endpoint accepted a correctly signed synthetic event with HTTP 200; no data mutation |
+| live money | FAIL | no live-account replacement proof; foreign webhook retained; residue remains unknown |
+| email aliases | FAIL | zero created; connected Resend identity is Explore&Earn only |
+| migration parity | PASS | all repository migrations applied and verified; invalid search SQL corrected |
+| Supabase security | PARTIAL | zero advisor errors after hardening; 12 identity-helper warnings require review |
+| legal baseline | PASS-DRAFT | placeholders replaced; copy explicitly requires legal review and is not attorney-approved |
+| recovery | FAIL | provider recovery and rollback drill remain unproven |
 
-## Telemetry policy observed in source
+## Hard decisions
 
-- PostHog initializes only when key and host exist.
-- `capture_pageview` and `autocapture` are disabled.
-- No session replay configuration was observed in the client initializer.
-- Sentry initializes only when a DSN exists and uses a 0.1 trace sample rate.
-- Controlled proof events must use synthetic identifiers and contain no email, name, IP, payment data, Clerk payload, or customer content.
+- Users safe for broad Production launch: **NO** — dark Clerk, Sentry, recovery, and residual Supabase warnings remain.
+- Money safe for live use: **NO** — sandbox is isolated and safe; live replacement/residue proof is incomplete.
+- Email activation safe: **NO** — no Sweepza provider connection, alias owners, or receiving proof.
+- Production promotion safe: **NO**.
 
-## Final decisions
+## Exact founder decisions remaining
 
-- Ready for production users: **NO**
-- Ready for paid hosts/money: **NO**
-- Ready for email activation: **NO**
-- Ready for Production promotion: **NO**
-- Transfer-ready: **NO**
+1. Authenticate/select the intended Clerk Production application and approve disposable dark-lane identity testing.
+2. Connect the Sweepza Sentry project and supply the non-empty Preview DSN/auth/org tuple.
+3. Connect the Sweepza live Stripe account, confirm the two customers and `$0` draft invoice, and later approve foreign-webhook retirement only after replacement proof.
+4. Authenticate the `sweepza.com` mailbox/domain provider, name every alias owner/forwarding target, choose apex versus sending subdomain, and approve one internal test.
+5. Assign qualified legal review for Privacy and Terms, including governing law, liability, dispute, retention, and jurisdiction-specific privacy provisions.
+6. Name the break-glass owner and approve a non-destructive recovery/rollback drill.
+
+Production remains on the last known-good deployment. Do not merge or promote PR #53 until the failed gates are revalidated.
