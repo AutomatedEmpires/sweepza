@@ -123,7 +123,18 @@ export async function deleteAppUserByClerkId(clerkUserId: string): Promise<void>
 export async function ensureCurrentAppUser(): Promise<SweepzaAuthUser | null> {
   if (!isClerkConfigured()) return null;
 
-  const authState = await auth();
+  let authState: Awaited<ReturnType<typeof auth>>;
+  try {
+    authState = await auth();
+  } catch {
+    // auth() throws "clerkMiddleware() not detected" when the request never
+    // passed through Clerk middleware — e.g. asset-like paths such as /sw.js
+    // that the middleware matcher intentionally excludes but that still fall
+    // through to the App Router and render the root layout. There is no auth
+    // context on those requests, so treat them as signed-out instead of
+    // throwing and 500-ing the shared layout.
+    return null;
+  }
   if (!authState.userId) return null;
 
   const user = await currentUser();
