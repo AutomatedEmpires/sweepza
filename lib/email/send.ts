@@ -9,7 +9,8 @@ export interface SendEmailArgs {
 }
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
-const DEFAULT_FROM = "Sweepza <hello@sweepza.com>";
+const DEFAULT_FROM = "Sweepza <notifications@sweepza.com>";
+const DEFAULT_REPLY_TO = "support@sweepza.com";
 
 /**
  * Send a transactional email via the Resend REST API using fetch (no SDK).
@@ -20,7 +21,12 @@ const DEFAULT_FROM = "Sweepza <hello@sweepza.com>";
  */
 export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<void> {
   const apiKey = env.RESEND_API_KEY;
-  const from = env.RESEND_FROM_EMAIL ?? DEFAULT_FROM;
+  const from =
+    env.RESEND_FROM?.trim() || env.RESEND_FROM_EMAIL?.trim() || DEFAULT_FROM;
+  const replyTo =
+    env.RESEND_REPLY_TO?.trim() ||
+    env.SUPPORT_EMAIL?.trim() ||
+    DEFAULT_REPLY_TO;
 
   if (!apiKey) {
     // eslint-disable-next-line no-console
@@ -36,7 +42,7 @@ export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<v
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to, subject, html }),
+    body: JSON.stringify({ from, reply_to: replyTo, to, subject, html }),
   });
 
   if (!response.ok) {
