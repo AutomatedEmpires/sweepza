@@ -1,24 +1,25 @@
+@import "./tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #f5f0e7;
-  --foreground: #17130f;
+html {
+  height: 100%;
+  background: rgb(var(--color-bg));
 }
 
-html,
 body {
   height: 100%;
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
+  background: rgb(var(--color-bg));
+  color: rgb(var(--color-text));
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
 }
 
 @layer base {
@@ -36,14 +37,14 @@ body {
 
   /* Consistent, visible focus for keyboard users across the app. */
   :where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
-    outline: 2px solid #17130f;
+    outline: 2px solid rgb(var(--color-text));
     outline-offset: 2px;
     border-radius: 4px;
   }
 
   ::selection {
-    background: #e0532b;
-    color: #ffffff;
+    background: rgb(var(--color-accent));
+    color: rgb(var(--color-on-accent));
   }
 }
 

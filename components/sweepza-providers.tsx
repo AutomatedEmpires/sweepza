@@ -2,6 +2,7 @@
 
 import { ClerkProvider } from "@clerk/nextjs";
 import { NowProvider } from "@/lib/now";
+import { ThemeProvider } from "@/lib/theme";
 import {
   SeekerStateProvider,
   type SeekerStateSnapshot,
@@ -22,14 +23,16 @@ export function SweepzaProviders({
   serverNow: number;
 }) {
   const content = (
-    <NowProvider value={serverNow}>
-      <SeekerStateProvider
-        initial={initialSeekerState}
-        persistenceMode={persistenceMode}
-      >
-        {children}
-      </SeekerStateProvider>
-    </NowProvider>
+    <ThemeProvider>
+      <NowProvider value={serverNow}>
+        <SeekerStateProvider
+          initial={initialSeekerState}
+          persistenceMode={persistenceMode}
+        >
+          {children}
+        </SeekerStateProvider>
+      </NowProvider>
+    </ThemeProvider>
   );
 
   if (!clerkPublishableKey) {

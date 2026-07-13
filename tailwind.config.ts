@@ -1,44 +1,50 @@
 import type { Config } from "tailwindcss";
 
-// Sweepza design system — the "editorial memory" identity.
-// Warm paper canvas, real white surfaces for contrast, one confident ember
-// action, and a small, deliberate state palette (urgency / trust / won / new).
-// Prize photography is the hero; color supports content, never buries it.
+// Sweepza design system. Every color, radius, and shadow below is backed by a
+// themeable CSS variable declared in app/tokens.css — this file only maps the
+// semantic Tailwind names onto those tokens. To retune the brand or the two
+// themes (Sunrise / Midnight), edit app/tokens.css, not this file.
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  // Theme is driven by [data-theme="dark"] on <html> (see lib/theme.tsx), so
+  // any future `dark:` utilities key off that attribute rather than the OS.
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        // Core neutrals
-        ink: "#17130f", // primary text — deep warm near-black
-        graphite: "#6e655a", // secondary text — AA on paper/surface
-        paper: "#f5f0e7", // app canvas — warm, calm
-        surface: "#ffffff", // card/sheet surface — contrast against paper
-        line: "#e7dfd0", // hairline borders
+        // `<alpha-value>` keeps Tailwind opacity modifiers (e.g. bg-ember/10)
+        // working in both themes, since each token is stored as RGB channels.
+        ink: "rgb(var(--color-text) / <alpha-value>)",
+        graphite: "rgb(var(--color-text-muted) / <alpha-value>)",
+        paper: "rgb(var(--color-bg) / <alpha-value>)",
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        "surface-2": "rgb(var(--color-surface-2) / <alpha-value>)",
+        line: "rgb(var(--color-border) / <alpha-value>)",
 
-        // Legacy aliases (kept so existing components adopt the new palette
-        // without a rename sweep). cream≈paper, sand≈line, moss→pine, sky→ocean.
-        cream: "#f5f0e7",
-        sand: "#e7dfd0",
-        moss: "#3e6b52", // trust / verified / positive (premium pine)
-        sky: "#35506b", // information / new (cool accent)
+        // Legacy aliases kept so existing components need no rename sweep.
+        cream: "rgb(var(--color-bg) / <alpha-value>)",
+        sand: "rgb(var(--color-border) / <alpha-value>)",
+        moss: "rgb(var(--color-trust) / <alpha-value>)",
+        sky: "rgb(var(--color-info) / <alpha-value>)",
 
         // Action + state
-        ember: "#e0532b", // primary action (confident warm)
-        flame: "#c9381f", // urgency — ends today / tonight
-        gold: "#b0812a", // won / celebration
-        ocean: "#35506b", // new / info
-        pine: "#3e6b52", // trust / verified
+        ember: "rgb(var(--color-accent) / <alpha-value>)",
+        flame: "rgb(var(--color-urgent) / <alpha-value>)",
+        gold: "rgb(var(--color-won) / <alpha-value>)",
+        ocean: "rgb(var(--color-info) / <alpha-value>)",
+        pine: "rgb(var(--color-trust) / <alpha-value>)",
+        "on-accent": "rgb(var(--color-on-accent) / <alpha-value>)",
       },
       borderRadius: {
-        card: "1.1rem",
-        sheet: "1.75rem",
-        pill: "999px",
+        control: "var(--radius-control)",
+        card: "var(--radius-card)",
+        sheet: "var(--radius-sheet)",
+        pill: "var(--radius-pill)",
       },
       boxShadow: {
-        e1: "0 1px 2px rgba(23,19,15,0.04), 0 2px 8px rgba(23,19,15,0.05)",
-        e2: "0 4px 14px rgba(23,19,15,0.08), 0 2px 6px rgba(23,19,15,0.05)",
-        e3: "0 18px 48px rgba(23,19,15,0.16), 0 6px 16px rgba(23,19,15,0.08)",
+        e1: "var(--shadow-e1)",
+        e2: "var(--shadow-e2)",
+        e3: "var(--shadow-e3)",
       },
       fontFamily: {
         // Inter for UI/body; Fraunces for editorial display + numerals.
@@ -72,8 +78,8 @@ const config: Config = {
         // "Ready again" recurrence — a calm breathing ring that invites
         // re-entry without shouting. This is the memory engine made visible.
         "ready-glow": {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(62,107,82,0)" },
-          "50%": { boxShadow: "0 0 0 4px rgba(62,107,82,0.14)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 rgb(var(--color-trust) / 0)" },
+          "50%": { boxShadow: "0 0 0 4px rgb(var(--color-trust) / 0.14)" },
         },
         // Won — a single slow sheen sweep across the action on the moment
         // the win lands.

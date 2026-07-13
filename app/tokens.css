@@ -1,0 +1,141 @@
+/*
+  ============================================================================
+  SWEEPZA DESIGN TOKENS — the single source of truth for the visual system.
+
+  Change a value HERE and the whole app follows. Nothing else hardcodes color,
+  type, spacing, radius, shadow, motion, or icon size — components reference
+  these tokens (directly or through Tailwind's semantic color names).
+
+  Colors are stored as space-separated RGB CHANNELS (e.g. `224 83 43`) so that
+  Tailwind opacity modifiers keep working: a class like `bg-ember/10` compiles
+  to `rgb(var(--color-accent) / 0.1)`. Never store colors as hex here.
+
+  Two themes ship today:
+    · Sunrise  — the day palette (light). Default.
+    · Midnight — the night palette (dark). Applied via [data-theme="dark"].
+  Theme selection (auto-by-time, or manual) is handled in lib/theme.tsx.
+  ============================================================================
+*/
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* 1 · BRAND PRIMITIVES — the raw palette. The ONLY place to retune a  */
+  /*     brand hue. Semantic tokens (section 3) point at these.          */
+  /* ------------------------------------------------------------------ */
+
+  /* Sunrise — day */
+  --sun-paper: 245 240 231;      /* #F5F0E7  warm canvas   */
+  --sun-surface: 255 255 255;    /* #FFFFFF  card          */
+  --sun-surface-2: 250 246 238;  /* #FAF6EE  raised        */
+  --sun-ink: 23 19 15;           /* #17130F  text          */
+  --sun-graphite: 110 101 90;    /* #6E655A  muted text    */
+  --sun-line: 231 223 208;       /* #E7DFD0  hairline      */
+  --sun-ember: 224 83 43;        /* #E0532B  primary action*/
+  --sun-flame: 201 56 31;        /* #C9381F  urgency       */
+  --sun-gold: 176 129 42;        /* #B0812A  won / prize   */
+  --sun-ocean: 53 80 107;        /* #35506B  info / new    */
+  --sun-pine: 62 107 82;         /* #3E6B52  trust         */
+
+  /* Midnight — night */
+  --mid-paper: 14 11 20;         /* #0E0B14  ink canvas    */
+  --mid-surface: 26 22 34;       /* #1A1622  card          */
+  --mid-surface-2: 36 31 48;     /* #241F30  raised        */
+  --mid-ink: 243 238 230;        /* #F3EEE6  warm-light text*/
+  --mid-graphite: 176 167 189;   /* #B0A7BD  muted text    */
+  --mid-line: 42 36 50;          /* #2A2432  hairline      */
+  --mid-ember: 240 99 58;        /* #F0633A  action (white-legible)*/
+  --mid-flame: 255 107 107;      /* #FF6B6B  urgency       */
+  --mid-gold: 245 197 66;        /* #F5C542  won — jewel gold*/
+  --mid-ocean: 127 178 255;      /* #7FB2FF  info          */
+  --mid-pine: 69 201 154;        /* #45C99A  trust         */
+
+  /* ------------------------------------------------------------------ */
+  /* 2 · NON-COLOR SCALES — mode-stable. (--font-sans / --font-display   */
+  /*     are injected by next/font in app/layout.tsx.)                   */
+  /* ------------------------------------------------------------------ */
+
+  --text-2xs: 0.6875rem;  /* 11px */
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.8125rem;   /* 13px */
+  --text-base: 0.9375rem; /* 15px — comfortable mobile body */
+  --text-md: 1rem;        /* 16px */
+  --text-lg: 1.125rem;    /* 18px */
+  --text-xl: 1.375rem;    /* 22px */
+  --text-2xl: 1.75rem;    /* 28px */
+  --text-3xl: 2.25rem;    /* 36px */
+  --text-4xl: 3rem;       /* 48px — hero prize numerals */
+
+  --radius-control: 0.65rem;
+  --radius-card: 1.1rem;
+  --radius-sheet: 1.75rem;
+  --radius-pill: 999px;
+
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 22px;
+  --icon-xl: 28px;
+
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --dur-slow: 400ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --z-nav: 40;
+  --z-sheet: 50;
+  --z-toast: 60;
+
+  /* ------------------------------------------------------------------ */
+  /* 3 · SEMANTIC TOKENS — what components actually consume.             */
+  /*     Default = SUNRISE (light / day).                                */
+  /* ------------------------------------------------------------------ */
+
+  --color-bg: var(--sun-paper);
+  --color-surface: var(--sun-surface);
+  --color-surface-2: var(--sun-surface-2);
+  --color-text: var(--sun-ink);
+  --color-text-muted: var(--sun-graphite);
+  --color-border: var(--sun-line);
+  --color-accent: var(--sun-ember);
+  --color-urgent: var(--sun-flame);
+  --color-won: var(--sun-gold);
+  --color-info: var(--sun-ocean);
+  --color-trust: var(--sun-pine);
+  --color-on-accent: 255 255 255;
+
+  --shadow-e1: 0 1px 2px rgb(23 19 15 / 0.04), 0 2px 8px rgb(23 19 15 / 0.05);
+  --shadow-e2: 0 4px 14px rgb(23 19 15 / 0.08), 0 2px 6px rgb(23 19 15 / 0.05);
+  --shadow-e3: 0 18px 48px rgb(23 19 15 / 0.16), 0 6px 16px rgb(23 19 15 / 0.08);
+
+  color-scheme: light;
+}
+
+/* Explicit light selection == the defaults above. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ */
+/* SEMANTIC TOKENS — MIDNIGHT (dark / night).                          */
+/* Only the semantic layer flips; primitives and scales are shared.    */
+/* ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  --color-bg: var(--mid-paper);
+  --color-surface: var(--mid-surface);
+  --color-surface-2: var(--mid-surface-2);
+  --color-text: var(--mid-ink);
+  --color-text-muted: var(--mid-graphite);
+  --color-border: var(--mid-line);
+  --color-accent: var(--mid-ember);
+  --color-urgent: var(--mid-flame);
+  --color-won: var(--mid-gold);
+  --color-info: var(--mid-ocean);
+  --color-trust: var(--mid-pine);
+  --color-on-accent: 255 255 255;
+
+  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.30), 0 2px 8px rgb(0 0 0 / 0.36);
+  --shadow-e2: 0 4px 14px rgb(0 0 0 / 0.44), 0 2px 6px rgb(0 0 0 / 0.34);
+  --shadow-e3: 0 18px 48px rgb(0 0 0 / 0.60), 0 6px 16px rgb(0 0 0 / 0.40);
+
+  color-scheme: dark;
+}
