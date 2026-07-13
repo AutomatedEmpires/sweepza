@@ -47,7 +47,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#17130f",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f0e7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e0b14" },
+  ],
   width: "device-width",
   initialScale: 1,
 };
@@ -63,8 +66,18 @@ export default async function RootLayout({
     : { primary: {}, saved: {}, activity: {} };
 
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${display.variable} ${sans.variable}`}
+    >
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var p=localStorage.getItem('sweepza-theme')||'auto';var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
+          }}
+        />
         <ObservabilityProviders>
           <SweepzaProviders
             clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}

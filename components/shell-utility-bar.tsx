@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isClerkConfigured, type SweepzaAuthUser } from "@/lib/auth";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function ShellUtilityBar({
   authUser,
@@ -14,6 +15,8 @@ export function ShellUtilityBar({
       <span className="font-semibold uppercase tracking-[0.15em] text-graphite lg:hidden">
         Sweepza
       </span>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
       {clerkConfigured ? (
         authUser ? (
           <Link
@@ -45,6 +48,7 @@ export function ShellUtilityBar({
           Local mode
         </span>
       )}
+      </div>
     </div>
   );
 }

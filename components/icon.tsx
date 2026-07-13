@@ -7,6 +7,7 @@ import {
   CaretRight,
   ChartBar,
   Check,
+  CircleHalf,
   Clock,
   ClockCounterClockwise,
   Compass,
@@ -18,6 +19,7 @@ import {
   Info,
   MagnifyingGlass,
   MapPin,
+  Moon,
   PaperPlaneTilt,
   SealCheck,
   ShareNetwork,
@@ -79,6 +81,11 @@ const REGISTRY = {
   settings: GearSix,
   chart: ChartBar,
   bell: Bell,
+
+  // Theme
+  sun: Sun,
+  moon: Moon,
+  themeAuto: CircleHalf,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof REGISTRY;
