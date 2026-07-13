@@ -32,7 +32,9 @@ Before work, record `git status -sb`, the current branch and HEAD, open PRs, the
 - Documentation: `docs/<lane>/<slug>`
 - Chores: `chore/<lane>/<slug>`
 
-Use kebab case. Never direct-push `main`, merge, delete branches, rewrite history, force-push, or overwrite another agent’s lane or artifact. Keep PRs small and tied to a documented spec, issue, and acceptance criteria. The stale claim that Codex is retired is not policy and must not be reintroduced.
+Lane keys remain A Foundation, B Data/Auth/Permissions, C Card System, D Seeker Experience, E Host Experience, F Winner Wall, G Billing/Entitlements, H Observability, and I QA/Review.
+
+Use kebab case. Implementing agents/builders never direct-push `main`, merge their own PRs, delete unmerged branches, rewrite history, force-push, or overwrite another agent’s lane or artifact. A designated maintainer or approved automation may merge after independent review and green required checks, then delete the merged branch. Keep PRs small and tied to a documented spec, issue, and acceptance criteria. The stale claim that Codex is retired is not policy and must not be reintroduced.
 
 ## 5. Required checks before PR
 
@@ -58,7 +60,7 @@ Run focused tests for every non-trivial change. Include screenshots and accessib
 
 Doppler, Vercel, Supabase, Clerk, Stripe, Resend and DNS, Mapbox, Cloudinary, PostHog, Sentry, and all provider-specific resources are no-touch unless the task explicitly approves the exact action. No deploy, environment, domain, DNS, secret, live migration or SQL, auth, storage, product, price, webhook, email, or telemetry writes are authorized by ordinary repository work.
 
-Stripe Connect may appear in architecture documentation only as intended and **blocked/not authorized**; the provider spine must never imply Connect approval. Foreign Explore&Earn Stripe configuration or residue must not be reused or “cleaned up” without a separately approved provider task.
+Sweepza's approved payment surface is host subscription billing. Stripe Connect and payouts are not approved scope and must not be introduced without a dated legal/payment decision. Foreign Explore&Earn Stripe configuration or residue must not be reused or “cleaned up” without a separately approved provider task.
 
 `support@sweepza.com` is owned, but ownership is not activation or sending authority. Sweepza requires a separate Resend/email path; never reuse another venture’s sender, account, domain, credentials, capacity, or reputation path.
 
