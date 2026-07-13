@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { CardCelebration } from "@/components/card-celebration";
 import { ContextTag } from "@/components/context-tag";
 import { Icon } from "@/components/icon";
+import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { canOptimizeImage } from "@/lib/image";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired } from "@/lib/listing-badges";
@@ -65,6 +67,7 @@ export function ListingCard({
   const hydrated = store ? store.hydrated : true;
   const [savePop, setSavePop] = useState(false);
   const [celebrate, setCelebrate] = useState<"entered" | "won" | null>(null);
+  const [reopened, setReopened] = useState(false);
   const prevStateRef = useRef<SeekerUiState>(uiState);
   const rebasedRef = useRef(false);
   useEffect(() => {
@@ -127,6 +130,7 @@ export function ListingCard({
       window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
     }
     setPrimary("entered");
+    setReopened(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
 
@@ -156,18 +160,31 @@ export function ListingCard({
   const days = daysUntil(listing.endDate, now);
   const urgentEnd = !expired && days <= 3;
 
-  // A re-entry window that has re-opened is actionable again — the signature
-  // "Ready again" recurrence should invite entry, not read as done.
-  const readyAgain = context.tone === "again";
+  // The daily loop: an entered, recurring sweep counts down to its next entry
+  // window, then re-opens as "Enter again". `reopened` is the live client flip
+  // from the in-card countdown; `context.tone === "again"` is the frozen-clock
+  // check that also covers server render and first paint.
+  const activity = store?.getActivity(listing.id);
+  const enteredAt = activity?.enteredAt ?? listing.seekerState?.enteredAt;
+  const recurring =
+    listing.entryFrequency === "daily" ||
+    listing.entryFrequency === "instant_win" ||
+    listing.entryFrequency === "weekly" ||
+    listing.entryFrequency === "monthly";
+  const readyAgain = context.tone === "again" || reopened;
+  const awaitingReentry =
+    entered && recurring && !readyAgain && !won && !expired && Boolean(enteredAt);
   const enterState = won
     ? "won"
     : expired
       ? "expired"
       : entered && readyAgain
         ? "again"
-        : entered
-          ? "entered"
-          : "open";
+        : awaitingReentry
+          ? "waiting"
+          : entered
+            ? "entered"
+            : "open";
 
   return (
     <article
@@ -225,6 +242,8 @@ export function ListingCard({
         >
           <Icon name="bookmark" size={17} weight={saved ? "fill" : "regular"} />
         </button>
+
+        {celebrate && <CardCelebration kind={celebrate} />}
       </div>
 
       {/* Record — title, prize, timing, trust, action. */}
@@ -240,11 +259,13 @@ export function ListingCard({
           </h3>
           {prizeValue && (
             <div className="shrink-0 text-right">
-              <div className="font-display text-[19px] leading-none text-ink">
+              <div className="font-display text-[22px] leading-none text-gold">
                 {prizeValue}
               </div>
               <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-graphite">
-                value
+                {listing.winnerCount && listing.winnerCount > 1
+                  ? `${listing.winnerCount} winners`
+                  : "value"}
               </div>
             </div>
           )}
@@ -303,10 +324,26 @@ export function ListingCard({
 
         {/* Action — one primary, one quiet route to the full record. */}
         <div className="mt-3.5 flex items-stretch gap-2">
-          <button
-            type="button"
-            onClick={handleEnter}
-            disabled={expired || won}
+          {enterState === "waiting" ? (
+            <div className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/8 px-4 py-2.5 text-[13px] font-medium text-pine">
+              <Icon name="clock" size={15} />
+              <span className="min-w-0 truncate">
+                {enteredAt ? (
+                  <ReentryCountdown
+                    enteredAt={enteredAt}
+                    frequency={listing.entryFrequency}
+                    onReady={() => setReopened(true)}
+                  />
+                ) : (
+                  "Entered"
+                )}
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleEnter}
+              disabled={expired || won}
             className={cn(
               "relative flex flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-semibold transition",
               enterState === "won"
@@ -353,7 +390,8 @@ export function ListingCard({
                 Enter now <Icon name="send" size={15} />
               </>
             )}
-          </button>
+            </button>
+          )}
 
           <Link
             href={`/sweeps/${listing.slug}`}
