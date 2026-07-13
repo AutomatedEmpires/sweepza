@@ -23,7 +23,7 @@ Use the zero-user stage to move quickly with synthetic vendors, test campaigns, 
 
 ## 3. Execution doctrine and default authority
 
-The default is to **ship a meaningful, tested change**, not add another audit that restates known gaps. Prefer an end-to-end boring workflow over a polished fragment: structured intake → checklist → rules review state → protected preview → evidence → handoff.
+Agents are expected to **ship meaningful, tested changes, not produce endless audits** that restate known gaps. Prefer an end-to-end boring workflow over a polished fragment: structured intake → checklist → rules review state → protected preview → evidence → handoff. Keep the work on a reversible branch.
 
 Without founder approval, agents may perform reversible, non-destructive work within assigned scope, including:
 
