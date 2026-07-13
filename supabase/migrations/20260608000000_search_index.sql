@@ -7,8 +7,10 @@ GENERATED ALWAYS AS (
   to_tsvector(
     'english',
     coalesce(title, '') || ' ' ||
-    coalesce(description, '') || ' ' ||
-    coalesce(host_name, '') || ' ' ||
+    coalesce(short_description, '') || ' ' ||
+    coalesce(long_description, '') || ' ' ||
+    coalesce(sponsor_name, '') || ' ' ||
+    coalesce(prize_name, '') || ' ' ||
     coalesce(prize_category::text, '')
   )
 ) STORED;
