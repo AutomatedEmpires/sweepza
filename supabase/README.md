@@ -16,10 +16,15 @@ supabase db reset   # runs migrations + seed.sql
 
 ## Identity model
 Clerk is the IdP. The JWT `sub` claim is the `clerk_user_id`. Helpers
-(`current_app_user_id()`, `is_owner()`, `is_admin()`, `is_host()`,
-`current_host_id()`) resolve identity for RLS and are `security definer` to avoid
-recursive policy evaluation. The `service_role` key bypasses RLS for trusted
-server tasks (Clerk webhooks, owner seeding, moderation jobs).
+(`private.current_app_user_id()`, `private.is_owner()`, `private.is_admin()`,
+`private.is_host()`, `private.current_host_id()`, `private.current_clerk_user_id()`)
+resolve identity for RLS and are `security definer` to avoid recursive policy
+evaluation. They live in the non-exposed `private` schema (not in the Data API's
+exposed-schema list), so they are unreachable as PostgREST RPCs while `anon` /
+`authenticated` keep EXECUTE for policy evaluation — see
+`migrations/20260713120000_move_identity_helpers_to_private_schema.sql`. The
+`service_role` key bypasses RLS for trusted server tasks (Clerk webhooks, owner
+seeding, moderation jobs).
 
 ## Guardrails enforced in the database
 - **Quality gate** (`listing_publish_guard`): blockers #1-#13 for `active`.
