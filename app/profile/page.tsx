@@ -125,6 +125,12 @@ export default async function ProfilePage() {
             title="Share a win"
             body="Post your win to the Winner Wall"
           />
+          <LinkRow
+            href="/profile/notifications"
+            icon="bell"
+            title="Reminders"
+            body="Choose which reminder emails you get"
+          />
         </div>
       </div>
 

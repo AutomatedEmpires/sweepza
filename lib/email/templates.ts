@@ -28,7 +28,7 @@ function button(href: string, label: string): string {
 const HOST_FOOTER =
   "You're receiving this because you have a Sweepza host account. Manage your email preferences in your host dashboard.";
 const SEEKER_FOOTER =
-  "You're receiving this because you saved or entered these sweepstakes on Sweepza — we only reach out when one of them needs you.";
+  "You're receiving this because you saved or entered these sweepstakes on Sweepza — we only reach out when one of them needs you. Manage reminders anytime under Reminders in your Sweepza profile.";
 
 function layout(
   headline: string,
