@@ -2,11 +2,13 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
+import { GamificationStrip } from "@/components/gamification-strip";
 import { ensureCurrentAppUser } from "@/lib/auth";
 import {
   getPublicListings,
   getSeekerHistoryListingsByIds,
 } from "@/lib/db/listings";
+import { getSeekerGamification } from "@/lib/db/gamification";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import type { Listing } from "@/lib/types/listing";
@@ -151,6 +153,7 @@ export default async function TodayPage() {
       month: "long",
       day: "numeric",
     });
+    const gamification = await getSeekerGamification(authUser.appUserId, now);
     return (
       <div className="flex flex-col gap-9 pb-8 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-4">
         <header className="px-5 pt-8 lg:px-0">
@@ -165,6 +168,12 @@ export default async function TodayPage() {
             what&apos;s ending, and what you&apos;ve already handled.
           </p>
         </header>
+
+        {gamification.stats.totalEntries > 0 && (
+          <div className="px-4 lg:px-0">
+            <GamificationStrip data={gamification} />
+          </div>
+        )}
 
         <TodayDashboard listings={routineListings} />
 
