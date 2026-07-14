@@ -25,7 +25,16 @@ function button(href: string, label: string): string {
   return `<a href="${escapeHtml(href)}" style="display:inline-block;background-color:${BRAND};color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px;font-size:15px;">${escapeHtml(label)}</a>`;
 }
 
-function layout(headline: string, bodyHtml: string): string {
+const HOST_FOOTER =
+  "You're receiving this because you have a Sweepza host account. Manage your email preferences in your host dashboard.";
+const SEEKER_FOOTER =
+  "You're receiving this because you saved or entered these sweepstakes on Sweepza — we only reach out when one of them needs you.";
+
+function layout(
+  headline: string,
+  bodyHtml: string,
+  footerNote: string = HOST_FOOTER,
+): string {
   return [
     `<div style="margin:0;padding:24px;background-color:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">`,
     `<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;">`,
@@ -37,7 +46,7 @@ function layout(headline: string, bodyHtml: string): string {
     bodyHtml,
     `</div>`,
     `<div style="padding:18px 28px;border-top:1px solid ${BORDER};">`,
-    `<p style="margin:0;font-size:12px;color:${MUTED};">You're receiving this because you have a Sweepza host account. Manage your email preferences in your host dashboard.</p>`,
+    `<p style="margin:0;font-size:12px;color:${MUTED};">${escapeHtml(footerNote)}</p>`,
     `</div>`,
     `</div>`,
     `</div>`,
@@ -116,6 +125,81 @@ export function listingExpiringSoonEmail(args: {
     subject: "Your sweepstakes ends in 48 hours",
     html: layout("Ending soon \u23F0", body),
   };
+}
+
+export type SeekerReminderKind = "ready_again" | "ends_today" | "ending_soon";
+
+export interface SeekerReminderItem {
+  kind: SeekerReminderKind;
+  title: string;
+  listingUrl: string;
+  endsInDays: number;
+}
+
+function reminderRow(item: SeekerReminderItem): string {
+  const meta =
+    item.kind === "ready_again"
+      ? { tag: "Ready again", color: "#3E6B52", bg: "#eaf3ee", note: "Your entry window re-opened" }
+      : item.kind === "ends_today"
+        ? { tag: "Ends today", color: "#C9381F", bg: "#fdece8", note: "Last call — enter before it closes" }
+        : {
+            tag: "Ending soon",
+            color: "#B0812A",
+            bg: "#fbf3e0",
+            note:
+              item.endsInDays <= 1
+                ? "Ends in about a day"
+                : `Ends in ${item.endsInDays} days`,
+          };
+  return [
+    `<a href="${escapeHtml(item.listingUrl)}" style="display:block;text-decoration:none;margin:0 0 12px;padding:14px 16px;border:1px solid ${BORDER};border-radius:10px;">`,
+    `<span style="display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${meta.color};background-color:${meta.bg};padding:3px 8px;border-radius:999px;">${escapeHtml(meta.tag)}</span>`,
+    `<span style="display:block;margin:8px 0 2px;font-size:16px;font-weight:600;color:${TEXT};">${escapeHtml(item.title)}</span>`,
+    `<span style="display:block;font-size:13px;color:${MUTED};">${escapeHtml(meta.note)}</span>`,
+    `</a>`,
+  ].join("");
+}
+
+/**
+ * The seeker reminder digest — one email that batches everything needing the
+ * user right now, urgency-ordered. The literal expression of "Sweepza remembers
+ * so you don't have to." Sent by app/api/cron/seeker-reminders.
+ */
+export function seekerReminderDigestEmail(args: {
+  displayName: string;
+  todayUrl: string;
+  items: SeekerReminderItem[];
+}): EmailContent {
+  const { displayName, todayUrl, items } = args;
+  const count = items.length;
+  const hasEndsToday = items.some((i) => i.kind === "ends_today");
+  const hasReadyAgain = items.some((i) => i.kind === "ready_again");
+
+  const subject = hasEndsToday
+    ? `⏰ ${count === 1 ? "A sweep you're tracking ends" : `${count} sweeps you're tracking need you`} today`
+    : hasReadyAgain
+      ? `${count === 1 ? "A sweep is" : `${count} sweeps are`} ready to enter again`
+      : `${count === 1 ? "A sweep you saved is" : `${count} sweeps you saved are`} ending soon`;
+
+  const headline = hasEndsToday
+    ? "Don't miss these today"
+    : hasReadyAgain
+      ? "Ready for another entry"
+      : "Ending soon";
+
+  const body = [
+    paragraph(`Hi ${escapeHtml(displayName)},`),
+    paragraph(
+      `Here ${count === 1 ? "is" : "are"} the ${count === 1 ? "sweep" : `${count} sweeps`} that need you right now:`,
+    ),
+    items.map(reminderRow).join(""),
+    `<div style="margin:20px 0 8px;">${button(todayUrl, "Open Today")}</div>`,
+    paragraph(
+      `We only send this when something you're tracking actually needs a look — nothing more.`,
+    ),
+  ].join("");
+
+  return { subject, html: layout(headline, body, SEEKER_FOOTER) };
 }
 
 export function winnerPostPublishedEmail(args: {

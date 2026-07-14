@@ -43,6 +43,13 @@ Pre-launch data step: purge dev inventory with
 `pnpm ops:expire-stale` (e.g. Vercel cron) so ended listings leave live
 inventory automatically.
 
+Scheduled jobs (`vercel.json` crons, authorized with `CRON_SECRET`):
+
+| Cron | Schedule | Purpose |
+| --- | --- | --- |
+| `/api/cron/expire-stale` | daily 06:10 UTC | Expire active listings past their end date. |
+| `/api/cron/seeker-reminders` | daily 14:00 UTC | Email each seeker one digest of the sweeps that need them — recurring entry windows that re-opened (`ready again`) and saved/entered sweeps ending soon. Honors `notification_pref`, dedupes against `notification_log`, and no-ops without `RESEND_API_KEY`. |
+
 ## Build pipeline
 
 Every change follows: **Spec → Acceptance Criteria → Branch → Implementation → PR → Review (Claude / Copilot + CI) → squash-merge → deploy**. Nothing lands on `main` without a PR and a green quality gate. See `AGENTS.md`. Validate locally with `pnpm validate` (lint + typecheck + test + build).
