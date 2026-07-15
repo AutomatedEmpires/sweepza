@@ -210,12 +210,12 @@ export function ListingDetail({
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-base font-semibold transition",
           won
-            ? "cursor-default bg-pine text-white"
+            ? "cursor-default bg-pine text-on-trust"
             : expired
               ? "cursor-not-allowed bg-line text-graphite"
               : entered
                 ? "bg-pine/12 text-pine hover:bg-pine/18"
-                : "bg-ember text-white hover:bg-ember/90",
+                : "bg-ember text-on-accent hover:bg-ember/90",
         )}
       >
         {won ? (
@@ -289,7 +289,7 @@ export function ListingDetail({
       {won && (
         <Link
           href="/winners/new"
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gold py-2.5 text-sm font-semibold text-white transition hover:bg-gold/90"
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gold py-2.5 text-sm font-semibold text-on-won transition hover:bg-gold/90"
         >
           <Icon name="trophy" size={16} weight="fill" /> Share it on the Winner Wall
         </Link>
@@ -344,8 +344,8 @@ export function ListingDetail({
               aria-pressed={saved}
               aria-label={saved ? "Saved" : "Save this sweepstakes"}
               className={cn(
-                "absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full shadow-e1 backdrop-blur transition",
-                saved ? "bg-ember text-white" : "bg-surface/85 text-ink hover:bg-surface",
+                "absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full shadow-e1 backdrop-blur transition",
+                saved ? "bg-ember text-on-accent" : "bg-surface/85 text-ink hover:bg-surface",
               )}
             >
               <Icon name="bookmark" size={18} weight={saved ? "fill" : "regular"} />
@@ -535,8 +535,8 @@ export function ListingDetail({
               expired
                 ? "cursor-not-allowed bg-line text-graphite"
                 : entered
-                  ? "bg-pine text-white"
-                  : "bg-ember text-white",
+                  ? "bg-pine text-on-trust"
+                  : "bg-ember text-on-accent",
             )}
           >
             {expired ? (

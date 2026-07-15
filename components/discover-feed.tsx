@@ -86,25 +86,28 @@ export function DiscoverFeed({
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-haspopup="dialog"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/25"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-pill border border-line bg-surface px-3.5 text-xs font-semibold text-ink/70 transition hover:border-ink/25"
         >
           <Icon name="filter" size={14} />
           Filters
           {active.length > 0 ? (
-            <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-ember px-1 text-[10px] font-bold text-white">
+            <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-ember px-1 text-[10px] font-bold text-on-accent">
               {active.length}
             </span>
           ) : null}
         </button>
       </div>
 
-      <div className="flex items-center justify-between px-0.5">
-        <span className="text-xs text-graphite">{countLabel}</span>
+      <div className="flex min-h-6 items-center justify-between px-0.5">
+        {/* Announce result-count changes as filters/search narrow the feed. */}
+        <span aria-live="polite" className="text-xs text-graphite">
+          {countLabel}
+        </span>
         {hasActiveControls ? (
           <button
             type="button"
             onClick={clearAll}
-            className="text-xs font-semibold text-ember transition hover:text-ember/80"
+            className="min-h-11 px-2 text-xs font-semibold text-ember transition hover:text-ember/80"
           >
             Clear all
           </button>
@@ -130,14 +133,14 @@ export function DiscoverFeed({
             <button
               type="button"
               onClick={clearAll}
-              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Clear filters
             </button>
           ) : query ? (
             <Link
               href="/discover"
-              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="mt-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Browse all sweeps
             </Link>

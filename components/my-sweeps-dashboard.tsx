@@ -1,6 +1,13 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Icon, type IconName } from "@/components/icon";
@@ -152,11 +159,28 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
   const activeListings = buckets[activeTab.id];
 
+  // ARIA tabs contract: one tab stop for the whole list (roving tabindex),
+  // arrows/Home/End move selection, each tab controls a named panel.
+  function onTablistKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const index = TABS.findIndex((t) => t.id === activeTab.id);
+    let next = -1;
+    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = TABS.length - 1;
+    if (next === -1) return;
+    event.preventDefault();
+    const id = TABS[next].id;
+    setTab(id);
+    document.getElementById(`my-sweeps-tab-${id}`)?.focus();
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div
         role="tablist"
         aria-label="My Sweeps views"
+        onKeyDown={onTablistKeyDown}
         className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0"
       >
         {TABS.map((t) => {
@@ -165,12 +189,15 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           return (
             <button
               key={t.id}
+              id={`my-sweeps-tab-${t.id}`}
               type="button"
               role="tab"
               aria-selected={active}
+              aria-controls={`my-sweeps-panel-${t.id}`}
+              tabIndex={active ? 0 : -1}
               onClick={() => setTab(t.id)}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-pill px-3.5 py-2 text-sm font-semibold transition",
+                "flex min-h-11 shrink-0 items-center gap-1.5 rounded-pill px-3.5 text-sm font-semibold transition",
                 active
                   ? "bg-ink text-paper"
                   : "border border-line bg-surface text-ink/60 hover:text-ink",
@@ -193,6 +220,11 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
         })}
       </div>
 
+      <div
+        id={`my-sweeps-panel-${activeTab.id}`}
+        role="tabpanel"
+        aria-labelledby={`my-sweeps-tab-${activeTab.id}`}
+      >
       {activeListings.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-6 py-14 text-center shadow-e1">
           <div className="grid h-14 w-14 place-items-center rounded-full bg-paper text-ink/40">
@@ -207,7 +239,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           {(tab === "ready" || tab === "saved") && (
             <Link
               href="/discover"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Discover sweeps <Icon name="discover" size={15} />
             </Link>
@@ -228,6 +260,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

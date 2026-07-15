@@ -51,7 +51,10 @@ export function WinnerSubmissionForm(props: {
 
   if (status === "success") {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-6 text-center shadow-e1">
+      <div
+        role="status"
+        className="flex flex-col items-center gap-3 rounded-card border border-line bg-surface p-6 text-center shadow-e1"
+      >
         <div className="grid h-14 w-14 place-items-center rounded-full bg-pine/10 text-pine">
           <Icon name="check" size={26} />
         </div>
@@ -77,10 +80,14 @@ export function WinnerSubmissionForm(props: {
     >
       {props.listings.length > 0 ? (
         <div>
-          <label className="text-xs font-medium text-graphite">
+          <label
+            htmlFor="winner-listing"
+            className="text-xs font-medium text-graphite"
+          >
             Sweepstakes you entered
           </label>
           <select
+            id="winner-listing"
             value={listingId}
             onChange={(e) => setListingId(e.target.value)}
             className={inputClass}
@@ -95,8 +102,11 @@ export function WinnerSubmissionForm(props: {
         </div>
       ) : null}
       <div>
-        <label className="text-xs font-medium text-graphite">Photo URL</label>
+        <label htmlFor="winner-photo-url" className="text-xs font-medium text-graphite">
+          Photo URL
+        </label>
         <input
+          id="winner-photo-url"
           value={photoUrl}
           onChange={(e) => setPhotoUrl(e.target.value)}
           className={inputClass}
@@ -105,8 +115,11 @@ export function WinnerSubmissionForm(props: {
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-graphite">Caption</label>
+        <label htmlFor="winner-caption" className="text-xs font-medium text-graphite">
+          Caption
+        </label>
         <textarea
+          id="winner-caption"
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           className={inputClass}
@@ -116,14 +129,14 @@ export function WinnerSubmissionForm(props: {
         />
       </div>
       {status === "error" ? (
-        <p className="text-xs font-medium text-flame">
+        <p role="alert" className="text-xs font-medium text-flame">
           Something went wrong. Try again.
         </p>
       ) : null}
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:opacity-60"
+        className="w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:opacity-60"
       >
         {status === "submitting" ? "Submitting…" : "Submit win"}
       </button>

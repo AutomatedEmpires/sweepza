@@ -31,7 +31,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label={`Theme: ${meta.label}. Tap to switch.`}
       title={`Theme: ${meta.label}`}
       className={cn(
-        "inline-flex h-10 w-10 items-center justify-center rounded-pill border border-line text-graphite transition hover:bg-ink/5 hover:text-ink",
+        "inline-flex h-11 w-11 items-center justify-center rounded-pill border border-line text-graphite transition hover:bg-ink/5 hover:text-ink",
         className,
       )}
     >
