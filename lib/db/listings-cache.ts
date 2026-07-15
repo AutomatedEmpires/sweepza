@@ -1,7 +1,7 @@
 import "server-only";
 import { revalidateTag, unstable_cache } from "next/cache";
 import type { Listing } from "@/lib/types/listing";
-import { getPublicListings } from "./listings";
+import { getListingBySlug, getPublicListings } from "./listings";
 
 /**
  * Cache tag for the anonymous public listing feed. Any server route that
@@ -41,11 +41,37 @@ export function getCachedPublicListings(limit: number): Promise<Listing[]> {
   return cachedDefaultFeed(limit);
 }
 
+const cachedListingBySlug = unstable_cache(
+  (slug: string): Promise<Listing | null> => getListingBySlug(slug),
+  ["public-listing-by-slug"],
+  { revalidate: PUBLIC_LISTINGS_TTL_SECONDS, tags: [PUBLIC_LISTINGS_TAG] },
+);
+
 /**
- * Drop the cached public feed. Call from a server action / route handler after
- * any mutation that changes which listings are publicly live — publish, review
- * outcome, host takedown, host suspension, moderation action, or cron expiry.
- * Centralized so every new mutation path has one obvious thing to call.
+ * Cached read of a single public listing by slug — the anonymous
+ * `/sweeps/[slug]` detail page and its JSON API, byte-for-byte identical for
+ * every visitor. Keyed per slug (each gets its own cache entry) but sharing the
+ * feed's tag, so every `revalidatePublicListings()` call refreshes detail
+ * pages too. That is intentionally coarse: publishing one listing drops all
+ * detail entries, but each re-read is a single indexed row, and it means detail
+ * freshness needs zero extra wiring. Content edits are covered transitively —
+ * a live listing can't be edited (only draft/held can), and re-approval busts
+ * the tag.
+ *
+ * Same purity guarantee as the feed read: `getListingBySlug` applies strict
+ * public/active/non-moderated predicates and touches no request-scoped state,
+ * so the cached value is exactly what an anonymous visitor may see.
+ */
+export function getCachedListingBySlug(slug: string): Promise<Listing | null> {
+  return cachedListingBySlug(slug);
+}
+
+/**
+ * Drop the cached public feed and every cached detail page. Call from a server
+ * action / route handler after any mutation that changes which listings are
+ * publicly live — publish, review outcome, host takedown, host suspension,
+ * moderation action, or cron expiry. Centralized so every new mutation path has
+ * one obvious thing to call.
  */
 export function revalidatePublicListings(): void {
   revalidateTag(PUBLIC_LISTINGS_TAG);

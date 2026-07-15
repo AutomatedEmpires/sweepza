@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   ),
   revalidateTag: vi.fn(),
   getPublicListings: vi.fn(),
+  getListingBySlug: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -21,31 +22,42 @@ vi.mock("next/cache", () => ({
 
 vi.mock("@/lib/db/listings", () => ({
   getPublicListings: mocks.getPublicListings,
+  getListingBySlug: mocks.getListingBySlug,
 }));
 
 import {
   PUBLIC_LISTINGS_TAG,
+  getCachedListingBySlug,
   getCachedPublicListings,
   revalidatePublicListings,
 } from "@/lib/db/listings-cache";
 
-// The unstable_cache config is registered once at module load. Capture it here,
-// at import time, before vitest's clearMocks wipes the call record per-test.
-const [cacheFn, cacheKeyParts, cacheOptions] =
+// Both caches are registered once at module load. Capture their configs here,
+// at import time, before vitest's clearMocks wipes the call records per-test.
+const [feedFn, feedKeyParts, feedOptions] =
   mocks.unstable_cache.mock.calls[0] ?? [];
+const [detailFn, detailKeyParts, detailOptions] =
+  mocks.unstable_cache.mock.calls[1] ?? [];
 
 describe("public listings cache", () => {
-  // The tag string is the contract between the cached read and every route that
-  // invalidates it. If it drifts here without those routes following, withdrawn
-  // or moderated listings could linger on the public feed until the TTL lapses.
+  // The tag string is the contract between the cached reads and every route
+  // that invalidates them. If it drifts here without those routes following,
+  // withdrawn or moderated listings could linger on the public feed / detail
+  // pages until the TTL lapses.
   it("exposes a stable revalidation tag", () => {
     expect(PUBLIC_LISTINGS_TAG).toBe("public-listings");
   });
 
-  it("registers the cache with a stable key, tag, and 5-minute TTL", () => {
-    expect(typeof cacheFn).toBe("function");
-    expect(cacheKeyParts).toEqual(["public-listings-default"]);
-    expect(cacheOptions).toEqual({
+  it("registers the feed cache with a stable key, tag, and 5-minute TTL", () => {
+    expect(typeof feedFn).toBe("function");
+    expect(feedKeyParts).toEqual(["public-listings-default"]);
+    expect(feedOptions).toEqual({ revalidate: 300, tags: [PUBLIC_LISTINGS_TAG] });
+  });
+
+  it("registers the detail cache under the same tag and TTL", () => {
+    expect(typeof detailFn).toBe("function");
+    expect(detailKeyParts).toEqual(["public-listing-by-slug"]);
+    expect(detailOptions).toEqual({
       revalidate: 300,
       tags: [PUBLIC_LISTINGS_TAG],
     });
@@ -57,6 +69,14 @@ describe("public listings cache", () => {
 
     await expect(getCachedPublicListings(60)).resolves.toBe(feed);
     expect(mocks.getPublicListings).toHaveBeenCalledWith({ limit: 60 });
+  });
+
+  it("forwards the slug to the single-listing query", async () => {
+    const listing = { id: "a", slug: "prize-sweep" };
+    mocks.getListingBySlug.mockResolvedValueOnce(listing);
+
+    await expect(getCachedListingBySlug("prize-sweep")).resolves.toBe(listing);
+    expect(mocks.getListingBySlug).toHaveBeenCalledWith("prize-sweep");
   });
 
   it("busts exactly the public-listings tag on revalidation", () => {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { ListingDetail } from "@/components/listing-detail";
-import { getListingBySlug } from "@/lib/db/listings";
+import { getCachedListingBySlug } from "@/lib/db/listings-cache";
 import {
   buildListingJsonLd,
   listingOgImagePath,
@@ -19,7 +19,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
+  const listing = await getCachedListingBySlug(slug);
   if (!listing) return { title: "Sweepstakes not found" };
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL);
@@ -60,7 +60,7 @@ export default async function ListingDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
+  const listing = await getCachedListingBySlug(slug);
   if (!listing) notFound();
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL).toString();
