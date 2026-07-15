@@ -4,7 +4,9 @@ import {
   STRICT_TRANSPORT_SECURITY,
 } from "@/lib/security-headers";
 import {
+  buildBreadcrumbJsonLd,
   buildFaqJsonLd,
+  buildItemListJsonLd,
   buildOrganizationJsonLd,
   buildWebSiteJsonLd,
 } from "@/lib/structured-data";
@@ -53,6 +55,27 @@ describe("structured data", () => {
     expect(site.potentialAction["@type"]).toBe("SearchAction");
     expect(site.potentialAction.target.urlTemplate).toContain("/discover?q={search_term_string}");
     expect(site.potentialAction["query-input"]).toBe("required name=search_term_string");
+  });
+
+  it("builds a BreadcrumbList with 1-indexed positions", () => {
+    const crumbs = buildBreadcrumbJsonLd([
+      { name: "Home", url: "https://sweepza.com/" },
+      { name: "Discover", url: "https://sweepza.com/discover" },
+      { name: "Dream Cash", url: "https://sweepza.com/sweeps/dream-cash" },
+    ]);
+    expect(crumbs["@type"]).toBe("BreadcrumbList");
+    expect(crumbs.itemListElement).toHaveLength(3);
+    expect(crumbs.itemListElement[0]).toMatchObject({ position: 1, name: "Home" });
+    expect(crumbs.itemListElement[2].position).toBe(3);
+  });
+
+  it("builds an ItemList of listing entries", () => {
+    const list = buildItemListJsonLd([
+      { name: "A", url: "https://sweepza.com/sweeps/a" },
+      { name: "B", url: "https://sweepza.com/sweeps/b" },
+    ]);
+    expect(list["@type"]).toBe("ItemList");
+    expect(list.itemListElement.map((e) => e.position)).toEqual([1, 2]);
   });
 
   it("builds a FAQPage from every FAQ item", () => {

@@ -34,6 +34,44 @@ export function buildWebSiteJsonLd() {
   };
 }
 
+export interface Crumb {
+  name: string;
+  url: string;
+}
+
+/** BreadcrumbList — Home › Discover › Listing, for richer search results. */
+export function buildBreadcrumbJsonLd(crumbs: Crumb[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: crumbs.map((crumb, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: crumb.name,
+      item: crumb.url,
+    })),
+  };
+}
+
+export interface ListEntry {
+  name: string;
+  url: string;
+}
+
+/** ItemList — makes a feed of listings machine-enumerable (Discover/category). */
+export function buildItemListJsonLd(entries: ListEntry[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    itemListElement: entries.map((entry, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: entry.name,
+      url: entry.url,
+    })),
+  };
+}
+
 export function buildFaqJsonLd(items: FaqItem[]) {
   return {
     "@context": "https://schema.org",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 import { seekerNotificationPrefsSchema } from "@/lib/seeker-notification-prefs-schema";
 import {
   getSeekerNotificationPrefs,
@@ -35,6 +36,18 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { ok, retryAfterSec } = rateLimit(clientKey(request), {
+    namespace: "seeker-notification-prefs",
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    );
+  }
+
   const gate = await requireSeeker();
   if ("error" in gate) return gate.error;
 

@@ -121,6 +121,7 @@ function FooterBlock() {
         <Link href="/about" className="transition hover:text-ink">About</Link>
         <Link href="/faq" className="transition hover:text-ink">FAQ</Link>
         <Link href="/privacy" className="transition hover:text-ink">Privacy</Link>
+        <Link href="/cookies" className="transition hover:text-ink">Cookies</Link>
         <Link href="/terms" className="transition hover:text-ink">Terms</Link>
       </nav>
     </div>
