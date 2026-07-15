@@ -143,7 +143,7 @@ export default async function AdminDashboardPage() {
                       <span className="min-w-0 flex-1 text-sm font-medium text-ink">
                         {item.label}
                       </span>
-                      <span className="nums rounded-pill bg-ember px-2.5 py-0.5 text-xs font-bold text-white">
+                      <span className="nums rounded-pill bg-ember px-2.5 py-0.5 text-xs font-bold text-on-accent">
                         {item.count}
                       </span>
                       <Icon

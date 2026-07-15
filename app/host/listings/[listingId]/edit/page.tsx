@@ -63,7 +63,7 @@ export default async function EditHostListingPage({
           <input id="entry_url" name="entry_url" type="url" defaultValue={listing.entry_url ?? ""}
             className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none" />
         </label>
-        <button type="submit" className="self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90">
+        <button type="submit" className="self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90">
           Save changes
         </button>
       </form>

@@ -52,7 +52,7 @@ export default function PrivacyPage() {
         {sections.map((section) => (
           <section
             key={section.title}
-            className="rounded-card border border-sand bg-white/70 p-4"
+            className="rounded-card border border-line bg-surface p-4"
           >
             <h2 className="text-lg font-semibold text-ink">{section.title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
@@ -61,7 +61,7 @@ export default function PrivacyPage() {
           </section>
         ))}
 
-        <section className="rounded-card border border-sand bg-white/70 p-4">
+        <section className="rounded-card border border-line bg-surface p-4">
           <h2 className="text-lg font-semibold text-ink">Contact and updates</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink/70">
             Privacy questions and requests may be sent to{" "}

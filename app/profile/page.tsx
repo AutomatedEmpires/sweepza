@@ -54,7 +54,7 @@ export default async function ProfilePage() {
       {/* Identity */}
       {authUser ? (
         <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-e1">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-pine text-lg font-bold text-white">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-pine text-lg font-bold text-on-trust">
             {(authUser.displayName ?? authUser.email ?? "S")
               .charAt(0)
               .toUpperCase()}
@@ -92,7 +92,7 @@ export default async function ProfilePage() {
             <div className="mt-3 flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-ember/90"
+                className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-on-accent transition hover:bg-ember/90"
               >
                 Sign in
               </Link>

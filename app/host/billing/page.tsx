@@ -91,7 +91,7 @@ export default async function HostBillingPage() {
       <form action={createStripePortalSessionAction} className="mt-4">
         <button
           type="submit"
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
         >
           Manage billing in Stripe <Icon name="caretRight" size={15} />
         </button>

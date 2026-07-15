@@ -190,7 +190,7 @@ export default async function HostPage({
             <div className="mt-3 flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
               >
                 Sign in
               </Link>
@@ -398,7 +398,7 @@ export default async function HostPage({
                     <form action={connectBillingAction} className="mt-4">
                       <button
                         type="submit"
-                        className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+                        className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
                       >
                         Create billing profile
                       </button>
@@ -499,7 +499,7 @@ export default async function HostPage({
                       </label>
                       <button
                         type="submit"
-                        className="self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+                        className="self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
                       >
                         {subscription && subscription.status !== "no_plan"
                           ? "Restart host plan"
@@ -557,7 +557,7 @@ export default async function HostPage({
                       </p>
                       <a
                         href="#submit-listing"
-                        className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+                        className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
                       >
                         Create your first listing
                       </a>

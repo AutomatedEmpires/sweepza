@@ -195,7 +195,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "approve")}
-                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Approve &amp; publish
               </button>

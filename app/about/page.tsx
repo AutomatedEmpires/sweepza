@@ -24,7 +24,7 @@ export default function AboutPage() {
         </header>
 
         <div className="grid gap-4">
-          <section className="rounded-card border border-sand bg-white/70 p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="text-lg font-semibold text-ink">What Sweepza does</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
               Sweepza helps people browse active sweepstakes, compare them quickly,
@@ -33,7 +33,7 @@ export default function AboutPage() {
             </p>
           </section>
 
-          <section className="rounded-card border border-sand bg-white/70 p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="text-lg font-semibold text-ink">What matters here</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
               The product direction centers on trustworthy listings, clear source
@@ -42,7 +42,7 @@ export default function AboutPage() {
             </p>
           </section>
 
-          <section className="rounded-card border border-sand bg-white/70 p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="text-lg font-semibold text-ink">Current status</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
               Today, Sweepza is strongest as a discovery MVP. Some features are

@@ -38,7 +38,7 @@ export function AdminHostActions({ hostId }: { hostId: string }) {
           type="button"
           disabled={pending}
           onClick={() => run("verify")}
-          className="rounded-xl bg-pine px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-pine px-3 py-1.5 text-xs font-semibold text-on-trust transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Verify
         </button>

@@ -206,7 +206,7 @@ export default async function TodayPage() {
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-6 py-3 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-6 py-3 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Browse sweepstakes <Icon name="send" size={16} />
           </Link>

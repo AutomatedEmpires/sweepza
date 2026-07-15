@@ -59,7 +59,7 @@ export default async function MySweepsPage() {
           <div className="mt-3 flex items-center gap-2">
             <Link
               href="/sign-in"
-              className="rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Sign in
             </Link>

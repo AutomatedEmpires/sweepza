@@ -54,7 +54,7 @@ export function AdminNav({ counts }: { counts: AdminNavCounts }) {
             >
               <span>{item.label}</span>
               {typeof item.badge === "number" && item.badge > 0 ? (
-                <span className="nums inline-flex min-w-[1.25rem] items-center justify-center rounded-pill bg-ember px-1.5 py-0.5 text-[11px] font-bold text-white">
+                <span className="nums inline-flex min-w-[1.25rem] items-center justify-center rounded-pill bg-ember px-1.5 py-0.5 text-[11px] font-bold text-on-accent">
                   {item.badge}
                 </span>
               ) : null}

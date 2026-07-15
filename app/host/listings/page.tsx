@@ -101,7 +101,7 @@ export default async function HostListingsPage() {
                 {listing.lifecycleStatus === "draft" ? (
                   <form action={submitForReviewAction}>
                     <input type="hidden" name="listingId" value={listing.id} />
-                    <button type="submit" className="rounded-xl bg-ember px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-ember/90">
+                    <button type="submit" className="rounded-xl bg-ember px-3 py-1.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90">
                       Submit for review
                     </button>
                   </form>
@@ -153,7 +153,7 @@ export default async function HostListingsPage() {
           </p>
           <Link
             href="/host#submit-listing"
-            className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Create your first listing
           </Link>

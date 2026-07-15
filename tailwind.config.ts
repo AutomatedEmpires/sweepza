@@ -34,6 +34,10 @@ const config: Config = {
         ocean: "rgb(var(--color-info) / <alpha-value>)",
         pine: "rgb(var(--color-trust) / <alpha-value>)",
         "on-accent": "rgb(var(--color-on-accent) / <alpha-value>)",
+        "on-urgent": "rgb(var(--color-on-urgent) / <alpha-value>)",
+        "on-won": "rgb(var(--color-on-won) / <alpha-value>)",
+        "on-info": "rgb(var(--color-on-info) / <alpha-value>)",
+        "on-trust": "rgb(var(--color-on-trust) / <alpha-value>)",
       },
       borderRadius: {
         control: "var(--radius-control)",
