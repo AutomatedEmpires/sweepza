@@ -61,7 +61,7 @@ export default async function HostListingsPage() {
         <h1 className="font-display text-3xl text-ink">My Listings</h1>
         <Link
           href="/host"
-          className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
         >
           Dashboard
         </Link>
@@ -77,7 +77,7 @@ export default async function HostListingsPage() {
               <ListingCard key={listing.id} listing={listing}>
                 <form action={deactivateListingAction}>
                   <input type="hidden" name="listingId" value={listing.id} />
-                  <button type="submit" className="rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
+                  <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
                     Deactivate
                   </button>
                 </form>
@@ -95,13 +95,13 @@ export default async function HostListingsPage() {
           <div className="space-y-3">
             {groups.pending_review.map((listing) => (
               <ListingCard key={listing.id} listing={listing}>
-                <Link href={`/host/listings/${listing.id}/edit`} className="rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
+                <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
                   Edit
                 </Link>
                 {listing.lifecycleStatus === "draft" ? (
                   <form action={submitForReviewAction}>
                     <input type="hidden" name="listingId" value={listing.id} />
-                    <button type="submit" className="rounded-xl bg-ember px-3 py-1.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90">
+                    <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-3 py-1.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90">
                       Submit for review
                     </button>
                   </form>
@@ -120,7 +120,7 @@ export default async function HostListingsPage() {
           <div className="space-y-3">
             {groups.held_rejected.map((listing) => (
               <ListingCard key={listing.id} listing={listing}>
-                <Link href={`/host/listings/${listing.id}/edit`} className="rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
+                <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
                   Edit &amp; resubmit
                 </Link>
               </ListingCard>
@@ -153,7 +153,7 @@ export default async function HostListingsPage() {
           </p>
           <Link
             href="/host#submit-listing"
-            className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Create your first listing
           </Link>

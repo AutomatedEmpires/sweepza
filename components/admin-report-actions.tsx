@@ -59,7 +59,7 @@ export function AdminReportActions({
           type="button"
           disabled={pending}
           onClick={() => run("act")}
-          className="rounded-xl bg-ember px-3 py-1.5 text-xs font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-ember px-3 py-1.5 text-xs font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Act
         </button>

@@ -281,7 +281,7 @@ export function ListingDetail({
         <button
           type="button"
           onClick={handleMarkWon}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold/40 bg-gold/[0.07] py-2.5 text-sm font-semibold text-gold transition hover:bg-gold/[0.12]"
+          className="min-h-11 flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold/40 bg-gold/[0.07] py-2.5 text-sm font-semibold text-gold transition hover:bg-gold/[0.12]"
         >
           <Icon name="trophy" size={16} /> I won this sweepstakes
         </button>
@@ -289,7 +289,7 @@ export function ListingDetail({
       {won && (
         <Link
           href="/winners/new"
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gold py-2.5 text-sm font-semibold text-on-won transition hover:bg-gold/90"
+          className="min-h-11 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gold py-2.5 text-sm font-semibold text-on-won transition hover:bg-gold/90"
         >
           <Icon name="trophy" size={16} weight="fill" /> Share it on the Winner Wall
         </Link>

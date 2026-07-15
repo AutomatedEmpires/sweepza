@@ -25,9 +25,12 @@ export function MobileShell({
         {utility ? (
           <div className="border-b border-line bg-surface/70">{utility}</div>
         ) : null}
+        {/* tabIndex={-1} lets the skip link move programmatic focus here so the
+            next Tab lands inside the content, not back at the top of the page. */}
         <main
           id="main-content"
-          className="w-full flex-1 pb-20 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pb-10"
+          tabIndex={-1}
+          className="w-full flex-1 pb-20 focus:outline-none lg:mx-auto lg:max-w-5xl lg:px-8 lg:pb-10"
         >
           {children}
         </main>

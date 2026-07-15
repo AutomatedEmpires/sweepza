@@ -173,7 +173,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           </div>
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+            className="min-h-11 inline-flex items-center gap-1.5 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Find your first sweeps <Icon name="discover" size={16} />
           </Link>

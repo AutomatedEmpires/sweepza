@@ -233,14 +233,14 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
             <button
               type="button"
               onClick={restart}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
+              className="min-h-11 inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
             >
               <Icon name="repeat" size={16} /> Start over
             </button>
           )}
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+            className="min-h-11 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             <Icon name="gift" size={16} /> Browse feed
           </Link>

@@ -92,13 +92,13 @@ export default async function ProfilePage() {
             <div className="mt-3 flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+                className="inline-flex min-h-11 items-center justify-center flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-on-accent transition hover:bg-ember/90"
               >
                 Sign in
               </Link>
               <Link
                 href="/sign-up"
-                className="flex-1 rounded-xl border border-line px-4 py-2.5 text-center text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                className="inline-flex min-h-11 items-center justify-center flex-1 rounded-xl border border-line px-4 py-2.5 text-center text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
               >
                 Create account
               </Link>

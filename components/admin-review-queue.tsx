@@ -195,7 +195,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "approve")}
-                className="rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Approve &amp; publish
               </button>
@@ -203,7 +203,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "keep_pending")}
-                className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Keep pending
               </button>
@@ -211,7 +211,7 @@ export function AdminReviewQueue({
                 type="button"
                 disabled={isBusy}
                 onClick={() => runAction(listing.id, "reject")}
-                className="rounded-xl border border-flame/40 px-4 py-2.5 text-sm font-semibold text-flame transition hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-flame/40 px-4 py-2.5 text-sm font-semibold text-flame transition hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Reject
               </button>

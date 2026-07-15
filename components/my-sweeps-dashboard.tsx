@@ -193,7 +193,9 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
               type="button"
               role="tab"
               aria-selected={active}
-              aria-controls={`my-sweeps-panel-${t.id}`}
+              // Only the selected panel is rendered, so only the selected tab
+              // may reference it — a broken aria-controls id is worse than none.
+              aria-controls={active ? `my-sweeps-panel-${t.id}` : undefined}
               tabIndex={active ? 0 : -1}
               onClick={() => setTab(t.id)}
               className={cn(
@@ -239,7 +241,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           {(tab === "ready" || tab === "saved") && (
             <Link
               href="/discover"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+              className="min-h-11 mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Discover sweeps <Icon name="discover" size={15} />
             </Link>
@@ -247,7 +249,7 @@ export function MySweepsDashboard({ listings }: { listings: Listing[] }) {
           {tab === "won" && (
             <Link
               href="/winners"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-paper"
+              className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-paper"
             >
               Visit the Winner Wall <Icon name="trophy" size={15} />
             </Link>

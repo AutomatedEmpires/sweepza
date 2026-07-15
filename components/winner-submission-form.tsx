@@ -13,7 +13,7 @@ export interface WinnerListingOption {
 }
 
 const inputClass =
-  "mt-1 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition focus:border-ember focus:outline-none focus:ring-1 focus:ring-ember/30";
+  "mt-1 min-h-11 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition focus:border-ember focus:outline-none focus:ring-1 focus:ring-ember/30";
 
 export function WinnerSubmissionForm(props: {
   listings: WinnerListingOption[];
@@ -136,7 +136,7 @@ export function WinnerSubmissionForm(props: {
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:opacity-60"
+        className="inline-flex min-h-11 items-center justify-center w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:opacity-60"
       >
         {status === "submitting" ? "Submitting…" : "Submit win"}
       </button>
