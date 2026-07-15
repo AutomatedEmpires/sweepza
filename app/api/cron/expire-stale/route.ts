@@ -1,7 +1,6 @@
-import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { PUBLIC_LISTINGS_TAG } from "@/lib/db/listings-cache";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +58,7 @@ export async function GET(request: Request) {
   // Expired listings drop out of the active/public feed; only bust the cache
   // when at least one actually transitioned.
   if (expired.length > 0) {
-    revalidateTag(PUBLIC_LISTINGS_TAG);
+    revalidatePublicListings();
   }
 
   return NextResponse.json({

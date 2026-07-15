@@ -1,8 +1,7 @@
-import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { adminListingImportSchema } from "@/lib/admin-listing-schema";
-import { PUBLIC_LISTINGS_TAG } from "@/lib/db/listings-cache";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 import { makeUniqueListingSlug } from "@/lib/slug";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -75,6 +74,13 @@ export async function POST(request: Request) {
     );
   }
 
+  // The row is already live at this point; invalidate before the tag insert so
+  // a later tag failure (which returns early) can't strand a published listing
+  // out of the cached feed. Drafts stay private and don't enter the feed.
+  if (input.publish) {
+    revalidatePublicListings();
+  }
+
   if (input.tagCodes.length > 0) {
     const { error: tagError } = await supabase.from("listing_tag").insert(
       input.tagCodes.map((tagCode) => ({
@@ -89,12 +95,6 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-  }
-
-  // A freshly published listing enters the public feed; drop the cached feed
-  // so the next anonymous read includes it. Drafts stay private and don't.
-  if (input.publish) {
-    revalidateTag(PUBLIC_LISTINGS_TAG);
   }
 
   return NextResponse.json({

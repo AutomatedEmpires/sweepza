@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/admin-guard";
 import { suspendHost } from "@/lib/db/admin";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,9 @@ export async function POST(
 
   try {
     await suspendHost(parsedParams.data.hostId);
+    // Suspension hides every listing the host owns, so any of theirs that were
+    // publicly live must leave the cached feed.
+    revalidatePublicListings();
     return NextResponse.json({ ok: true, verification_status: "none" });
   } catch (error) {
     return NextResponse.json(

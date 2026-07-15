@@ -1,23 +1,23 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import type { Listing } from "@/lib/types/listing";
 import { getPublicListings } from "./listings";
 
 /**
  * Cache tag for the anonymous public listing feed. Any server route that
  * changes which listings are publicly live must call
- * `revalidateTag(PUBLIC_LISTINGS_TAG)` so the shared feed reflects the change
- * on the next read. Current mutation points: admin create
- * (`/api/admin/listings`), host-submission review
- * (`/api/admin/listings/review`), and the expire-stale cron
- * (`/api/cron/expire-stale`).
+ * `revalidatePublicListings()` so the shared feed reflects the change on the
+ * next read.
  */
 export const PUBLIC_LISTINGS_TAG = "public-listings";
 
-// Even without a mutation event, a listing can silently age out of its
-// end_date window; the anon feed query filters on lifecycle_status = active,
-// so a background revalidate this often keeps the cached feed honest with no
-// explicit invalidation.
+// Background refresh cadence — a defense-in-depth safety net, NOT the primary
+// invalidation path. Every mutation that changes the live set calls
+// `revalidatePublicListings()` for immediate correctness; this TTL only bounds
+// staleness for a path that might be missed. It deliberately does not age out
+// listings whose `end_date` has passed: `getPublicListings` filters on
+// `lifecycle_status`, so an ended-but-still-active row keeps showing until the
+// expire-stale cron flips it to `expired` (and that cron busts this cache).
 const PUBLIC_LISTINGS_TTL_SECONDS = 300;
 
 const cachedDefaultFeed = unstable_cache(
@@ -39,4 +39,14 @@ const cachedDefaultFeed = unstable_cache(
  */
 export function getCachedPublicListings(limit: number): Promise<Listing[]> {
   return cachedDefaultFeed(limit);
+}
+
+/**
+ * Drop the cached public feed. Call from a server action / route handler after
+ * any mutation that changes which listings are publicly live — publish, review
+ * outcome, host takedown, host suspension, moderation action, or cron expiry.
+ * Centralized so every new mutation path has one obvious thing to call.
+ */
+export function revalidatePublicListings(): void {
+  revalidateTag(PUBLIC_LISTINGS_TAG);
 }
