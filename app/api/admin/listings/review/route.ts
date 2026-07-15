@@ -1,6 +1,8 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getReviewListingById } from "@/lib/db/listing-review";
+import { PUBLIC_LISTINGS_TAG } from "@/lib/db/listings-cache";
 import { sendHostNotification } from "@/lib/email/notifications";
 import { env } from "@/lib/env";
 import { listingReviewSchema } from "@/lib/listing-review-schema";
@@ -100,6 +102,10 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
+
+  // Every review outcome flips public visibility (approve → live, reject/hold
+  // → private), so refresh the shared feed regardless of which action ran.
+  revalidateTag(PUBLIC_LISTINGS_TAG);
 
   // Fire transactional email for approve (live) / keep_pending (held).
   // Email delivery must never block or fail the review action.

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   captureException: vi.fn(),
   createServiceRoleClient: vi.fn(),
+  revalidateTag: vi.fn(),
 }));
 
 vi.mock("@sentry/nextjs", () => ({
@@ -11,6 +12,13 @@ vi.mock("@sentry/nextjs", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createServiceRoleClient: mocks.createServiceRoleClient,
+}));
+
+vi.mock("next/cache", () => ({
+  revalidateTag: mocks.revalidateTag,
+  // listings-cache.ts (imported transitively for the tag constant) calls
+  // unstable_cache at module load; a passthrough keeps that import side-effect-free.
+  unstable_cache: (fn: unknown) => fn,
 }));
 
 import { GET } from "@/app/api/cron/expire-stale/route";
@@ -63,6 +71,7 @@ beforeEach(() => {
   process.env.CRON_SECRET = "cron-secret";
   mocks.captureException.mockReset();
   mocks.createServiceRoleClient.mockReset();
+  mocks.revalidateTag.mockReset();
   resetSupabaseMock();
 });
 
@@ -86,6 +95,11 @@ describe("GET /api/cron/expire-stale", () => {
     expect(lookupQuery.eq).toHaveBeenCalledWith("lifecycle_status", "active");
     expect(lookupQuery.eq).toHaveBeenCalledWith("visibility_status", "public");
     expect(lookupQuery.lt).toHaveBeenCalledWith("end_date", expect.any(String));
+  });
+
+  it("does not bust the public feed cache when nothing expired", async () => {
+    await GET(cronRequest());
+    expect(mocks.revalidateTag).not.toHaveBeenCalled();
   });
 
   it("reports lookup failures to Sentry", async () => {
@@ -116,5 +130,7 @@ describe("GET /api/cron/expire-stale", () => {
       failed: ["stuck-sweep"],
     });
     expect(mocks.captureException).toHaveBeenCalledOnce();
+    // One listing left the live feed, so the shared cache must be dropped.
+    expect(mocks.revalidateTag).toHaveBeenCalledWith("public-listings");
   });
 });
