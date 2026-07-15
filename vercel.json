@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/seeker-reminders",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/ingest",
+      "schedule": "30 5 * * *"
     }
   ]
 }

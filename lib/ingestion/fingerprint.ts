@@ -86,6 +86,12 @@ function fnv1a(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/** Stable, dependency-free content hash (FNV-1a hex) — e.g. "has this page
+ * changed since last run?" without re-running extraction. */
+export function stableHash(input: string): string {
+  return fnv1a(input);
+}
+
 export interface FingerprintInput {
   sponsorName?: string | null;
   prizeName?: string | null;

@@ -1,7 +1,9 @@
 import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { makeUniqueListingSlug } from "@/lib/slug";
 import type { DedupKeys } from "@/lib/ingestion/fingerprint";
+import type { NormalizedCandidate } from "@/lib/ingestion/mapper";
 
 // Ingestion data layer — provenance, idempotency lookups, and run logging.
 // Thin service-role wrappers the orchestrating cron calls; the dedup decisions
@@ -135,6 +137,59 @@ export async function recordProvenance(
     { onConflict: "listing_id" },
   );
   if (error) throw new Error(`recordProvenance failed: ${error.message}`);
+}
+
+/**
+ * Insert an ingested candidate as a **draft, private, unreviewed** listing —
+ * review-only by construction, so nothing an agent found auto-publishes. Lands
+ * in the admin review queue exactly like a held host submission. Caller must
+ * ensure the NOT NULL fields (title / short description / prize name) are present.
+ */
+export async function createIngestedListing(
+  candidate: NormalizedCandidate,
+): Promise<string> {
+  const supabase = createServiceRoleClient();
+  const slug = await makeUniqueListingSlug(candidate.title || candidate.prizeName);
+
+  const { data, error } = await supabase
+    .from("listing")
+    .insert({
+      slug,
+      title: candidate.title,
+      short_description: candidate.shortDescription,
+      long_description: candidate.longDescription,
+      prize_name: candidate.prizeName,
+      prize_value: candidate.prizeValue,
+      prize_currency: "USD",
+      prize_category: candidate.prizeCategory,
+      main_image_url: candidate.mainImageUrl,
+      image_source_type: candidate.mainImageUrl ? "external_reference" : null,
+      image_alt_text: candidate.imageAltText,
+      entry_url: candidate.entryUrl,
+      official_rules_url: candidate.officialRulesUrl,
+      start_date: candidate.startDate,
+      end_date: candidate.endDate,
+      entry_frequency: candidate.entryFrequency,
+      eligibility_country: candidate.eligibilityCountry,
+      eligibility_states: candidate.eligibilityStates.length
+        ? candidate.eligibilityStates
+        : null,
+      age_requirement: candidate.ageRequirement,
+      no_purchase_necessary: candidate.noPurchaseNecessary,
+      source_type: "owner_seeded",
+      public_source_label: "found_by_sweepza",
+      created_by_role: "system",
+      sponsor_name: candidate.sponsorName,
+      sponsor_url: candidate.sponsorUrl,
+      lifecycle_status: "draft",
+      visibility_status: "private",
+      listing_verification_status: "unreviewed",
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  if (error) throw new Error(`createIngestedListing failed: ${error.message}`);
+  return data.id;
 }
 
 /** Cheap refresh when a re-visited sweep is unchanged: bump last_seen_at only. */
