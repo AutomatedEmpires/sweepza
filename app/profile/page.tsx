@@ -193,6 +193,12 @@ export default async function ProfilePage() {
             body="What we are and how listings get here"
           />
           <LinkRow
+            href="/faq"
+            icon="info"
+            title="FAQ"
+            body="Common questions, answered"
+          />
+          <LinkRow
             href="/privacy"
             icon="rules"
             title="Privacy policy"

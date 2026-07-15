@@ -7,6 +7,7 @@ const STATIC_PATHS = [
   "/discover",
   "/discover/swipe",
   "/about",
+  "/faq",
   "/privacy",
   "/terms",
   "/my-sweeps",

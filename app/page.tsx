@@ -11,7 +11,26 @@ import {
 import { getSeekerGamification } from "@/lib/db/gamification";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
+import { serializeJsonLd } from "@/lib/listing-seo";
+import { buildOrganizationJsonLd, buildWebSiteJsonLd } from "@/lib/structured-data";
 import type { Listing } from "@/lib/types/listing";
+
+// Site-level structured data — Organization + WebSite (with a SearchAction for
+// the sitelinks search box). Lives on the homepage, the canonical place for it.
+function SiteJsonLd() {
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildOrganizationJsonLd()) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildWebSiteJsonLd()) }}
+      />
+    </>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +119,7 @@ function FooterBlock() {
         className="flex items-center justify-center gap-4 text-xs font-medium text-graphite lg:justify-start"
       >
         <Link href="/about" className="transition hover:text-ink">About</Link>
+        <Link href="/faq" className="transition hover:text-ink">FAQ</Link>
         <Link href="/privacy" className="transition hover:text-ink">Privacy</Link>
         <Link href="/terms" className="transition hover:text-ink">Terms</Link>
       </nav>
@@ -156,6 +176,7 @@ export default async function TodayPage() {
     const gamification = await getSeekerGamification(authUser.appUserId, now);
     return (
       <div className="flex flex-col gap-9 pb-8 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-4">
+        <SiteJsonLd />
         <header className="px-5 pt-8 lg:px-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ember">
             {greeting(now)} · {dateLabel}
@@ -198,6 +219,7 @@ export default async function TodayPage() {
 
   return (
     <div className="flex flex-col gap-12 pb-10 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-6">
+      <SiteJsonLd />
       {/* Hero scene */}
       <header className="px-5 pt-10 lg:px-0 lg:pt-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ember">
