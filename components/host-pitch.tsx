@@ -26,14 +26,14 @@ export function HostPitch({
     {
       icon: "chart",
       title: "See what resonates",
-      body: "Host analytics show views, saves, and entry clicks per listing, so you can see how your sweepstakes performs with an audience that opted in.",
+      body: "Host analytics show tracked seeker activity per listing — how many signed-in seekers viewed, saved, and entered — so you can see what resonates.",
     },
   ];
 
   const steps: { title: string; body: string }[] = [
     {
       title: "Create your host profile",
-      body: "Your brand name, logo, and site — shown on every listing you run.",
+      body: "Create an account and the Sweepza team enables host access during onboarding. Your brand name, logo, and site appear on every listing you run.",
     },
     {
       title: "Submit a sweepstakes",
@@ -41,7 +41,7 @@ export function HostPitch({
     },
     {
       title: "Pass review, go live",
-      body: "The Sweepza team reviews every submission. Approved listings appear in Discover and the category hubs the same day.",
+      body: "The Sweepza team reviews every submission. Approved listings appear in Discover and the category hubs.",
     },
     {
       title: "Seekers enter — and return",
@@ -68,13 +68,13 @@ export function HostPitch({
           {signInAvailable ? (
             <>
               <Link
-                href="/sign-up"
+                href="/sign-up?redirect_url=%2Fhost"
                 className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-ember px-5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
               >
                 Start hosting <Icon name="send" size={15} />
               </Link>
               <Link
-                href="/sign-in"
+                href="/sign-in?redirect_url=%2Fhost"
                 className="inline-flex min-h-11 items-center rounded-xl border border-line px-5 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
               >
                 Sign in
@@ -140,11 +140,11 @@ export function HostPitch({
         per plan; billing details are shown before checkout. Every listing must
         offer a free entry route, and the Sweepza team can hold or remove
         listings that break the rules. Questions first? Read the{" "}
-        <Link href="/faq" className="font-medium text-ember hover:underline">
+        <Link href="/faq" className="font-medium text-ember underline">
           FAQ
         </Link>{" "}
         or{" "}
-        <Link href="/about" className="font-medium text-ember hover:underline">
+        <Link href="/about" className="font-medium text-ember underline">
           how Sweepza works
         </Link>
         .

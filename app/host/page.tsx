@@ -16,13 +16,23 @@ import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
+import { SITE_URL } from "@/lib/site";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
 import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
+const HOST_DESCRIPTION =
+  "List your free-to-enter sweepstakes on Sweepza — reviewed listings, official-page entries, and an audience that returns daily to re-enter.";
+
 export const metadata = {
   title: "Host Your Sweepstakes",
-  description:
-    "List your free-to-enter sweepstakes on Sweepza — reviewed listings, official-page entries, and an audience that returns daily to re-enter.",
+  description: HOST_DESCRIPTION,
+  alternates: { canonical: new URL("/host", SITE_URL) },
+  openGraph: {
+    title: "Host Your Sweepstakes",
+    description: HOST_DESCRIPTION,
+    url: new URL("/host", SITE_URL),
+    type: "website",
+  },
 };
 export const dynamic = "force-dynamic";
 

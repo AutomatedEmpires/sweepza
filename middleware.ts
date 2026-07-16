@@ -4,7 +4,22 @@ import { NextResponse } from "next/server";
 import {
   CONTENT_SECURITY_POLICY,
   STRICT_TRANSPORT_SECURITY,
+  buildContentSecurityPolicy,
 } from "@/lib/security-headers";
+
+// Enforcement is a deliberate activation (docs/runbooks/csp-enforcement.md):
+// flipping this env flag switches the report-only policy to an enforcing,
+// nonce-based one AND makes every page dynamic (nonces cannot be prerendered).
+// Requires a redeploy to take effect — static pages bake at build time.
+const CSP_ENFORCE = process.env.CSP_ENFORCE === "true";
+
+// Edge-safe per-request nonce: 128 bits of randomness, base64.
+function createNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw);
+}
 
 const CLERK_CONFIGURED = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
@@ -23,7 +38,11 @@ const CANONICAL_HOST = (() => {
   }
 })();
 
-function withSecurityHeaders<T extends Response>(response: T, hsts: boolean): T {
+function withSecurityHeaders<T extends Response>(
+  response: T,
+  hsts: boolean,
+  nonce: string | null,
+): T {
   // Mutate headers in place so we never discard/replace whatever
   // clerkMiddleware() returned (e.g. a redirect Response) — Clerk's
   // NextMiddlewareResult can be a NextResponse or a plain Response,
@@ -38,9 +57,20 @@ function withSecurityHeaders<T extends Response>(response: T, hsts: boolean): T 
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",
   );
-  // Report-only for now — observes violations without blocking. Flip to
-  // Content-Security-Policy (nonce-based) once the reports are clean.
-  response.headers.set("Content-Security-Policy-Report-Only", CONTENT_SECURITY_POLICY);
+  if (nonce) {
+    // Enforcing mode: nonce-bound policy; report-only is superseded.
+    response.headers.set(
+      "Content-Security-Policy",
+      buildContentSecurityPolicy(nonce),
+    );
+  } else {
+    // Report-only — observes violations without blocking. CSP_ENFORCE=true
+    // flips to the enforcing, nonce-based policy above.
+    response.headers.set(
+      "Content-Security-Policy-Report-Only",
+      CONTENT_SECURITY_POLICY,
+    );
+  }
   if (hsts) {
     response.headers.set("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
   }
@@ -53,16 +83,35 @@ export default async function middleware(
 ) {
   const hsts = CANONICAL_HOST !== null && request.nextUrl.host === CANONICAL_HOST;
 
+  // In enforcing mode the nonce is threaded to the app two ways: `x-nonce`
+  // for our own inline scripts (root layout reads it), and the CSP request
+  // header from which Next extracts the nonce to stamp its framework inline
+  // scripts automatically.
+  const nonce = CSP_ENFORCE ? createNonce() : null;
+  if (nonce) {
+    request.headers.set("x-nonce", nonce);
+    request.headers.set(
+      "Content-Security-Policy",
+      buildContentSecurityPolicy(nonce),
+    );
+  }
+
   if (!CLERK_CONFIGURED) {
-    return withSecurityHeaders(NextResponse.next(), hsts);
+    return withSecurityHeaders(
+      NextResponse.next({ request: { headers: request.headers } }),
+      hsts,
+      nonce,
+    );
   }
 
   // clerkMiddleware()'s NextMiddlewareResult may be a NextResponse, a
   // plain Response (e.g. a redirect to sign-in), or null/undefined
   // meaning "continue as normal" — only fall back to NextResponse.next()
   // in that last case so we never override an auth decision.
-  const response = (await clerkMiddleware()(request, event)) ?? NextResponse.next();
-  return withSecurityHeaders(response, hsts);
+  const response =
+    (await clerkMiddleware()(request, event)) ??
+    NextResponse.next({ request: { headers: request.headers } });
+  return withSecurityHeaders(response, hsts, nonce);
 }
 
 export const config = {
