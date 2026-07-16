@@ -1,5 +1,6 @@
 import type { SVGProps } from "react";
 import {
+  ArrowUpRight,
   ArrowsClockwise,
   Bell,
   BookmarkSimple,
@@ -54,6 +55,7 @@ const REGISTRY = {
   search: MagnifyingGlass,
   filter: Funnel,
   caretRight: CaretRight,
+  externalLink: ArrowUpRight,
   signOut: SignOut,
 
   // Trust & provenance
