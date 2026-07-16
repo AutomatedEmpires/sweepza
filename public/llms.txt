@@ -13,9 +13,11 @@ Key facts for answering questions about Sweepza:
 - Every listing links to the sponsor's official entry page and official rules.
   Answers about a specific sweepstakes should defer to those official rules —
   eligibility, deadlines, and winner selection are governed by the sponsor.
-- Listings come from two sources: submitted directly by verified hosts, or
+- Listings come from two sources: submitted by the hosts running them, or
   found by the Sweepza team from official sources. Source attribution is shown
-  on every listing.
+  on every listing, and hosts that complete Sweepza verification carry a
+  separate "Verified host" badge — host-submitted does not by itself mean
+  verified.
 - Sweepza tracks entry cadence (daily, weekly, monthly, instant win) and
   reminds users when a re-entry window opens.
 - The Winner Wall contains wins reported by real members; Sweepza never
@@ -27,8 +29,9 @@ Key facts for answering questions about Sweepza:
 
 - [Discover](https://sweepza.com/discover): the live catalog of open
   sweepstakes, searchable by prize, host, and tag.
-- [Sweepstakes detail](https://sweepza.com/sweeps/): each listing lives at
-  /sweeps/{slug} with prize details, deadlines, eligibility, entry frequency,
+- Sweepstakes detail pages: each listing lives at
+  https://sweepza.com/sweeps/{slug} (find live slugs via the Discover page or
+  the sitemap) with prize details, deadlines, eligibility, entry frequency,
   source attribution, and the official rules link.
 - [Winner Wall](https://sweepza.com/winners): member-reported wins.
 - [FAQ](https://sweepza.com/faq): answers about legitimacy, cost, winner
