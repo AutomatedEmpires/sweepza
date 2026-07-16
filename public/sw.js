@@ -20,13 +20,15 @@ const OFFLINE_HTML = `<!doctype html>
 <title>Offline · Sweepza</title>
 <style>
   :root {
-    --paper: #f5f0e7; --surface: #ffffff; --ink: #17130f;
-    --graphite: #6e655a; --ember: #c13e19; --line: rgba(23, 19, 15, 0.12);
+    --paper: #f5f0e7; --ink: #17130f; --graphite: #6e655a;
+    /* Filled action + mark stay on the DARK brand red in both themes:
+       white on #c13e19 is 5.3:1 (AA); the dark-theme accent #f0633a is
+       only ~3.2:1 with white and must not carry 14px text. */
+    --ember-fill: #c13e19;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper: #0e0b14; --surface: #1a1622; --ink: #f3eee6;
-      --graphite: #b0a7bd; --ember: #f0633a; --line: rgba(243, 238, 230, 0.14);
+      --paper: #0e0b14; --ink: #f3eee6; --graphite: #b0a7bd;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -38,7 +40,7 @@ const OFFLINE_HTML = `<!doctype html>
   }
   main { max-width: 22rem; }
   .mark {
-    width: 58px; height: 58px; border-radius: 16px; background: var(--ember);
+    width: 58px; height: 58px; border-radius: 16px; background: var(--ember-fill);
     color: #f5f0e7; font-size: 32px; font-weight: 800; line-height: 58px;
     margin: 0 auto 20px;
   }
@@ -47,7 +49,7 @@ const OFFLINE_HTML = `<!doctype html>
   a.retry {
     display: inline-flex; align-items: center; justify-content: center;
     min-height: 44px; margin-top: 24px; padding: 10px 22px; border-radius: 12px;
-    background: var(--ember); color: #fff; font-size: 14px; font-weight: 600;
+    background: var(--ember-fill); color: #fff; font-size: 14px; font-weight: 600;
     text-decoration: none;
   }
   .hint { margin-top: 20px; font-size: 12px; }
