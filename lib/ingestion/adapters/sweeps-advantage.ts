@@ -43,7 +43,19 @@ function decodeEntities(value: string): string {
 }
 
 function stripTags(value: string): string {
-  return decodeEntities(value.replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();
+  const withoutBlocks = value.replace(
+    /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+    " ",
+  );
+  // Strip remaining tags repeatedly so overlapping/reconstructed "<...>"
+  // sequences cannot survive a single pass.
+  let previous: string;
+  let stripped = withoutBlocks;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[^>]*>/g, "");
+  } while (stripped !== previous);
+  return decodeEntities(stripped).replace(/\s+/g, " ").trim();
 }
 
 /** Sweeps Advantage prints dates as MM-DD-YYYY; return YYYY-MM-DD. */
