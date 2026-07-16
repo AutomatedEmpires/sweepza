@@ -64,8 +64,9 @@ export function WinnerReactionBar(props: {
             type="button"
             onClick={() => react(type)}
             disabled={pending !== null}
+            aria-pressed={isReacted}
             className={cn(
-              "nums rounded-pill border px-3 py-1 text-xs font-medium transition disabled:opacity-60",
+              "nums min-h-11 rounded-pill border px-3.5 text-xs font-medium transition disabled:opacity-60",
               isReacted
                 ? "border-ember/30 bg-ember/10 text-ember"
                 : "border-line bg-surface text-ink/70 hover:border-ember/40",
@@ -75,7 +76,9 @@ export function WinnerReactionBar(props: {
           </button>
         );
       })}
-      <span className="text-xs text-graphite">{total} reactions</span>
+      <span aria-live="polite" className="text-xs text-graphite">
+        {total} reactions
+      </span>
     </div>
   );
 }

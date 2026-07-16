@@ -32,13 +32,13 @@ export default function RouteError({
         <button
           type="button"
           onClick={reset}
-          className="rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+          className="min-h-11 rounded-xl bg-ember px-5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
         >
           Try again
         </button>
         <Link
           href="/"
-          className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+          className="inline-flex min-h-11 items-center rounded-xl border border-line px-5 text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
         >
           Go to Today
         </Link>

@@ -22,7 +22,7 @@ const SEVERITY_CLASSES: Record<ReportAiSeverity, string> = {
   low: "bg-pine/10 text-pine",
   medium: "bg-ocean/10 text-ocean",
   high: "bg-flame/10 text-flame",
-  critical: "bg-flame text-white",
+  critical: "bg-flame text-on-urgent",
 };
 
 function humanize(value: string): string {

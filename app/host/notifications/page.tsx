@@ -51,7 +51,7 @@ export default async function HostNotificationsPage() {
         })}
         <button
           type="submit"
-          className="mt-1 self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+          className="inline-flex min-h-11 items-center justify-center mt-1 self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
         >
           Save preferences
         </button>

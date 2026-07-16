@@ -21,7 +21,7 @@ export function ShellUtilityBar({
         authUser ? (
           <Link
             href="/profile"
-            className="inline-flex min-h-10 min-w-0 items-center rounded-pill bg-pine/10 px-3 py-2 font-medium text-pine transition hover:bg-pine/20"
+            className="inline-flex min-h-11 min-w-0 items-center rounded-pill bg-pine/10 px-3 py-2 font-medium text-pine transition hover:bg-pine/20"
           >
             <span className="truncate">
               {authUser.displayName ?? authUser.email ?? "Signed in"}
@@ -31,13 +31,13 @@ export function ShellUtilityBar({
           <div className="flex items-center gap-2">
             <Link
               href="/sign-in"
-              className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 py-2 font-medium text-ink/75 transition hover:bg-ink/5"
+              className="inline-flex min-h-11 items-center rounded-xl border border-line px-3 py-2 font-medium text-ink/75 transition hover:bg-ink/5"
             >
               Sign in
             </Link>
             <Link
               href="/sign-up"
-              className="inline-flex min-h-10 items-center rounded-xl bg-ember px-3 py-2 font-medium text-white transition hover:bg-ember/90"
+              className="inline-flex min-h-11 items-center rounded-xl bg-ember px-3 py-2 font-medium text-on-accent transition hover:bg-ember/90"
             >
               Join
             </Link>

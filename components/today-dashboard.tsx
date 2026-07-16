@@ -173,7 +173,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           </div>
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="min-h-11 inline-flex items-center gap-1.5 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Find your first sweeps <Icon name="discover" size={16} />
           </Link>
@@ -299,7 +299,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       {clearForToday && (
         <section className="px-4 lg:px-0">
           <div className="flex flex-col items-center gap-3 rounded-sheet border border-pine/25 bg-pine/[0.06] px-6 py-10 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-pine text-white">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-pine text-on-trust">
               <Icon name="check" size={24} />
             </span>
             <p className="font-display text-2xl text-ink">You&apos;re clear for today</p>

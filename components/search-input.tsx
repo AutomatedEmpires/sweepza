@@ -47,7 +47,7 @@ export function SearchInput({
       role="search"
       aria-label="Search sweepstakes"
       onSubmit={(event) => event.preventDefault()}
-      className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2.5"
+      className="flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3.5 transition focus-within:border-ink/40 focus-within:ring-1 focus-within:ring-ink/25"
     >
       <Icon name="search" size={16} className="shrink-0 text-graphite" />
       <input

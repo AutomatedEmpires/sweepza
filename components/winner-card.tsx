@@ -35,7 +35,7 @@ export function WinnerCard({
             unoptimized={!canOptimizeImage(imageUrl)}
           />
           {post.verifiedWin ? (
-            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-gold px-2.5 py-1 text-xs font-semibold text-white shadow-e1">
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-gold px-2.5 py-1 text-xs font-semibold text-on-won shadow-e1">
               <Icon name="verified" size={14} weight="fill" />
               Verified win
             </span>

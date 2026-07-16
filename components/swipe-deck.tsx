@@ -233,14 +233,14 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
             <button
               type="button"
               onClick={restart}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
+              className="min-h-11 inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
             >
               <Icon name="repeat" size={16} /> Start over
             </button>
           )}
           <Link
             href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="min-h-11 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             <Icon name="gift" size={16} /> Browse feed
           </Link>
@@ -368,7 +368,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
           type="button"
           onClick={() => triggerLeave("save")}
           aria-label="Save"
-          className="grid h-12 w-12 place-items-center rounded-full bg-ember text-white shadow-e1 transition hover:bg-ember/90"
+          className="grid h-12 w-12 place-items-center rounded-full bg-ember text-on-accent shadow-e1 transition hover:bg-ember/90"
         >
           <Icon name="bookmark" size={20} />
         </button>
@@ -376,7 +376,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
           type="button"
           onClick={() => triggerLeave("enter")}
           aria-label="Enter"
-          className="grid h-12 w-12 place-items-center rounded-full bg-pine text-white shadow-e1 transition hover:bg-pine/90"
+          className="grid h-12 w-12 place-items-center rounded-full bg-pine text-on-trust shadow-e1 transition hover:bg-pine/90"
         >
           <Icon name="send" size={20} />
         </button>

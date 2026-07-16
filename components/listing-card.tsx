@@ -233,10 +233,10 @@ export function ListingCard({
           aria-pressed={saved}
           aria-label={saved ? `Saved ${listing.title}` : `Save ${listing.title}`}
           className={cn(
-            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full shadow-e1 backdrop-blur transition active:scale-90",
+            "absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full shadow-e1 backdrop-blur transition active:scale-90",
             savePop && "animate-save-pop",
             saved
-              ? "bg-ember text-white"
+              ? "bg-ember text-on-accent"
               : "bg-surface/85 text-ink hover:bg-surface",
           )}
         >
@@ -325,7 +325,7 @@ export function ListingCard({
         {/* Action — one primary, one quiet route to the full record. */}
         <div className="mt-3.5 flex items-stretch gap-2">
           {enterState === "waiting" ? (
-            <div className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/8 px-4 py-2.5 text-[13px] font-medium text-pine">
+            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/8 px-4 text-[13px] font-medium text-pine">
               <Icon name="clock" size={15} />
               <span className="min-w-0 truncate">
                 {enteredAt ? (
@@ -345,14 +345,14 @@ export function ListingCard({
               onClick={handleEnter}
               disabled={expired || won}
             className={cn(
-              "relative flex flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+              "relative flex min-h-11 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 text-sm font-semibold transition",
               enterState === "won"
-                ? "cursor-default bg-pine text-white"
+                ? "cursor-default bg-pine text-on-trust"
                 : enterState === "expired"
                   ? "cursor-not-allowed bg-line text-graphite"
                   : enterState === "entered"
                     ? "bg-pine/12 text-pine hover:bg-pine/18"
-                    : "bg-ember text-white hover:bg-ember/90",
+                    : "bg-ember text-on-accent hover:bg-ember/90",
               // The recurrence invitation: a calm breathing ring while a
               // re-entry window is open again.
               enterState === "again" && "animate-ready-glow",

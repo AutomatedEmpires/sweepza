@@ -30,7 +30,7 @@ export default async function WinnersPage() {
         {clerkConfigured ? (
           <Link
             href={authUser ? "/winners/new" : "/sign-in"}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="min-h-11 inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Share your win <Icon name="share" size={15} />
           </Link>
@@ -62,7 +62,7 @@ export default async function WinnersPage() {
           {clerkConfigured ? (
             <Link
               href={authUser ? "/winners/new" : "/sign-in"}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="min-h-11 mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
             >
               Share your win <Icon name="share" size={15} />
             </Link>

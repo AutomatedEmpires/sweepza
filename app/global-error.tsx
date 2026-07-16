@@ -52,7 +52,7 @@ export default function GlobalError({
               width: "56px",
               borderRadius: "9999px",
               background: "rgba(224,83,43,0.1)" /* ember/10 */,
-              color: "#e0532b" /* ember */,
+              color: "#c13e19" /* ember */,
             }}
           >
             <Icon name="flag" size={26} />
@@ -87,13 +87,13 @@ export default function GlobalError({
               style={{
                 border: "none",
                 borderRadius: "0.75rem" /* rounded-xl */,
-                background: "#e0532b" /* ember */,
+                background: "#c13e19" /* ember */,
                 color: "#ffffff",
                 padding: "10px 22px",
                 fontSize: "0.9rem",
                 fontWeight: 600,
                 cursor: "pointer",
-                minHeight: "40px",
+                minHeight: "44px",
               }}
             >
               Try again
@@ -107,7 +107,7 @@ export default function GlobalError({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minHeight: "40px",
+                minHeight: "44px",
                 borderRadius: "0.75rem" /* rounded-xl */,
                 border: "1px solid #e7dfd0" /* line */,
                 color: "rgba(23,19,15,0.75)" /* ink/75 */,
