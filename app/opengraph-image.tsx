@@ -1,12 +1,14 @@
 import { ImageResponse } from "next/og";
-import { APP_NAME, APP_TAGLINE } from "@/lib/site";
+import { APP_NAME, APP_TAGLINE, SITE_URL } from "@/lib/site";
 
 // Site-wide Open Graph card. Applies to every route that doesn't provide its
 // own og:image — listing detail pages keep their listing photo because their
 // generateMetadata sets openGraph.images, which overrides this file downtree.
 // Brand values are the light-theme tokens from app/tokens.css; satori can't
 // read CSS variables, so the hex values are pinned here with their names.
-// Copy must satisfy lib/__tests__/honest-copy.test.ts — no overclaims.
+// Copy must stay honest: only claims the platform enforces (free-to-enter
+// listing policy, no purchase necessary) — never universal rules/verification
+// claims or timing promises.
 
 export const alt = `${APP_NAME} — ${APP_TAGLINE}`;
 export const size = { width: 1200, height: 630 };
@@ -156,7 +158,7 @@ export default function OpenGraphImage() {
                 color: GRAPHITE,
               }}
             >
-              sweepza.com
+              {SITE_URL.hostname}
             </div>
           </div>
         </div>
