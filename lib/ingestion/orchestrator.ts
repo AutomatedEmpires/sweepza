@@ -60,6 +60,7 @@ export async function runIngestion(
       counts.discovered = leads.length;
 
       const seenThisRun = new Set<string>();
+      const held: string[] = [];
       for (const lead of leads) {
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
@@ -98,7 +99,17 @@ export async function runIngestion(
           continue;
         }
 
+        // Hard gate: a candidate that fails any non-negotiable (official rules
+        // URL, entry URL, no-purchase signal, live end date, …) never becomes
+        // a row — not even a review-queue draft. The failure reasons land in
+        // the run notes so operators can see what was held and why.
         const verification = verifyCandidate(candidate);
+        if (!verification.publishable) {
+          counts.failed += 1;
+          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
+          continue;
+        }
+
         const listingId = await createIngestedListing(candidate);
         const snapshotRef = await snapshotOfficialRules(lead.officialUrl, extraction.pageText);
         await recordProvenance(listingId, {
@@ -113,7 +124,12 @@ export async function runIngestion(
         counts.created += 1;
       }
 
-      await finishIngestionRun(runId, counts, "ok");
+      await finishIngestionRun(
+        runId,
+        counts,
+        "ok",
+        held.length > 0 ? `held: ${held.join("; ")}`.slice(0, 2000) : undefined,
+      );
       summaries.push({ source: source.id, status: "ok", ...counts });
     } catch (error) {
       await finishIngestionRun(
