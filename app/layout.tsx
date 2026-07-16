@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { MobileShell } from "@/components/mobile-shell";
@@ -55,11 +56,20 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// Only read the per-request nonce when CSP enforcement is active: headers()
+// makes every route dynamic, and in the default report-only mode the static
+// marketing pages should stay static. Flipping CSP_ENFORCE requires a
+// redeploy (docs/runbooks/csp-enforcement.md).
+const CSP_ENFORCE = process.env.CSP_ENFORCE === "true";
+
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = CSP_ENFORCE
+    ? ((await headers()).get("x-nonce") ?? undefined)
+    : undefined;
   const authUser = await ensureCurrentAppUser();
   const initialSeekerState = authUser
     ? await getSeekerStateSnapshotForAppUser(authUser.appUserId)
@@ -73,6 +83,7 @@ export default async function RootLayout({
     >
       <body>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html:
               "(function(){try{var p=localStorage.getItem('sweepza-theme')||'auto';var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
