@@ -26,3 +26,4 @@ coverage
 
 # supabase CLI temp
 supabase/.temp
+.env*
