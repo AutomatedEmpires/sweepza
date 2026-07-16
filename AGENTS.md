@@ -1,3 +1,24 @@
+<!-- ae-control-plane v1 (2026-07-16). Machine operating contract; product docs follow below. -->
+# Operating contract — Automated Empires control plane
+
+- **Canonical clone (the ONLY writable copy):** WSL `Ubuntu-24.04-Recovered` → `/home/jackson/automatedempires/ventures/sweepza`.
+  Never clone this repository anywhere else on the machine. Parallel work uses controlled
+  worktrees: `ae start sweepza -t <task> -a <agent> --worktree`.
+- **Sessions:** acquire the single-writer lease first (`ae start sweepza -t <task> -a <agent>`);
+  end with `ae finish sweepza`. Work counts as done ONLY when pushed and remote-SHA-verified.
+- **Deploys:** merging `main` auto-deploys production via Vercel — **LIVE at sweepza.com**.
+- **Validate before merge:** `pnpm typecheck && pnpm lint` (CI must be green; squash merges).
+- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, email=resend (sender isolation — OWN identity, never E&E's), storage=cloudinary (own account/env), ai=anthropic (ingestion extraction, claude-opus-4-8).
+- **LOCKED:** Sweepza is FULLY INDEPENDENT from Explore & Earn — no shared Stripe/Resend/Supabase resources, ever
+- **LOCKED:** Launch gate: NO-GO until 6 founder decisions are made — CI-green code is not launch permission
+- **LOCKED:** Theme: tokenized day/night hybrid (auto by local clock, dark 8pm-6am) — edit app/tokens.css only
+- **Warn before:** MERGING TO MAIN DEPLOYS sweepza.com
+- **Warn before:** activating ingestion crons (needs founder env + per-source compliance approval)
+- **Warn before:** sending email
+- Full policy: `github.com/AutomatedEmpires/ae-control` → `POLICY.md`. Briefing: `ae info sweepza`.
+
+---
+
 # Sweepza — Agent & Contributor Guide
 
 This file is binding for every contributor, human or AI (Copilot or Claude). Read it before writing code.
