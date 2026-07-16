@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   parseNewestDailyPath,
   parseSweepsAdvantageDaily,
+  sweepsAdvantageAdapter,
 } from "@/lib/ingestion/adapters/sweeps-advantage";
+import { createFixtureHttpClient } from "@/lib/ingestion/fixtures/http";
+import { getSourceDescriptor } from "@/lib/ingestion/source";
 
 // Fixtures reproduce the real Sweeps Advantage markup structure (container
 // data-link_id, panel-heading title link, sweepstake-details labeled fields)
@@ -93,5 +96,65 @@ describe("parseSweepsAdvantageDaily", () => {
 
   it("ignores markup with no listing containers", () => {
     expect(parseSweepsAdvantageDaily("<div>no listings</div>")).toEqual([]);
+  });
+});
+
+describe("sweepsAdvantageAdapter.discover", () => {
+  const descriptor = getSourceDescriptor("sweeps_advantage")!;
+  const BASE = "https://www.sweepsadvantage.com";
+
+  function pages(): Record<string, { body?: string; finalUrl?: string; status?: number }> {
+    return {
+      [`${BASE}/new-sweepstakes`]: { body: HUB_HTML },
+      [`${BASE}/new-sweepstakes-1784073600.html`]: { body: DAILY_HTML },
+      // The redirect endpoints resolve to distinct official pages.
+      [`${BASE}/go.php?id=1539742`]: {
+        body: "ok",
+        finalUrl: "https://sponsor-cash.example.com/daily-cash?utm_source=sa",
+      },
+      [`${BASE}/go.php?id=1551236`]: {
+        body: "ok",
+        finalUrl: "https://sponsor-books.example.com/books-brews",
+      },
+    };
+  }
+
+  it("resolves each redirect to a normalized official URL", async () => {
+    const http = createFixtureHttpClient(descriptor, pages());
+    const leads = await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+
+    expect(leads.map((l) => l.officialUrl)).toEqual([
+      // utm_source stripped by normalizeUrl.
+      "https://sponsor-cash.example.com/daily-cash",
+      "https://sponsor-books.example.com/books-brews",
+    ]);
+    expect(leads[0].sourceUrl).toBe(`${BASE}/sweepstakes-1539742.html`);
+    expect(leads[0].hint).toMatchObject({ title: "Daily Cash Blast Giveaway" });
+  });
+
+  it("drops a lead whose redirect fails rather than guessing a URL", async () => {
+    const broken = pages();
+    broken[`${BASE}/go.php?id=1551236`] = { status: 502 };
+    const http = createFixtureHttpClient(descriptor, broken);
+
+    const leads = await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+    expect(leads).toHaveLength(1);
+    expect(leads[0].officialUrl).toContain("sponsor-cash");
+  });
+
+  it("returns nothing when the hub has no daily link", async () => {
+    const http = createFixtureHttpClient(descriptor, {
+      [`${BASE}/new-sweepstakes`]: { body: "<h2>New Sweepstakes</h2>" },
+    });
+    expect(await sweepsAdvantageAdapter.discover({ http, limit: 10 })).toEqual([]);
+  });
+
+  it("stays on sweepsadvantage.com throughout discovery", async () => {
+    const log: string[] = [];
+    const http = createFixtureHttpClient(descriptor, pages(), { log });
+    await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+    for (const url of log) {
+      expect(new URL(url).hostname).toBe("www.sweepsadvantage.com");
+    }
   });
 });

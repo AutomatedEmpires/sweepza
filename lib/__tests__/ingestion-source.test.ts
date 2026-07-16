@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { isComplianceState } from "@/lib/ingestion/compliance";
 import {
   SOURCE_REGISTRY,
-  enabledSources,
+  fixtureApprovedSources,
   getSourceDescriptor,
+  productionApprovedSources,
   sourcesByBuildPriority,
 } from "@/lib/ingestion/source";
 
@@ -24,8 +26,15 @@ describe("source registry", () => {
     ]);
   });
 
-  it("keeps every source disabled until its adapter + ToS are cleared", () => {
-    expect(enabledSources()).toHaveLength(0);
+  it("ships with no source approved for production", () => {
+    expect(productionApprovedSources()).toHaveLength(0);
+  });
+
+  it("carries a valid compliance state on every source, never above the fixtures rung", () => {
+    for (const source of SOURCE_REGISTRY) {
+      expect(isComplianceState(source.complianceState)).toBe(true);
+      expect(source.complianceState).not.toBe("approved_for_production");
+    }
   });
 
   it("respects The Freebie Guy's robots crawl-delay of 10s", () => {
@@ -34,5 +43,20 @@ describe("source registry", () => {
 
   it("marks the official source as tier 'official'", () => {
     expect(getSourceDescriptor("official_direct")?.tier).toBe("official");
+  });
+
+  it("gives each discovery source a bounded host allowlist and a request budget", () => {
+    for (const source of SOURCE_REGISTRY) {
+      expect(source.requestBudgetPerRun).toBeGreaterThan(0);
+      if (source.tier === "discovery") {
+        expect(source.allowedHosts.length).toBeGreaterThan(0);
+      }
+    }
+    // official_direct is intentionally unbounded — its reach is per-lead.
+    expect(getSourceDescriptor("official_direct")?.allowedHosts).toEqual([]);
+  });
+
+  it("exposes fixture-approved sources (kill switch aside)", () => {
+    expect(fixtureApprovedSources().length).toBe(SOURCE_REGISTRY.length);
   });
 });

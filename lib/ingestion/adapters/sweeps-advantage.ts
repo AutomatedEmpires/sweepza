@@ -1,6 +1,5 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import type { DiscoverOptions, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
-import { getSourceDescriptor } from "@/lib/ingestion/source";
+import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
 import type { EntryFrequency } from "@/lib/db/enums";
 
 // Tier-1 discovery adapter for Sweepstakes Advantage (build priority #1 — 200+
@@ -11,11 +10,11 @@ import type { EntryFrequency } from "@/lib/db/enums";
 // hints for prioritization — never published.
 //
 // The parsers are pure and unit-tested against fixtures; the adapter is the
-// thin network shell around them.
+// thin shell around them, and it fetches exclusively through the policy client
+// handed to it in AdapterContext.
 
 const BASE = "https://www.sweepsadvantage.com";
 const HUB_PATH = "/new-sweepstakes";
-const USER_AGENT = "Mozilla/5.0 (compatible; SweepzaBot/0.1; +https://sweepza.com/bot)";
 
 export interface SweepsAdvantageCard {
   sourceId: string;
@@ -134,44 +133,27 @@ export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
   return cards;
 }
 
-async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
-  if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
-  return res.text();
-}
-
-/** Follow the SA redirect to the official sponsor URL, normalized (utm stripped). */
-async function resolveOfficialUrl(
-  redirectPath: string,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  const res = await fetch(`${BASE}${redirectPath}`, {
-    headers: { "User-Agent": USER_AGENT },
-    redirect: "follow",
-    signal,
-  });
-  return normalizeUrl(res.url);
-}
-
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 export const sweepsAdvantageAdapter: SourceAdapter = {
   id: "sweeps_advantage",
-  async discover({ limit, signal }: DiscoverOptions): Promise<DiscoveredLead[]> {
-    const crawlDelay = getSourceDescriptor("sweeps_advantage")?.crawlDelayMs ?? 2000;
+  async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    const hub = await http.get(`${BASE}${HUB_PATH}`);
+    if (hub.status !== "ok") return [];
 
-    const hub = await fetchText(`${BASE}${HUB_PATH}`, signal);
-    const dailyPath = parseNewestDailyPath(hub);
+    const dailyPath = parseNewestDailyPath(hub.body);
     if (!dailyPath) return [];
 
-    await delay(crawlDelay);
-    const dailyHtml = await fetchText(`${BASE}${dailyPath}`, signal);
-    const cards = parseSweepsAdvantageDaily(dailyHtml);
+    const daily = await http.get(`${BASE}${dailyPath}`);
+    if (daily.status !== "ok") return [];
+
+    const cards = parseSweepsAdvantageDaily(daily.body);
 
     const leads: DiscoveredLead[] = [];
-    for (const card of cards.slice(0, limit ?? cards.length)) {
-      await delay(crawlDelay);
-      const officialUrl = await resolveOfficialUrl(card.redirectPath, signal).catch(() => null);
+    for (const card of cards.slice(0, limit)) {
+      // The redirect is the only way to learn the official URL; a failed
+      // resolve drops the lead rather than guessing at a destination.
+      const resolved = await http.resolve(`${BASE}${card.redirectPath}`);
+      if (resolved.status !== "ok") continue;
+      const officialUrl = normalizeUrl(resolved.finalUrl);
       if (!officialUrl) continue;
       leads.push({
         officialUrl,

@@ -3,6 +3,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { stableHash } from "@/lib/ingestion/fingerprint";
+import type { ConditionalState, SourceHttpClient } from "@/lib/ingestion/http";
 import type { RawExtraction } from "@/lib/ingestion/mapper";
 
 // Tier-2 extraction — read the sponsor's OFFICIAL page and turn it into the
@@ -12,7 +13,6 @@ import type { RawExtraction } from "@/lib/ingestion/mapper";
 // out anything it can't find rather than invent it.
 
 const MAX_PAGE_CHARS = 14_000;
-const USER_AGENT = "Mozilla/5.0 (compatible; SweepzaBot/0.1; +https://sweepza.com/bot)";
 const DEFAULT_MODEL = "claude-opus-4-8";
 
 /**
@@ -51,17 +51,38 @@ export interface FetchedPage {
   contentHash: string;
 }
 
-/** Fetch an official page and reduce it to bounded readable text. */
+export type FetchPageResult =
+  | { status: "ok"; page: FetchedPage }
+  | { status: "not_modified" }
+  | { status: "failed"; failure: string; message: string };
+
+/**
+ * Fetch an official page through the policy client and reduce it to bounded
+ * readable text. Returns the transport's failure CLASS on error rather than a
+ * bare null: the caller's lifecycle handling depends on knowing whether the
+ * sponsor removed the page (dead link) or the network merely blipped.
+ */
 export async function fetchOfficialPage(
   url: string,
-  signal?: AbortSignal,
-): Promise<FetchedPage | null> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
-  if (!res.ok) return null;
-  const html = await res.text();
-  const text = htmlToText(html);
-  if (text.length < 40) return null;
-  return { text, contentHash: stableHash(text) };
+  http: SourceHttpClient,
+  conditional?: ConditionalState,
+): Promise<FetchPageResult> {
+  const result = await http.get(url, { conditional });
+
+  if (result.status === "not_modified") return { status: "not_modified" };
+  if (result.status === "failed") {
+    return { status: "failed", failure: result.failure, message: result.message };
+  }
+
+  const text = htmlToText(result.body);
+  if (text.length < 40) {
+    return {
+      status: "failed",
+      failure: "empty_body",
+      message: `${url} yielded ${text.length} characters of readable text`,
+    };
+  }
+  return { status: "ok", page: { text, contentHash: stableHash(text) } };
 }
 
 // Tool schema mirrors RawExtraction. Tool use (not free-form JSON) keeps the
@@ -112,18 +133,29 @@ export interface Extraction {
   contentHash: string;
 }
 
+export interface ExtractOptions {
+  /** Policy-bound client for the official-page fetch. */
+  http: SourceHttpClient;
+  conditional?: ConditionalState;
+}
+
 /**
  * Fetch + extract one official page. Returns null when the page can't be
  * fetched, the extractor is unconfigured, or no structured result comes back.
+ * `fetchOfficialPage` exposes the failure class for callers that need to
+ * distinguish a dead link from a transient error.
  */
 export async function extractOfficialPage(
   url: string,
-  signal?: AbortSignal,
+  options: ExtractOptions,
 ): Promise<Extraction | null> {
   if (!env.ANTHROPIC_API_KEY) return null;
 
-  const page = await fetchOfficialPage(url, signal).catch(() => null);
-  if (!page) return null;
+  const fetched = await fetchOfficialPage(url, options.http, options.conditional).catch(
+    () => null,
+  );
+  if (!fetched || fetched.status !== "ok") return null;
+  const page = fetched.page;
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({

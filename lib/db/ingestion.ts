@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { makeUniqueListingSlug } from "@/lib/slug";
 import type { DedupKeys } from "@/lib/ingestion/fingerprint";
 import type { NormalizedCandidate } from "@/lib/ingestion/mapper";
+import type { EvidenceFactor } from "@/lib/ingestion/verify";
 
 // Ingestion data layer — provenance, idempotency lookups, and run logging.
 // Thin service-role wrappers the orchestrating cron calls; the dedup decisions
@@ -30,11 +31,19 @@ export async function startIngestionRun(source: string): Promise<string> {
   return data.id;
 }
 
+export interface RunTelemetry {
+  /** Why the gate allowed or refused this source (lib/ingestion/gate.ts). */
+  gateDecision?: string | null;
+  requestsMade?: number;
+  notModified?: number;
+}
+
 export async function finishIngestionRun(
   runId: string,
   counts: IngestionRunCounts,
-  status: "ok" | "error" = "ok",
-  notes?: string,
+  status: "ok" | "error" | "skipped" = "ok",
+  notes?: string | null,
+  telemetry: RunTelemetry = {},
 ): Promise<void> {
   const supabase = createServiceRoleClient();
   const { error } = await supabase
@@ -49,6 +58,9 @@ export async function finishIngestionRun(
       updated: counts.updated ?? 0,
       skipped: counts.skipped ?? 0,
       failed: counts.failed ?? 0,
+      gate_decision: telemetry.gateDecision ?? null,
+      requests_made: telemetry.requestsMade ?? 0,
+      not_modified: telemetry.notModified ?? 0,
     })
     .eq("id", runId);
   if (error) throw new Error(`finishIngestionRun failed: ${error.message}`);
@@ -113,6 +125,9 @@ export interface ProvenanceInput {
   officialSourceUrl: string | null;
   rawSnapshotRef?: string | null;
   extractionConfidence?: number | null;
+  /** EvidenceFactor[] — the explanation behind the confidence number. */
+  extractionFactors?: EvidenceFactor[] | null;
+  extractionSummary?: string | null;
   contentHash?: string | null;
 }
 
@@ -131,6 +146,8 @@ export async function recordProvenance(
       official_source_url: input.officialSourceUrl,
       raw_snapshot_ref: input.rawSnapshotRef ?? null,
       extraction_confidence: input.extractionConfidence ?? null,
+      extraction_factors: input.extractionFactors ?? null,
+      extraction_summary: input.extractionSummary ?? null,
       content_hash: input.contentHash ?? null,
       last_seen_at: new Date().toISOString(),
     },
