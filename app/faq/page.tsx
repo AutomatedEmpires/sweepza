@@ -1,14 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { APP_NAME } from "@/lib/site";
 import { FAQ_ITEMS } from "@/lib/faq";
 import { buildFaqJsonLd } from "@/lib/structured-data";
 import { serializeJsonLd } from "@/lib/listing-seo";
 
+const FAQ_DESCRIPTION =
+  "Answers about Sweepza — is it free, are the sweepstakes legitimate, how daily entries work, and how we handle your data.";
+
 export const metadata: Metadata = {
   title: "FAQ",
-  description:
-    "Answers about Sweepza — is it free, are the sweepstakes legitimate, how daily entries work, and how we handle your data.",
+  description: FAQ_DESCRIPTION,
   alternates: { canonical: "/faq" },
+  openGraph: {
+    title: "Sweepza FAQ",
+    description: FAQ_DESCRIPTION,
+    url: "/faq",
+    type: "website",
+    siteName: APP_NAME,
+  },
 };
 
 export default function FaqPage() {
