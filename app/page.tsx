@@ -6,6 +6,7 @@ import { GamificationStrip } from "@/components/gamification-strip";
 import { ensureCurrentAppUser } from "@/lib/auth";
 import { getCachedPublicListings } from "@/lib/db/listings-cache";
 import { getSeekerHistoryListingsByIds } from "@/lib/db/listings";
+import { withPublicFallback } from "@/lib/db/resilient";
 import { getSeekerGamification } from "@/lib/db/gamification";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
@@ -128,7 +129,9 @@ export default async function TodayPage() {
   const now = new Date();
   const [authUser, listings] = await Promise.all([
     ensureCurrentAppUser(),
-    getCachedPublicListings(100),
+    // The front door must never trade its designed empty state for the error
+    // boundary; a feed failure renders the same page as an empty catalog.
+    withPublicFallback(getCachedPublicListings(100), [], "today_feed"),
   ]);
 
   // The public feed is intentionally bounded, but a seeker's routine is not.
