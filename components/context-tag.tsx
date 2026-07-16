@@ -6,15 +6,15 @@ import type { ContextTone, ListingContext } from "@/lib/listing-context";
 //  - "chip": solid, sits over the cover photo (bottom-left) for feed scanning.
 //  - "eyebrow": quiet uppercase label + dot, used above titles on detail/rails.
 const CHIP_TONE: Record<ContextTone, string> = {
-  won: "bg-gold text-white",
-  urgent: "bg-flame text-white",
-  soon: "bg-ember text-white",
-  again: "bg-pine text-white",
+  won: "bg-gold text-on-won",
+  urgent: "bg-flame text-on-urgent",
+  soon: "bg-ember text-on-accent",
+  again: "bg-pine text-on-trust",
   entered: "bg-ink/85 text-paper",
-  new: "bg-ocean text-white",
-  daily: "bg-white/92 text-pine ring-1 ring-pine/20",
+  new: "bg-ocean text-on-info",
+  daily: "bg-surface/92 text-pine ring-1 ring-pine/20",
   featured: "bg-ink text-paper",
-  category: "bg-white/92 text-ink ring-1 ring-ink/10",
+  category: "bg-surface/92 text-ink ring-1 ring-ink/10",
   expired: "bg-ink/60 text-paper",
 };
 

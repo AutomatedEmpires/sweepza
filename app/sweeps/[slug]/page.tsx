@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { ListingDetail } from "@/components/listing-detail";
-import { getListingBySlug } from "@/lib/db/listings";
+import { getCachedListingBySlug } from "@/lib/db/listings-cache";
 import {
   buildListingJsonLd,
   listingOgImagePath,
   listingPath,
   serializeJsonLd,
 } from "@/lib/listing-seo";
+import { buildBreadcrumbJsonLd } from "@/lib/structured-data";
 import { APP_NAME, SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
+  const listing = await getCachedListingBySlug(slug);
   if (!listing) return { title: "Sweepstakes not found" };
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL);
@@ -60,11 +61,18 @@ export default async function ListingDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = await getListingBySlug(slug);
+  const listing = await getCachedListingBySlug(slug);
   if (!listing) notFound();
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL).toString();
   const jsonLd = serializeJsonLd(buildListingJsonLd(listing, canonicalUrl));
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: "Home", url: SITE_URL.toString() },
+      { name: "Discover", url: new URL("/discover", SITE_URL).toString() },
+      { name: listing.title, url: canonicalUrl },
+    ]),
+  );
   const [authUser] = await Promise.all([ensureCurrentAppUser()]);
   const clerkConfigured = isClerkConfigured();
 
@@ -73,6 +81,10 @@ export default async function ListingDetailPage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLd }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }}
       />
       <ListingDetail
         listing={listing}

@@ -14,7 +14,7 @@ const TITLE_LIMIT = 110;
 const PAPER = "#f5f0e7";
 const INK = "#17130f";
 const PINE = "#3e6b52";
-const EMBER = "#e0532b";
+const EMBER = "#c13e19";
 
 const containerStyle: CSSProperties = {
   width: "100%",

@@ -1,6 +1,10 @@
 import { DiscoverFeed } from "@/components/discover-feed";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
 import { getPublicListings } from "@/lib/db/listings";
+import { serializeJsonLd } from "@/lib/listing-seo";
+import { buildItemListJsonLd } from "@/lib/structured-data";
+import { SITE_URL } from "@/lib/site";
+import { getCachedPublicListings } from "@/lib/db/listings-cache";
 
 export const metadata = { title: "Discover" };
 export const dynamic = "force-dynamic";
@@ -18,14 +22,37 @@ export default async function DiscoverPage({
   const category =
     typeof params?.category === "string" ? params.category : undefined;
 
-  const listings = await getPublicListings({
-    searchQuery: q || undefined,
-    categories: category ? [category] : undefined,
-    limit: 60,
-  });
+  // The unfiltered feed is shared by every visitor, so serve it from the
+  // cached path; search/category views are per-request and stay uncached.
+  const listings =
+    q || category
+      ? await getPublicListings({
+          searchQuery: q || undefined,
+          categories: category ? [category] : undefined,
+          limit: 60,
+        })
+      : await getCachedPublicListings(60);
+
+  const itemListJsonLd =
+    listings.length > 0
+      ? serializeJsonLd(
+          buildItemListJsonLd(
+            listings.map((listing) => ({
+              name: listing.title,
+              url: new URL(`/sweeps/${listing.slug}`, SITE_URL).toString(),
+            })),
+          ),
+        )
+      : null;
 
   return (
     <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+      {itemListJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: itemListJsonLd }}
+        />
+      )}
       <header className="mb-5 flex items-start justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <h1 className="font-display text-[26px] leading-none text-ink">Discover</h1>

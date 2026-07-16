@@ -30,9 +30,9 @@
   --sun-ink: 23 19 15;           /* #17130F  text          */
   --sun-graphite: 110 101 90;    /* #6E655A  muted text    */
   --sun-line: 231 223 208;       /* #E7DFD0  hairline      */
-  --sun-ember: 224 83 43;        /* #E0532B  primary action*/
+  --sun-ember: 193 62 25;        /* #C13E19  primary action — AA with white text (5.3:1) and as text on paper (4.6:1) */
   --sun-flame: 201 56 31;        /* #C9381F  urgency       */
-  --sun-gold: 176 129 42;        /* #B0812A  won / prize   */
+  --sun-gold: 143 104 31;        /* #8F681F  won / prize — AA as text on surface (5.0:1) and with white on fills */
   --sun-ocean: 53 80 107;        /* #35506B  info / new    */
   --sun-pine: 62 107 82;         /* #3E6B52  trust         */
 
@@ -101,7 +101,14 @@
   --color-won: var(--sun-gold);
   --color-info: var(--sun-ocean);
   --color-trust: var(--sun-pine);
+  /* Text/icon color placed ON each filled action color. Sunrise fills are
+     deep enough for white; Midnight fills are bright, so ink flips dark —
+     every pairing holds ≥4.5:1 in both themes. */
   --color-on-accent: 255 255 255;
+  --color-on-urgent: 255 255 255;
+  --color-on-won: 255 255 255;
+  --color-on-info: 255 255 255;
+  --color-on-trust: 255 255 255;
 
   --shadow-e1: 0 1px 2px rgb(23 19 15 / 0.04), 0 2px 8px rgb(23 19 15 / 0.05);
   --shadow-e2: 0 4px 14px rgb(23 19 15 / 0.08), 0 2px 6px rgb(23 19 15 / 0.05);
@@ -131,7 +138,14 @@
   --color-won: var(--mid-gold);
   --color-info: var(--mid-ocean);
   --color-trust: var(--mid-pine);
-  --color-on-accent: 255 255 255;
+  /* Midnight action colors are bright by design (they must read as TEXT on
+     the dark canvas), so the text sitting on them flips to ink. Measured:
+     ember 5.9:1 · flame 6.8:1 · gold 11.3:1 · ocean ~7:1 · pine 9.0:1. */
+  --color-on-accent: var(--mid-paper);
+  --color-on-urgent: var(--mid-paper);
+  --color-on-won: var(--mid-paper);
+  --color-on-info: var(--mid-paper);
+  --color-on-trust: var(--mid-paper);
 
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.30), 0 2px 8px rgb(0 0 0 / 0.36);
   --shadow-e2: 0 4px 14px rgb(0 0 0 / 0.44), 0 2px 6px rgb(0 0 0 / 0.34);

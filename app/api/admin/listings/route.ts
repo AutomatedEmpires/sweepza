@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { adminListingImportSchema } from "@/lib/admin-listing-schema";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 import { makeUniqueListingSlug } from "@/lib/slug";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -71,6 +72,13 @@ export async function POST(request: Request) {
       { error: `Listing insert failed: ${listingError.message}` },
       { status: 500 },
     );
+  }
+
+  // The row is already live at this point; invalidate before the tag insert so
+  // a later tag failure (which returns early) can't strand a published listing
+  // out of the cached feed. Drafts stay private and don't enter the feed.
+  if (input.publish) {
+    revalidatePublicListings();
   }
 
   if (input.tagCodes.length > 0) {

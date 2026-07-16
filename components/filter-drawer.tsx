@@ -121,7 +121,7 @@ export function FilterDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="grid h-8 w-8 place-items-center rounded-full text-graphite transition hover:bg-ink/5"
+            className="-mr-1.5 grid h-11 w-11 place-items-center rounded-full text-graphite transition hover:bg-ink/5"
           >
             <Icon name="skip" size={18} />
           </button>
@@ -146,7 +146,7 @@ export function FilterDrawer({
                         onClick={() => onToggle(chip.id)}
                         aria-pressed={isActive}
                         className={cn(
-                          "rounded-pill border px-3 py-1.5 text-sm font-semibold transition",
+                          "min-h-11 rounded-pill border px-3.5 text-sm font-semibold transition",
                           isActive
                             ? "border-ink bg-ink text-paper"
                             : "border-line bg-surface text-ink/70 hover:border-ink/25",
@@ -175,7 +175,7 @@ export function FilterDrawer({
                     onClick={() => onSort(option.id)}
                     aria-pressed={isActive}
                     className={cn(
-                      "rounded-pill border px-3 py-1.5 text-sm font-semibold transition",
+                      "min-h-11 rounded-pill border px-3.5 text-sm font-semibold transition",
                       isActive
                         ? "border-ink bg-ink text-paper"
                         : "border-line bg-surface text-ink/70 hover:border-ink/25",
@@ -193,14 +193,14 @@ export function FilterDrawer({
           <button
             type="button"
             onClick={onClear}
-            className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
+            className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold text-ink/75 transition hover:border-ink/25"
           >
             Clear all
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+            className="min-h-11 flex-1 rounded-xl bg-ember px-4 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
           >
             Show {countLabel}
           </button>

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
+import { GamificationStrip } from "@/components/gamification-strip";
 import { ProfileSignOut } from "@/components/profile-sign-out";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { getSeekerGamification } from "@/lib/db/gamification";
 
 export const metadata = { title: "Profile" };
 export const dynamic = "force-dynamic";
@@ -44,6 +46,9 @@ export default async function ProfilePage() {
   const isAdmin = Boolean(
     authUser?.appUser.is_admin || authUser?.appUser.is_owner,
   );
+  const gamification = authUser
+    ? await getSeekerGamification(authUser.appUserId)
+    : null;
 
   return (
     <section className="flex flex-col gap-5 px-4 pb-8 pt-8 lg:mx-auto lg:w-full lg:max-w-2xl">
@@ -54,7 +59,7 @@ export default async function ProfilePage() {
       {/* Identity */}
       {authUser ? (
         <div className="flex items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-e1">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-pine text-lg font-bold text-white">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-pine text-lg font-bold text-on-trust">
             {(authUser.displayName ?? authUser.email ?? "S")
               .charAt(0)
               .toUpperCase()}
@@ -92,19 +97,24 @@ export default async function ProfilePage() {
             <div className="mt-3 flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-ember/90"
+                className="inline-flex min-h-11 items-center justify-center flex-1 rounded-xl bg-ember px-4 py-2.5 text-center text-sm font-semibold text-on-accent transition hover:bg-ember/90"
               >
                 Sign in
               </Link>
               <Link
                 href="/sign-up"
-                className="flex-1 rounded-xl border border-line px-4 py-2.5 text-center text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
+                className="inline-flex min-h-11 items-center justify-center flex-1 rounded-xl border border-line px-4 py-2.5 text-center text-sm font-semibold text-ink/75 transition hover:bg-ink/5"
               >
                 Create account
               </Link>
             </div>
           )}
         </div>
+      )}
+
+      {/* Streak & badges */}
+      {gamification && gamification.stats.totalEntries > 0 && (
+        <GamificationStrip data={gamification} />
       )}
 
       {/* Your activity */}
@@ -124,6 +134,12 @@ export default async function ProfilePage() {
             icon="trophy"
             title="Share a win"
             body="Post your win to the Winner Wall"
+          />
+          <LinkRow
+            href="/profile/notifications"
+            icon="bell"
+            title="Reminders"
+            body="Choose which reminder emails you get"
           />
         </div>
       </div>
@@ -175,6 +191,12 @@ export default async function ProfilePage() {
             icon="info"
             title="About Sweepza"
             body="What we are and how listings get here"
+          />
+          <LinkRow
+            href="/faq"
+            icon="info"
+            title="FAQ"
+            body="Common questions, answered"
           />
           <LinkRow
             href="/privacy"

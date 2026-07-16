@@ -56,7 +56,7 @@ export default function TermsPage() {
         {sections.map((section) => (
           <section
             key={section.title}
-            className="rounded-card border border-sand bg-white/70 p-4"
+            className="rounded-card border border-line bg-surface p-4"
           >
             <h2 className="text-lg font-semibold text-ink">{section.title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink/70">
@@ -65,7 +65,7 @@ export default function TermsPage() {
           </section>
         ))}
 
-        <section className="rounded-card border border-sand bg-white/70 p-4">
+        <section className="rounded-card border border-line bg-surface p-4">
           <h2 className="text-lg font-semibold text-ink">Questions</h2>
           <p className="mt-2 text-sm leading-relaxed text-ink/70">
             Contact{" "}

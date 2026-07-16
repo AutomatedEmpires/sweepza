@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/admin-guard";
 import { actOnReport } from "@/lib/db/admin";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,11 @@ export async function POST(
 
   try {
     const result = await actOnReport(parsedParams.data.reportId);
+    // Acting on a listing report hides the listing; refresh the cached feed so
+    // the moderated listing stops showing. Non-listing targets don't affect it.
+    if (result.target_type === "listing") {
+      revalidatePublicListings();
+    }
     return NextResponse.json({
       ok: true,
       status: "action_taken",

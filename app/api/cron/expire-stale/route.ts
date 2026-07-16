@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,12 @@ export async function GET(request: Request) {
     } else {
       expired.push(row.slug);
     }
+  }
+
+  // Expired listings drop out of the active/public feed; only bust the cache
+  // when at least one actually transitioned.
+  if (expired.length > 0) {
+    revalidatePublicListings();
   }
 
   return NextResponse.json({

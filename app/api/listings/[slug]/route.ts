@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getListingBySlug } from "@/lib/db/listings";
+import { getCachedListingBySlug } from "@/lib/db/listings-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export async function GET(
   context: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await context.params;
-  const listing = await getListingBySlug(slug);
+  const listing = await getCachedListingBySlug(slug);
 
   if (!listing) {
     return NextResponse.json(
