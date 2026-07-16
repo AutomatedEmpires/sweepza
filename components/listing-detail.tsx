@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { describeEligibility } from "@/lib/eligibility";
 import { canOptimizeImage } from "@/lib/image";
 import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
@@ -162,10 +163,15 @@ export function ListingDetail({
   const days = daysUntil(listing.endDate, now);
   const urgentEnd = !expired && days <= 3;
 
-  const eligibility = [
-    listing.eligibilityCountry,
-    listing.ageRequirement ? `${listing.ageRequirement}+` : null,
-  ].filter(Boolean).join(" · ");
+  // Honest eligibility: an unknown field is shown as an explicit "Not stated",
+  // never omitted — omission would read as "no restriction" and could tell a
+  // seeker they qualify for a sweep they don't. Region folds country + states;
+  // no-purchase isn't on the public listing shape, so only region and age show.
+  const eligibilityFacets = describeEligibility({
+    eligibilityCountry: listing.eligibilityCountry,
+    eligibilityStates: listing.eligibilityStates,
+    ageRequirement: listing.ageRequirement,
+  }).facets.filter((f) => f.label === "Region" || f.label === "Minimum age");
 
   // Ready-again integration for entered recurring sweeps.
   const readyAgainAt = entered
@@ -406,16 +412,15 @@ export function ListingDetail({
               </Fact>
             </div>
             <div className="divide-y divide-line">
-              {eligibility && (
-                <Fact icon="location" label="Eligibility">
-                  {eligibility}
+              {eligibilityFacets.map((facet) => (
+                <Fact key={facet.label} icon="location" label={facet.label}>
+                  {facet.certainty === "unknown" ? (
+                    <span className="text-graphite">{facet.value}</span>
+                  ) : (
+                    facet.value
+                  )}
                 </Fact>
-              )}
-              {listing.eligibilityStates && listing.eligibilityStates.length > 0 && (
-                <Fact icon="location" label="States">
-                  {listing.eligibilityStates.join(", ")}
-                </Fact>
-              )}
+              ))}
               <Fact icon="gift" label="Prize">
                 {listing.prizeName}
                 {listing.winnerCount
