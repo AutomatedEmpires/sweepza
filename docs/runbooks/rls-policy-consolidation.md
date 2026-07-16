@@ -20,9 +20,11 @@ assertion confirmed zero `(table, action)` pairs with multiple permissive
 policies, then everything rolled back and the live DB was verified untouched.
 
 ## Activate (after founder approval)
-1. Recover the draft (session scratchpad `rls-consolidation-full.sql`, or
-   regenerate: the derivation is fully documented in PR #66's description and
-   the session log — per-command split with OR-union predicates).
+1. The reviewed draft is preserved durably at
+   `docs/runbooks/artifacts/rls-consolidation-draft.sql` (deliberately outside
+   `supabase/migrations/` so nothing can apply it). Rollback source of truth:
+   the current policy definitions in
+   `supabase/migrations/20260604120600_rls.sql` and later policy migrations.
 2. Commit it as `supabase/migrations/<timestamp>_advisor_rls_consolidation.sql`
    on a `feat/data/*` branch; open a PR; merge on green CI.
 3. Apply through the normal migration flow (`supabase db push` / deploy).

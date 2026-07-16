@@ -81,3 +81,56 @@ export const CONTENT_SECURITY_POLICY = buildContentSecurityPolicy();
 // 2 years, cover subdomains. `preload` (list submission) is a deliberate later
 // step — omitted until every subdomain is confirmed HTTPS.
 export const STRICT_TRANSPORT_SECURITY = "max-age=63072000; includeSubDomains";
+
+/** Edge-safe per-request script nonce: 128 bits of randomness, base64. */
+export function createNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw);
+}
+
+/**
+ * Stamp the outgoing security headers on any Response-like value. Mutates
+ * headers in place so middleware never discards/replaces whatever
+ * clerkMiddleware() returned (e.g. a redirect Response) — Clerk's
+ * NextMiddlewareResult can be a NextResponse or a plain Response, and all
+ * Response-like values expose a mutable `.headers` we can set on directly
+ * without touching status/body/redirect target.
+ *
+ * Exactly one CSP header is ever emitted: enforcing (nonce given) XOR
+ * report-only (no nonce).
+ */
+export function withSecurityHeaders<T extends Response>(
+  response: T,
+  hsts: boolean,
+  nonce: string | null,
+): T {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-DNS-Prefetch-Control", "off");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  if (nonce) {
+    // Enforcing mode: nonce-bound policy; report-only is superseded.
+    response.headers.set(
+      "Content-Security-Policy",
+      buildContentSecurityPolicy(nonce),
+    );
+    response.headers.delete("Content-Security-Policy-Report-Only");
+  } else {
+    // Report-only — observes violations without blocking. CSP_ENFORCE=true
+    // flips to the enforcing, nonce-based policy above.
+    response.headers.set(
+      "Content-Security-Policy-Report-Only",
+      CONTENT_SECURITY_POLICY,
+    );
+  }
+  if (hsts) {
+    response.headers.set("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
+  }
+  return response;
+}

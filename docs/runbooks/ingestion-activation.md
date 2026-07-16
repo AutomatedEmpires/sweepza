@@ -23,9 +23,16 @@ publishes without admin review.
    cache automatically).
 
 ## Verify
-- `ingestion_run` rows show fetched/extracted/verified/deduped counts.
-- Hard gates hold: no listing without official_rules_url, future end_date,
-  entry_url, and a no-purchase signal ever reaches the review queue.
+- `ingestion_run` rows show the actual run counters: `discovered`, `fetched`,
+  `created`, `updated`, `skipped`, `failed` (plus `status` and `notes`).
+- Verification is **advisory at ingest time**: `verifyCandidate` scores each
+  candidate (official-rules URL, future end date, entry URL, no-purchase
+  signal) and records the confidence on the listing's provenance row, but the
+  draft is created either way and waits in the admin review queue. The hard
+  gate is at publish: the DB publish guard plus manual admin approval —
+  nothing becomes public without both. (Follow-up logged: optionally block
+  draft creation when `verification.publishable` is false in
+  `lib/ingestion/orchestrator.ts`.)
 
 ## Rollback
 Set the source back to `enabled: false` (PR) — the cron returns to no-op.

@@ -9,8 +9,13 @@ The enforcing, nonce-based mode is fully implemented and dark behind
 1. Report-only has run in production long enough to cover every surface
    (sign-in/up, checkout, swipe, admin) with **zero unexpected violations**
    in browser consoles / reporting.
-2. Any newly added third-party script origin is present in
-   `lib/security-headers.ts` `CSP_DIRECTIVES`.
+2. Every third-party `<script>` the app renders directly carries the request
+   nonce (or is injected by an already-nonced script — how Clerk, Stripe, and
+   PostHog load today). Under `'strict-dynamic'`, supporting browsers ignore
+   the host allowlist in `script-src`, so adding an origin to
+   `lib/security-headers.ts` `CSP_DIRECTIVES` only covers report-only mode
+   and older browsers; it does NOT authorize a plain `<script src>` tag under
+   enforcement.
 
 ## Activate
 1. Set the env var `CSP_ENFORCE=true` in Vercel (Production).
