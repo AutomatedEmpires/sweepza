@@ -31,7 +31,7 @@ const SECTIONS: { heading: string; body: string }[] = [
   },
   {
     heading: "How listings get here",
-    body: "Hosts submit their own sweepstakes, and the Sweepza team adds ones it finds. Either way, a listing is reviewed before it goes live, and anyone can report a listing that looks wrong — we review reports and fix or remove what's ended or changed.",
+    body: "Hosts submit their own sweepstakes, and the Sweepza team adds ones it finds. Either way, a listing is reviewed before it goes live, and signed-in seekers can report a listing that looks wrong — we review reports and fix or remove what's ended or changed.",
   },
   {
     heading: "What Sweepza never does",
