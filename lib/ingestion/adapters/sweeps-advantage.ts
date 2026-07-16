@@ -44,7 +44,7 @@ function decodeEntities(value: string): string {
 
 function stripTags(value: string): string {
   const withoutBlocks = value.replace(
-    /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+    /<(script|style)\b[^>]*>[\s\S]*?<\/\1[^>]*>/gi,
     " ",
   );
   // Strip remaining tags repeatedly so overlapping/reconstructed "<...>"
