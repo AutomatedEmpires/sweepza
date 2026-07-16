@@ -1,25 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANONICAL_CATEGORY_CODES,
   CATEGORY_HUBS,
-  DICTIONARY_CODES,
-  DICTIONARY_LABELS,
+  EXCLUDED_CATEGORY_CODES,
+  PROJECTION_CODES,
   getCategoryHub,
 } from "@/lib/category-hubs";
 
-// The hubs are the programmatic-SEO surface over the controlled taxonomy.
-// These tests enforce the bijection: every dictionary category has exactly one
-// landing page, and every landing page maps to a real dictionary code — so a
-// taxonomy change can never silently orphan (or fabricate) a hub.
+// The hubs are the programmatic-SEO surface over the CANONICAL category
+// dictionary. These tests enforce the partition — every canonical code either
+// has exactly one landing page or is deliberately excluded with a stated
+// reason — so a taxonomy change can never silently orphan (or fabricate) a
+// hub, and the copy can never regress past the canon bright-lines.
 describe("category hubs", () => {
-  it("covers every dictionary category exactly once", () => {
-    const hubCodes = CATEGORY_HUBS.map((hub) => hub.code).sort();
-    expect(hubCodes).toEqual([...DICTIONARY_CODES].sort());
+  it("partitions the canonical dictionary: hubs + documented exclusions", () => {
+    const hubCodes = CATEGORY_HUBS.map((hub) => hub.code);
+    const covered = [...hubCodes, ...EXCLUDED_CATEGORY_CODES].sort();
+    expect(covered).toEqual([...CANONICAL_CATEGORY_CODES].sort());
+    // No code may be both hubbed and excluded.
+    for (const excluded of EXCLUDED_CATEGORY_CODES) {
+      expect(hubCodes).not.toContain(excluded);
+    }
   });
 
-  it("uses canonical labels from the dictionary", () => {
-    const labels = new Set<string>(DICTIONARY_LABELS);
-    for (const hub of CATEGORY_HUBS) {
-      expect(labels.has(hub.label), `${hub.slug} label`).toBe(true);
+  it("covers every UI-projection code (chips must never point nowhere)", () => {
+    const hubCodes = new Set(CATEGORY_HUBS.map((hub) => hub.code));
+    for (const code of PROJECTION_CODES) {
+      expect(hubCodes.has(code), `projection code ${code}`).toBe(true);
     }
   });
 
@@ -33,10 +40,12 @@ describe("category hubs", () => {
 
   it("resolves hubs by slug and rejects unknown slugs", () => {
     expect(getCategoryHub("gift-cards")?.code).toBe("gift_cards");
-    expect(getCategoryHub("beauty-fashion")?.code).toBe("fashion_beauty");
+    expect(getCategoryHub("experiences")?.code).toBe("experiences");
     expect(getCategoryHub("no-such-category")).toBeUndefined();
     // Route params must be slugs, not raw dictionary codes.
     expect(getCategoryHub("gift_cards")).toBeUndefined();
+    // Excluded codes have no hub at all.
+    expect(getCategoryHub("other")).toBeUndefined();
   });
 
   it("carries honest, non-empty SEO copy on every hub", () => {
@@ -45,9 +54,14 @@ describe("category hubs", () => {
       expect(hub.description.length, `${hub.slug} description`).toBeGreaterThan(
         60,
       );
-      // Canon bright lines: never promise wins or imply paid entry.
-      expect(hub.description.toLowerCase()).not.toContain("guarantee");
-      expect(hub.description.toLowerCase()).not.toContain("purchase required");
+      const copy = `${hub.title} ${hub.description}`.toLowerCase();
+      // Canon bright-lines: never promise wins or imply paid entry...
+      expect(copy, `${hub.slug} promises`).not.toContain("guarantee");
+      expect(copy, `${hub.slug} promises`).not.toContain("purchase required");
+      // ...and never make per-listing claims the data model does not enforce
+      // (unreviewed listings can be public; official-rules exceptions exist).
+      expect(copy, `${hub.slug} verification claim`).not.toContain("verified");
+      expect(copy, `${hub.slug} rules claim`).not.toContain("official rules");
     }
   });
 });

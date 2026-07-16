@@ -74,17 +74,16 @@ export default async function CategoryHubPage({
       },
     ]),
   );
-  const itemListJsonLd =
-    listings.length > 0
-      ? serializeJsonLd(
-          buildItemListJsonLd(
-            listings.map((listing) => ({
-              name: listing.title,
-              url: new URL(`/sweeps/${listing.slug}`, SITE_URL).toString(),
-            })),
-          ),
-        )
-      : null;
+  // Always emitted — an empty ItemList is valid schema.org and keeps the
+  // hub's structured-data contract stable across empty/degraded inventory.
+  const itemListJsonLd = serializeJsonLd(
+    buildItemListJsonLd(
+      listings.map((listing) => ({
+        name: listing.title,
+        url: new URL(`/sweeps/${listing.slug}`, SITE_URL).toString(),
+      })),
+    ),
+  );
 
   const siblings = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug);
 
@@ -94,12 +93,10 @@ export default async function CategoryHubPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }}
       />
-      {itemListJsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: itemListJsonLd }}
-        />
-      )}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: itemListJsonLd }}
+      />
 
       <nav aria-label="Breadcrumb" className="mb-4 px-1">
         <Link
