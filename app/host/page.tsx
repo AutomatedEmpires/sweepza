@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Icon, type IconName } from "@/components/icon";
+import { HostPitch } from "@/components/host-pitch";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
 import { HostProfileForm } from "@/components/host-profile-form";
 import type { HostProfileFormValues } from "@/components/host-profile-form";
@@ -15,10 +16,24 @@ import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
+import { SITE_URL } from "@/lib/site";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
 import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
-export const metadata = { title: "Host" };
+const HOST_DESCRIPTION =
+  "List your free-to-enter sweepstakes on Sweepza — reviewed listings, official-page entries, and an audience that returns daily to re-enter.";
+
+export const metadata = {
+  title: "Host Your Sweepstakes",
+  description: HOST_DESCRIPTION,
+  alternates: { canonical: new URL("/host", SITE_URL) },
+  openGraph: {
+    title: "Host Your Sweepstakes",
+    description: HOST_DESCRIPTION,
+    url: new URL("/host", SITE_URL),
+    type: "website",
+  },
+};
 export const dynamic = "force-dynamic";
 
 const QUICK_LINKS: Array<{ href: string; icon: IconName; label: string }> = [
@@ -149,13 +164,17 @@ export default async function HostPage({
   return (
     <section className="px-4 pb-10 pt-8 lg:mx-auto lg:w-full lg:max-w-2xl">
       <div className="flex flex-col gap-4">
-        <header className="px-1">
-          <h1 className="font-display text-3xl text-ink">Host</h1>
-          <p className="mt-2 text-sm text-graphite">
-            Manage your host identity, track listing capacity, and keep an eye
-            on what is live in Discover.
-          </p>
-        </header>
+        {/* The dashboard header belongs to signed-in host tooling; the
+            signed-out / unconfigured branches render the HostPitch hero. */}
+        {clerkConfigured && authUser ? (
+          <header className="px-1">
+            <h1 className="font-display text-3xl text-ink">Host</h1>
+            <p className="mt-2 text-sm text-graphite">
+              Manage your host identity, track listing capacity, and keep an eye
+              on what is live in Discover.
+            </p>
+          </header>
+        ) : null}
 
         {checkoutStatus === "success" ? (
           <div className="rounded-card border border-pine/25 bg-pine/5 p-4 text-sm text-ink/75">
@@ -169,39 +188,20 @@ export default async function HostPage({
         ) : null}
 
         {!clerkConfigured ? (
-          <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
-            <h2 className="text-sm font-semibold text-ink">
-              Host auth is not configured yet
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-graphite">
-              Clerk keys are still missing in this environment, so host identity
-              and role-aware listing actions cannot run here yet.
-            </p>
-          </div>
-        ) : !authUser ? (
-          <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
-            <h2 className="text-sm font-semibold text-ink">
-              Sign in to access host tools
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-graphite">
-              Host workflows depend on your Sweepza account and role mappings in
-              Supabase.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <Link
-                href="/sign-in"
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/sign-up"
-                className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper"
-              >
-                Create account
-              </Link>
+          <>
+            <HostPitch signInAvailable={false} />
+            <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
+              <h2 className="text-sm font-semibold text-ink">
+                Host auth is not configured yet
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-graphite">
+                Clerk keys are still missing in this environment, so host
+                identity and role-aware listing actions cannot run here yet.
+              </p>
             </div>
-          </div>
+          </>
+        ) : !authUser ? (
+          <HostPitch signInAvailable />
         ) : isHost && !host ? (
           <>
             <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
