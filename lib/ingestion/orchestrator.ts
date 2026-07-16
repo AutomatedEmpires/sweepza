@@ -60,6 +60,7 @@ export async function runIngestion(
       counts.discovered = leads.length;
 
       const seenThisRun = new Set<string>();
+      const held: string[] = [];
       for (const lead of leads) {
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
@@ -85,9 +86,18 @@ export async function runIngestion(
         }
 
         const { candidate } = mapExtraction(extraction.raw);
-        // NOT NULL guardrail — without these the row can't be created; hold it.
-        if (!candidate.title || !candidate.shortDescription || !candidate.prizeName) {
+
+        // Hard gate: a candidate that fails any non-negotiable (title/
+        // description/prize substance, official rules URL, entry URL,
+        // no-purchase signal, live end date) never becomes a row — not even a
+        // review-queue draft. This is the single hold path, so every held
+        // candidate's failed check ids land in the run notes for operators.
+        // (The title/description/prize hard checks also cover the DB's
+        // NOT NULL constraints — nothing uncreatable gets past this point.)
+        const verification = verifyCandidate(candidate);
+        if (!verification.publishable) {
           counts.failed += 1;
+          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
           continue;
         }
 
@@ -98,7 +108,6 @@ export async function runIngestion(
           continue;
         }
 
-        const verification = verifyCandidate(candidate);
         const listingId = await createIngestedListing(candidate);
         const snapshotRef = await snapshotOfficialRules(lead.officialUrl, extraction.pageText);
         await recordProvenance(listingId, {
@@ -113,7 +122,12 @@ export async function runIngestion(
         counts.created += 1;
       }
 
-      await finishIngestionRun(runId, counts, "ok");
+      await finishIngestionRun(
+        runId,
+        counts,
+        "ok",
+        held.length > 0 ? `held: ${held.join("; ")}`.slice(0, 2000) : undefined,
+      );
       summaries.push({ source: source.id, status: "ok", ...counts });
     } catch (error) {
       await finishIngestionRun(

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
 import { SwipeDeck } from "@/components/swipe-deck-loader";
 import { getPublicListings } from "@/lib/db/listings";
+import { getCachedPublicListings } from "@/lib/db/listings-cache";
+import { withPublicFallback } from "@/lib/db/resilient";
 import { isExpired } from "@/lib/listing-badges";
 
 export const metadata: Metadata = { title: "Swipe" };
@@ -17,8 +19,17 @@ export default async function SwipePage({
   const params = await searchParams;
   const q = typeof params?.q === "string" ? params.q.trim().slice(0, 200) : "";
 
+  // The unfiltered deck shares Discover's cached feed; searches stay
+  // per-request. Either way a feed failure degrades to the deck's designed
+  // "all caught up" state.
   const deck = (
-    await getPublicListings({ searchQuery: q || undefined, limit: 60 })
+    await withPublicFallback(
+      q
+        ? getPublicListings({ searchQuery: q, limit: 60 })
+        : getCachedPublicListings(60),
+      [],
+      "swipe_deck",
+    )
   ).filter((listing) => !isExpired(listing));
 
   return (
