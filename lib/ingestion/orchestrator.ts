@@ -86,9 +86,18 @@ export async function runIngestion(
         }
 
         const { candidate } = mapExtraction(extraction.raw);
-        // NOT NULL guardrail — without these the row can't be created; hold it.
-        if (!candidate.title || !candidate.shortDescription || !candidate.prizeName) {
+
+        // Hard gate: a candidate that fails any non-negotiable (title/
+        // description/prize substance, official rules URL, entry URL,
+        // no-purchase signal, live end date) never becomes a row — not even a
+        // review-queue draft. This is the single hold path, so every held
+        // candidate's failed check ids land in the run notes for operators.
+        // (The title/description/prize hard checks also cover the DB's
+        // NOT NULL constraints — nothing uncreatable gets past this point.)
+        const verification = verifyCandidate(candidate);
+        if (!verification.publishable) {
           counts.failed += 1;
+          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
           continue;
         }
 
@@ -96,17 +105,6 @@ export async function runIngestion(
         const duplicateOf = await findExistingListingId(candidate.dedup);
         if (duplicateOf) {
           counts.skipped += 1;
-          continue;
-        }
-
-        // Hard gate: a candidate that fails any non-negotiable (official rules
-        // URL, entry URL, no-purchase signal, live end date, …) never becomes
-        // a row — not even a review-queue draft. The failure reasons land in
-        // the run notes so operators can see what was held and why.
-        const verification = verifyCandidate(candidate);
-        if (!verification.publishable) {
-          counts.failed += 1;
-          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
           continue;
         }
 

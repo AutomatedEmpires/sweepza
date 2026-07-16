@@ -144,4 +144,25 @@ describe("runIngestion publishable gate", () => {
     const notes = mocks.finishIngestionRun.mock.calls[0][3];
     expect(notes).toContain("end_date_in_future");
   });
+
+  it("routes substance failures (empty title/description) through the same hold path", async () => {
+    // These used to short-circuit on a separate NOT NULL guard that never
+    // reported reasons; they must land in the run notes like any hard failure.
+    mocks.extractOfficialPage.mockResolvedValue({
+      raw: raw({ title: "", shortDescription: "" }),
+      pageText: "page text",
+      contentHash: "hash",
+    });
+
+    const summaries = await runIngestion();
+    expect(mocks.createIngestedListing).not.toHaveBeenCalled();
+    // Held before dedupe — no catalog lookup for a candidate we won't create.
+    expect(mocks.findExistingListingId).not.toHaveBeenCalled();
+    expect(summaries).toEqual([
+      expect.objectContaining({ status: "ok", created: 0, failed: 1 }),
+    ]);
+    const notes = mocks.finishIngestionRun.mock.calls[0][3];
+    expect(notes).toContain("has_title");
+    expect(notes).toContain("has_short_description");
+  });
 });
