@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 
 /**
@@ -25,6 +26,9 @@ export async function withPublicFallback<T>(
   try {
     return await read;
   } catch (error) {
+    // Next.js drives redirect()/notFound() via thrown control-flow errors; a
+    // generic catch must never swallow those, or navigation silently breaks.
+    unstable_rethrow(error);
     Sentry.captureException(error, { tags: { degraded_surface: surface } });
     return fallback;
   }
