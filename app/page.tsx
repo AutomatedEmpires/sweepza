@@ -4,10 +4,8 @@ import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
 import { GamificationStrip } from "@/components/gamification-strip";
 import { ensureCurrentAppUser } from "@/lib/auth";
-import {
-  getPublicListings,
-  getSeekerHistoryListingsByIds,
-} from "@/lib/db/listings";
+import { getCachedPublicListings } from "@/lib/db/listings-cache";
+import { getSeekerHistoryListingsByIds } from "@/lib/db/listings";
 import { getSeekerGamification } from "@/lib/db/gamification";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
@@ -132,7 +130,7 @@ export default async function TodayPage() {
   const now = new Date();
   const [authUser, listings] = await Promise.all([
     ensureCurrentAppUser(),
-    getPublicListings({ limit: 100 }),
+    getCachedPublicListings(100),
   ]);
 
   // The public feed is intentionally bounded, but a seeker's routine is not.

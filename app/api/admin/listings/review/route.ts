@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getReviewListingById } from "@/lib/db/listing-review";
+import { revalidatePublicListings } from "@/lib/db/listings-cache";
 import { sendHostNotification } from "@/lib/email/notifications";
 import { env } from "@/lib/env";
 import { listingReviewSchema } from "@/lib/listing-review-schema";
@@ -100,6 +101,10 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
+
+  // Every review outcome flips public visibility (approve → live, reject/hold
+  // → private), so refresh the shared feed regardless of which action ran.
+  revalidatePublicListings();
 
   // Fire transactional email for approve (live) / keep_pending (held).
   // Email delivery must never block or fail the review action.

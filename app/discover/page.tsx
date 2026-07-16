@@ -4,6 +4,7 @@ import { getPublicListings } from "@/lib/db/listings";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
 import { SITE_URL } from "@/lib/site";
+import { getCachedPublicListings } from "@/lib/db/listings-cache";
 
 export const metadata = { title: "Discover" };
 export const dynamic = "force-dynamic";
@@ -21,11 +22,16 @@ export default async function DiscoverPage({
   const category =
     typeof params?.category === "string" ? params.category : undefined;
 
-  const listings = await getPublicListings({
-    searchQuery: q || undefined,
-    categories: category ? [category] : undefined,
-    limit: 60,
-  });
+  // The unfiltered feed is shared by every visitor, so serve it from the
+  // cached path; search/category views are per-request and stay uncached.
+  const listings =
+    q || category
+      ? await getPublicListings({
+          searchQuery: q || undefined,
+          categories: category ? [category] : undefined,
+          limit: 60,
+        })
+      : await getCachedPublicListings(60);
 
   const itemListJsonLd =
     listings.length > 0
