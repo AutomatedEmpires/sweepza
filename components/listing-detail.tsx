@@ -273,7 +273,7 @@ export function ListingDetail({
           className="flex items-center justify-center gap-1.5 rounded-xl bg-ink/[0.04] py-2.5 text-sm font-semibold text-ink/80 transition hover:bg-ink/[0.07]"
         >
           <Icon name="rules" size={15} /> Read the official rules
-          <Icon name="caretRight" size={12} className="-rotate-45" />
+          <Icon name="externalLink" size={12} />
         </a>
       )}
 
