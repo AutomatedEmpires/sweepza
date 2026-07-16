@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CONTENT_SECURITY_POLICY,
+  buildContentSecurityPolicy,
   STRICT_TRANSPORT_SECURITY,
 } from "@/lib/security-headers";
 import {
@@ -18,6 +19,26 @@ describe("content security policy", () => {
     expect(CONTENT_SECURITY_POLICY).toContain("object-src 'none'");
     expect(CONTENT_SECURITY_POLICY).toContain("frame-ancestors 'none'");
     expect(CONTENT_SECURITY_POLICY).toContain("base-uri 'self'");
+  });
+
+  it("binds a nonce and 'strict-dynamic' to script-src in enforcing mode", () => {
+    const policy = buildContentSecurityPolicy("abc123");
+    const scriptSrc = policy
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("script-src"));
+    expect(scriptSrc).toContain("'nonce-abc123'");
+    expect(scriptSrc).toContain("'strict-dynamic'");
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    // Non-script directives are untouched by the nonce.
+    expect(policy).toContain("object-src 'none'");
+    expect(policy).toContain("frame-ancestors 'none'");
+  });
+
+  it("emits the identical report-only policy when no nonce is bound", () => {
+    expect(buildContentSecurityPolicy()).toBe(CONTENT_SECURITY_POLICY);
+    expect(CONTENT_SECURITY_POLICY).not.toContain("nonce-");
+    expect(CONTENT_SECURITY_POLICY).not.toContain("strict-dynamic");
   });
 
   it("keeps script-src free of 'unsafe-inline' (report-only target policy)", () => {
