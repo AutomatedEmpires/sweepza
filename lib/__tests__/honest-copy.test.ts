@@ -4,40 +4,87 @@ import { TRUST_BAND_ITEMS } from "@/lib/trust-copy";
 
 // Public trust copy must never claim more than the platform enforces.
 // The data model allows published listings without an official-rules link
-// (`official_rules_exception`, see listing_publish_guard) and allows hosts
-// with `verification_status = 'none'`, and review is a manual queue with no
-// SLA — so universal rules/verification claims and timing promises are
-// banned. What we DO claim maps to hard mechanisms: the admin review gate,
-// the publish guard's required entry_url, and the free-to-enter listing
-// policy.
-const BANNED_OVERCLAIMS: { pattern: RegExp; reason: string }[] = [
+// (`official_rules_exception`, see listing_publish_guard), allows hosts with
+// `verification_status = 'none'`, never verifies that an entry URL is
+// sponsor-owned, and review is a manual queue with no SLA. So universal
+// rules-link claims, blanket verification claims, sponsor-ownership claims,
+// and timing promises are banned. What we DO claim maps to hard mechanisms:
+// the free-to-enter listing policy, the public serving boundary that only
+// returns reviewed/verified rows (lib/db/listings.ts), and the structural
+// fact that entries happen off-platform via the listing's entry_url.
+//
+// Each banned family carries positive fixtures — representative phrasings
+// that MUST be caught — so the detectors are themselves regression-proofed
+// against wording drift ("provided for all listings", "all hosts are
+// verified", …), not just the historical phrases.
+interface BannedFamily {
+  name: string;
+  reason: string;
+  patterns: RegExp[];
+  /** Phrasings this family must catch (each must match >=1 pattern). */
+  fixtures: string[];
+}
+
+const BANNED_FAMILIES: BannedFamily[] = [
   {
-    pattern: /official rules on (each|every)/i,
+    name: "universal official-rules claims",
     reason: "published listings may carry a documented rules exception",
+    patterns: [
+      /official rules (?:\w+ ){0,3}(?:on|for|with|to) (?:each|every|all)\b/i,
+      /(?:each|every|all) listings? (?:links?|includes?|carr(?:y|ies)|comes? with|provides?|has|have)[^.]*rules/i,
+    ],
+    fixtures: [
+      "Official rules on every listing",
+      "official rules are provided for all listings",
+      "official rules linked on each listing",
+      "Each listing links to the sponsor's official rules",
+      "all listings include official rules",
+      "every listing comes with the official rules",
+    ],
   },
   {
-    pattern: /(each|every) listing links/i,
-    reason: "the rules link is not universal — exception listings exist",
-  },
-  {
-    pattern: /official rules linked on (each|every)/i,
-    reason: "the rules link is not universal — exception listings exist",
-  },
-  {
-    pattern: /verified hosts/i,
+    name: "blanket verification claims",
     reason: "hosts may be unverified; 'Verified' is a per-listing badge",
+    patterns: [
+      /verified hosts/i,
+      /(?:all|every|each) (?:host|listing|source)s? (?:is|are) verified/i,
+      /(?:hosts|listings|sources) are verified/i,
+    ],
+    fixtures: [
+      "Verified hosts, honest sources",
+      "all hosts are verified",
+      "every listing is verified",
+      "our sources are verified",
+    ],
   },
   {
-    pattern: /guarantee/i,
+    name: "sponsor-ownership claims about entry links",
+    reason: "nothing verifies that an entry URL is sponsor-owned",
+    patterns: [/sponsor'?s official (?:page|site|entry)/i, /enter on the sponsor/i],
+    fixtures: [
+      "Enter on the sponsor's official page",
+      "entry happens on the sponsor's official site",
+    ],
+  },
+  {
+    name: "guarantees",
     reason: "a directory listing guarantees nothing about the promotion",
+    patterns: [/guarantee/i],
+    fixtures: ["guaranteed winners", "we guarantee every prize"],
   },
   {
-    pattern: /same[- ]day|within (minutes|hours|\d)/i,
+    name: "review-timing promises",
     reason: "review is a manual queue with no SLA",
-  },
-  {
-    pattern: /instant(ly)? (approv|publish|list)/i,
-    reason: "review is a manual queue with no SLA",
+    patterns: [
+      /same[- ]day/i,
+      /within (?:minutes|hours|\d)/i,
+      /instant(?:ly)? (?:approv|publish|list)/i,
+    ],
+    fixtures: [
+      "published the same day",
+      "approved within hours",
+      "instantly listed",
+    ],
   },
 ];
 
@@ -52,12 +99,25 @@ const SURFACES: { name: string; texts: string[] }[] = [
   },
 ];
 
+describe("banned-claim detectors catch their own family", () => {
+  for (const family of BANNED_FAMILIES) {
+    it(`"${family.name}" catches every fixture phrasing`, () => {
+      for (const fixture of family.fixtures) {
+        const caught = family.patterns.some((pattern) => pattern.test(fixture));
+        expect(caught, `expected a pattern to catch: "${fixture}"`).toBe(true);
+      }
+    });
+  }
+});
+
 describe("honest trust copy", () => {
   for (const surface of SURFACES) {
-    for (const { pattern, reason } of BANNED_OVERCLAIMS) {
-      it(`${surface.name} never matches ${pattern} (${reason})`, () => {
+    for (const family of BANNED_FAMILIES) {
+      it(`${surface.name} makes no "${family.name}" (${family.reason})`, () => {
         for (const text of surface.texts) {
-          expect(text).not.toMatch(pattern);
+          for (const pattern of family.patterns) {
+            expect(text).not.toMatch(pattern);
+          }
         }
       });
     }
@@ -76,12 +136,10 @@ describe("honest trust copy", () => {
     const labels = TRUST_BAND_ITEMS.map((item) => item.label.toLowerCase());
     // Listing policy: free, no purchase necessary.
     expect(labels.some((label) => label.includes("free to enter"))).toBe(true);
-    // Admin review gate + DB publish guard.
+    // Public serving boundary only returns reviewed/verified rows.
     expect(labels.some((label) => label.includes("reviewed"))).toBe(true);
-    // publish guard requires entry_url; entries happen on the sponsor's page.
-    expect(labels.some((label) => label.includes("sponsor's official page"))).toBe(
-      true,
-    );
+    // Entries are structurally off-platform (external entry_url).
+    expect(labels.some((label) => label.includes("host's site"))).toBe(true);
   });
 
   it("FAQ still states the no-purchase-necessary canon", () => {

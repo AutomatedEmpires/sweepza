@@ -126,6 +126,14 @@ export async function adaptListingRows(
   );
 }
 
+// The public trust promise "every listing reviewed before it goes live"
+// (lib/trust-copy.ts, FAQ) is enforced here, at the serving boundary: public
+// reads only return rows a human has accepted (admin review flips
+// host-submitted rows to 'reviewed'; admin imports are created 'reviewed' or
+// 'verified'). Rows that are somehow active yet 'unreviewed' never render on
+// a public surface.
+const PUBLICLY_SERVABLE_REVIEW_STATUSES = ["reviewed", "verified"];
+
 /**
  * Public Discover feed. RLS already restricts rows to public + active +
  * non-under_review/action_taken; the explicit predicates are defense-in-depth
@@ -140,7 +148,8 @@ export async function getPublicListings(
     .from("listing")
     .select("*")
     .eq("visibility_status", "public")
-    .eq("lifecycle_status", "active");
+    .eq("lifecycle_status", "active")
+    .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES);
 
   if (filters.categories?.length) {
     query = query.in("prize_category", filters.categories.map(toCategoryCode));
@@ -206,6 +215,7 @@ export async function getListingBySlug(slug: string): Promise<Listing | null> {
     .select("*")
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
+    .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES)
     .not("moderation_status", "in", '("under_review","action_taken")')
     .eq("slug", slug)
     .maybeSingle<ListingRow>();

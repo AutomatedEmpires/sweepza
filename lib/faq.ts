@@ -17,7 +17,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Are these sweepstakes legitimate?",
     answer:
-      "Sweepza is a directory. Every listing is reviewed before it goes live, entry happens on the sponsor's official page, and we only list free, no-purchase-necessary sweepstakes. We are not the sponsor and we don't run the drawings — always read the sponsor's official rules before entering; listings link to them whenever the sponsor publishes them.",
+      "Sweepza is a directory. Every listing is reviewed before it goes live, entering always happens on the host's own site — never on Sweepza — and we only list free, no-purchase-necessary sweepstakes. We are not the sponsor and we don't run the drawings: always read the official rules on the sponsor's site before entering. Listings link to the rules when we have the link.",
   },
   {
     question: "Do I have to buy anything to enter?",
@@ -32,7 +32,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Who picks the winners?",
     answer:
-      "The sponsor selects winners according to their official rules — not Sweepza. Listings link to the sponsor's official rules whenever the sponsor publishes them; read those rules for the full details.",
+      "The sponsor selects winners according to their official rules — not Sweepza. Listings link to the rules when we have the link; the sponsor's own site is always the authoritative source for the full details.",
   },
   {
     question: "What are daily entries?",
