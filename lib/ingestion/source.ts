@@ -1,4 +1,4 @@
-import type { SourceComplianceState } from "@/lib/ingestion/compliance";
+import { isFixtureExecutable, type SourceComplianceState } from "@/lib/ingestion/compliance";
 import type { SourceHttpClient } from "@/lib/ingestion/http";
 
 // Source-adapter seam. The orchestrator is source-agnostic: a discovery source
@@ -250,7 +250,19 @@ export function productionApprovedSources(): SourceDescriptor[] {
   );
 }
 
-/** Sources whose adapters may run against recorded fixtures (CI, dry runs). */
+/**
+ * Sources whose adapters may run against recorded fixtures (CI, dry runs).
+ *
+ * The kill switch alone is not the bar. Filtering on it only returned every
+ * source that wasn't switched off — including `draft`, `research_required`,
+ * `reviewed`, `paused`, `blocked`, and even `revoked` — which contradicted
+ * `isFixtureExecutable`, the module that actually defines the three rungs
+ * permitting simulation. It also swept in `official_direct`, which sits at
+ * `reviewed`. Both conditions are required, and the state test is the one that
+ * carries the policy.
+ */
 export function fixtureApprovedSources(): SourceDescriptor[] {
-  return SOURCE_REGISTRY.filter((source) => !source.killSwitch);
+  return SOURCE_REGISTRY.filter(
+    (source) => isFixtureExecutable(source.complianceState) && !source.killSwitch,
+  );
 }

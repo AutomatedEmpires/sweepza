@@ -318,7 +318,7 @@ export function ListingCard({
             className="mt-3 inline-flex w-fit items-center gap-1 text-xs font-medium text-graphite underline-offset-2 transition hover:text-ink hover:underline"
           >
             Official rules
-            <Icon name="caretRight" size={11} className="-rotate-45" />
+            <Icon name="externalLink" size={11} />
           </a>
         )}
 

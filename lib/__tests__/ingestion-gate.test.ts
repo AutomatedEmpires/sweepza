@@ -177,3 +177,71 @@ describe("the shipped registry is dark", () => {
     }
   });
 });
+
+describe("gate — terms-of-service posture", () => {
+  // SourceDescriptor always SAID an unreviewed source cannot reach production.
+  // Nothing enforced it: a descriptor at approved_for_production with an
+  // unreviewed — or actively prohibiting — ToS executed. These are the proof.
+
+  it("refuses every posture that is not permits_use, even at full approval", () => {
+    const postures = ["unreviewed", "prohibits_use", "requires_agreement"] as const;
+    for (const tosPosture of postures) {
+      const decision = evaluateSourceGate({
+        descriptor: descriptor({ complianceState: "approved_for_production", tosPosture }),
+        record: record(),
+        ingestionEnabled: "true",
+      });
+      expect(decision.allowed, `tosPosture "${tosPosture}" must not execute`).toBe(false);
+      if (!decision.allowed) expect(decision.reason).toBe("tos_not_permitted");
+    }
+  });
+
+  it("refuses a source that actively prohibits our use", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ tosPosture: "prohibits_use" }),
+      record: record(),
+      ingestionEnabled: "true",
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toBe("tos_not_permitted");
+      expect(decision.detail).toContain("prohibits_use");
+    }
+  });
+
+  it("allows only permits_use, and only with every other control satisfied", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ tosPosture: "permits_use" }),
+      record: record(),
+      ingestionEnabled: "true",
+    });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("fails closed on a posture nobody has thought of yet", () => {
+    // The check is an allowlist of one, so a posture added to TosPosture later
+    // denies by default instead of silently inheriting permission.
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ tosPosture: "some_future_posture" as never }),
+      record: record(),
+      ingestionEnabled: "true",
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.reason).toBe("tos_not_permitted");
+  });
+
+  it("every shipped source is refused on ToS grounds once its ladder is ignored", () => {
+    // Today the registry floor stops each source first. This asserts the ToS
+    // gate would ALSO stop it — so clearing the ladder can't quietly open a
+    // source whose terms were never read.
+    for (const source of SOURCE_REGISTRY) {
+      const decision = evaluateSourceGate({
+        descriptor: { ...source, complianceState: "approved_for_production" },
+        record: record({ id: source.id }),
+        ingestionEnabled: "true",
+      });
+      expect(decision.allowed, `${source.id} must still be refused`).toBe(false);
+      if (!decision.allowed) expect(decision.reason).toBe("tos_not_permitted");
+    }
+  });
+});

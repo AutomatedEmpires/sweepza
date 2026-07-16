@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isComplianceState } from "@/lib/ingestion/compliance";
+import { isComplianceState, isFixtureExecutable } from "@/lib/ingestion/compliance";
 import {
   SOURCE_REGISTRY,
   fixtureApprovedSources,
@@ -56,7 +56,30 @@ describe("source registry", () => {
     expect(getSourceDescriptor("official_direct")?.allowedHosts).toEqual([]);
   });
 
-  it("exposes fixture-approved sources (kill switch aside)", () => {
-    expect(fixtureApprovedSources().length).toBe(SOURCE_REGISTRY.length);
+  it("exposes only sources whose compliance state permits fixture execution", () => {
+    // Was: `length === SOURCE_REGISTRY.length` — i.e. everything not kill-switched
+    // is fixture-approved. That asserted the bug: it swept in draft/reviewed/
+    // paused/blocked/revoked, and contradicted isFixtureExecutable, which owns
+    // the rule. official_direct is the live proof — it sits at `reviewed`.
+    const approved = fixtureApprovedSources();
+
+    expect(approved.length).toBeGreaterThan(0);
+    for (const source of approved) {
+      expect(isFixtureExecutable(source.complianceState)).toBe(true);
+    }
+    expect(approved.map((s) => s.id)).not.toContain("official_direct");
+    expect(getSourceDescriptor("official_direct")?.complianceState).toBe("reviewed");
+  });
+
+  it("never reports a source below the fixtures rung, or a kill-switched one", () => {
+    const belowRung = SOURCE_REGISTRY.filter((s) => !isFixtureExecutable(s.complianceState));
+    const approvedIds = new Set(fixtureApprovedSources().map((s) => s.id));
+    for (const source of belowRung) expect(approvedIds.has(source.id)).toBe(false);
+
+    // Both conditions are required — the state test does not replace the switch.
+    const runnable = SOURCE_REGISTRY.find((s) => isFixtureExecutable(s.complianceState));
+    expect(runnable).toBeDefined();
+    expect(fixtureApprovedSources().some((s) => s.id === runnable!.id)).toBe(true);
+    expect(fixtureApprovedSources().every((s) => !s.killSwitch)).toBe(true);
   });
 });

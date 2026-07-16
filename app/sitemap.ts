@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { CATEGORY_HUBS } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
 import { APP_URL } from "@/lib/site";
 
@@ -22,6 +23,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: new Date(),
   }));
 
+  // Category hubs — one crawlable landing page per dictionary category.
+  const hubEntries: MetadataRoute.Sitemap = CATEGORY_HUBS.map((hub) => ({
+    url: `${APP_URL}/discover/${hub.slug}`,
+    lastModified: new Date(),
+  }));
+
   try {
     const listings = await getPublicListings({ limit: 100 });
     const listingEntries: MetadataRoute.Sitemap = listings.map((listing) => ({
@@ -31,8 +38,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         : new Date(),
     }));
 
-    return [...staticEntries, ...listingEntries];
+    return [...staticEntries, ...hubEntries, ...listingEntries];
   } catch {
-    return staticEntries;
+    return [...staticEntries, ...hubEntries];
   }
 }

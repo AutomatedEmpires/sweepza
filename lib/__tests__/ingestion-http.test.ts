@@ -273,3 +273,266 @@ describe("policy client — conditional requests", () => {
     expect(sent?.get("if-none-match")).toBeNull();
   });
 });
+
+describe("SSRF — non-public destinations", () => {
+  // Official URLs come out of third-party markup. Without these, an approved
+  // adapter could hand us the cloud metadata endpoint and the server would
+  // fetch its own credentials. official_direct has NO allowlist, so reach
+  // policy cannot be what stops this.
+  const open = () => descriptor({ allowedHosts: [], allowedPathPrefixes: [] });
+
+  it("rejects the cloud metadata endpoint and other non-public literals", () => {
+    for (const url of [
+      "http://169.254.169.254/latest/meta-data/iam/security-credentials/", // AWS/GCP IMDS
+      "https://169.254.169.254/computeMetadata/v1/",
+      "http://127.0.0.1:3000/admin",
+      "https://10.0.0.5/internal",
+      "https://192.168.1.1/router",
+      "https://172.16.0.1/private",
+      "https://172.31.255.255/private",
+      "http://0.0.0.0:8080/",
+      "https://100.64.0.1/cgnat",
+      "http://localhost:5432/",
+      "https://db.internal/health",
+      "https://printer.local/",
+      "https://[::1]:8080/",
+      "https://[fe80::1]/",
+      "https://[fd00::1]/",
+      "https://[::ffff:127.0.0.1]/", // IPv4-mapped loopback via v6 syntax…
+      "https://[::ffff:7f00:1]/", // …and the hex form WHATWG URL normalises it to
+      "https://[::ffff:a9fe:a9fe]/", // IPv4-mapped 169.254.169.254 (IMDS)
+      "https://[::ffff:c0a8:1]/", // IPv4-mapped 192.168.0.1
+    ]) {
+      expect(isUrlAllowed(open(), url), `${url} must be refused`).toBe(false);
+    }
+  });
+
+  it("still allows an IPv4-mapped PUBLIC address", () => {
+    // The mapped-address handling must reject by range, not reject on sight.
+    expect(isUrlAllowed(open(), "https://[::ffff:5db8:d822]/")).toBe(true); // 93.184.216.34
+  });
+
+  it("still allows a genuine public sponsor page", () => {
+    expect(isUrlAllowed(open(), "https://sponsor.example.org/rules")).toBe(true);
+    expect(isUrlAllowed(open(), "https://8.8.8.8/rules")).toBe(true); // public literal
+  });
+
+  it("requires https when the source has no allowlist to bound it", () => {
+    // The lead itself is the only bound on official_direct, so cleartext to an
+    // attacker-supplied host is not something reach policy can catch later.
+    expect(isUrlAllowed(open(), "http://sponsor.example.org/rules")).toBe(false);
+    expect(isUrlAllowed(open(), "https://sponsor.example.org/rules")).toBe(true);
+  });
+
+  it("refuses a private destination even on an allowlisted host", () => {
+    // Reach and public-ness are different questions; an allowlist entry that
+    // resolves somewhere private is still not a place we may go.
+    const d = descriptor({ allowedHosts: ["127.0.0.1"] });
+    expect(isUrlAllowed(d, "http://127.0.0.1/x")).toBe(false);
+  });
+
+  it("refuses a hostname whose DNS resolves to a private address", async () => {
+    const fetchImpl = vi.fn();
+    const client = createSourceHttpClient(open(), {
+      fetchImpl: fetchImpl as never,
+      lookupImpl: async () => ["127.0.0.1"], // the rebinding-style case
+    });
+
+    const result = await client.get("https://sponsor.example.org/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    expect(fetchImpl, "must refuse BEFORE the request").not.toHaveBeenCalled();
+  });
+
+  it("refuses when ANY resolved address is non-public, not just the first", async () => {
+    const fetchImpl = vi.fn();
+    const client = createSourceHttpClient(open(), {
+      fetchImpl: fetchImpl as never,
+      lookupImpl: async () => ["93.184.216.34", "169.254.169.254"],
+    });
+
+    const result = await client.get("https://sponsor.example.org/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("proceeds when DNS resolves entirely to public addresses", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("<html>rules</html>", { status: 200 }),
+    );
+    const client = createSourceHttpClient(open(), {
+      fetchImpl: fetchImpl as never,
+      lookupImpl: async () => ["93.184.216.34"],
+    });
+
+    const result = await client.get("https://sponsor.example.org/rules");
+
+    expect(result.status).toBe("ok");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+});
+
+describe("redirects are re-checked, not followed blindly", () => {
+  function redirectingFetch(chain: Record<string, { status: number; location?: string; body?: string }>) {
+    return vi.fn(async (url: string | URL) => {
+      const hop = chain[String(url)];
+      if (!hop) return new Response("missing", { status: 404 });
+      if (hop.location) {
+        return new Response(null, { status: hop.status, headers: { location: hop.location } });
+      }
+      return new Response(hop.body ?? "<html>ok</html>", { status: hop.status });
+    });
+  }
+
+  it("refuses a redirect that leaves the source's reach — without requesting it", async () => {
+    // fetch's redirect:"follow" would have touched evil.example.net before this
+    // client ever saw response.url, making the per-source boundary advisory.
+    const fetchImpl = redirectingFetch({
+      "https://example.com/start": { status: 302, location: "https://evil.example.net/pwn" },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/start");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    expect(fetchImpl).toHaveBeenCalledOnce(); // only the first hop
+    expect(fetchImpl).not.toHaveBeenCalledWith("https://evil.example.net/pwn", expect.anything());
+  });
+
+  it("refuses a redirect to the metadata endpoint", async () => {
+    const fetchImpl = redirectingFetch({
+      "https://example.com/start": { status: 302, location: "http://169.254.169.254/latest/" },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/start");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("follows an in-reach redirect and returns the final page", async () => {
+    const fetchImpl = redirectingFetch({
+      "https://example.com/start": { status: 301, location: "https://example.com/real" },
+      "https://example.com/real": { status: 200, body: "<html>landed</html>" },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/start");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.finalUrl).toBe("https://example.com/real");
+      expect(result.body).toContain("landed");
+    }
+  });
+
+  it("resolves a relative Location against the current URL", async () => {
+    const fetchImpl = redirectingFetch({
+      "https://example.com/a/start": { status: 302, location: "/b/end" },
+      "https://example.com/b/end": { status: 200, body: "<html>end</html>" },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/a/start");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.finalUrl).toBe("https://example.com/b/end");
+  });
+
+  it("gives up after too many hops instead of looping", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      const n = Number(new URL(String(url)).searchParams.get("n") ?? "0");
+      return new Response(null, {
+        status: 302,
+        headers: { location: `https://example.com/hop?n=${n + 1}` },
+      });
+    });
+    const client = createSourceHttpClient(descriptor({ requestBudgetPerRun: 100 }), {
+      fetchImpl: fetchImpl as never,
+    });
+
+    const result = await client.get("https://example.com/hop?n=0");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("too_many_redirects");
+  });
+
+  it("resolve() REPORTS an off-reach destination without fetching it", async () => {
+    // This is what /go.php is for: hand back the sponsor's URL. Fetching it here
+    // would spend the discovery source's approval on a host it never covered —
+    // the caller re-gates it under official_direct instead.
+    const fetchImpl = redirectingFetch({
+      "https://example.com/go.php?id=7": {
+        status: 302,
+        location: "https://sponsor.example.org/sweepstakes",
+      },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.resolve("https://example.com/go.php?id=7");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.finalUrl).toBe("https://sponsor.example.org/sweepstakes");
+      expect(result.body).toBe("");
+    }
+    expect(fetchImpl).toHaveBeenCalledOnce(); // the destination was never requested
+  });
+
+  it("resolve() refuses to report a non-public destination as an official URL", async () => {
+    const fetchImpl = redirectingFetch({
+      "https://example.com/go.php?id=8": { status: 302, location: "http://169.254.169.254/" },
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.resolve("https://example.com/go.php?id=8");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+  });
+
+  it("does not mistake a 304 for a redirect", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 304 }));
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/p", {
+      conditional: { etag: 'W/"abc"' },
+    });
+
+    expect(result.status).toBe("not_modified");
+  });
+});
+
+describe("body cap bounds the read, not just the result", () => {
+  it("stops reading and cancels once the cap is reached", async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const chunk = new TextEncoder().encode("x".repeat(50_000));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 200) return controller.close(); // a source that never stops
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchImpl = vi.fn(async () => new Response(body, { status: 200 }));
+    const client = createSourceHttpClient(descriptor(), { fetchImpl: fetchImpl as never });
+
+    const result = await client.get("https://example.com/huge");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.body.length).toBe(400_000);
+    // The proof: we hung up rather than draining an unbounded body into memory.
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(200);
+  });
+});

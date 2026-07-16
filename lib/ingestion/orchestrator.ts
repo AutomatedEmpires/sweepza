@@ -84,19 +84,45 @@ export async function runIngestion(
       continue;
     }
 
+    // official_direct is a SOURCE, and it gets its own gate. Approving a
+    // discovery source says nothing about whether we may fetch sponsor pages:
+    // that is a separate policy with its own compliance state and ToS posture.
+    // Creating its client off the back of the discoverer's approval let an
+    // unapproved source execute the moment any discoverer was approved, which
+    // is exactly the fail-closed per-source guarantee this module claims above.
+    const official = officialPageDescriptor();
+    const officialRecord = await getSourceRecord(official.id).catch(() => null);
+    const officialDecision = evaluateSourceGate({
+      descriptor: official,
+      record: officialRecord,
+      ingestionEnabled: env.INGESTION_ENABLED,
+    });
+
+    if (!officialDecision.allowed) {
+      // No official fetch means no verifiable fact, and an unverified listing is
+      // the one thing this pipeline must never create. Skip the whole source.
+      const gate = `official_direct ${describeGateDecision(officialDecision)}`;
+      const skippedRunId = await startIngestionRun(descriptor.id);
+      await finishIngestionRun(skippedRunId, {}, "skipped", gate, { gateDecision: gate });
+      summaries.push({ source: descriptor.id, status: "skipped", gate });
+      continue;
+    }
+
     const runId = await startIngestionRun(descriptor.id);
     const counts: Required<IngestionRunCounts> = {
       discovered: 0, fetched: 0, created: 0, updated: 0, skipped: 0, failed: 0,
     };
 
     const http = createSourceHttpClient(descriptor);
-    const officialHttp = createSourceHttpClient(officialPageDescriptor());
+    const officialHttp = createSourceHttpClient(official);
+    const officialStats = () => officialHttp.stats();
 
     try {
       const leads = await adapter.discover({ http, limit });
       counts.discovered = leads.length;
 
       const seenThisRun = new Set<string>();
+      const held: string[] = [];
       for (const lead of leads) {
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
@@ -123,9 +149,18 @@ export async function runIngestion(
         }
 
         const { candidate } = mapExtraction(extraction.raw);
-        // NOT NULL guardrail — without these the row can't be created; hold it.
-        if (!candidate.title || !candidate.shortDescription || !candidate.prizeName) {
+
+        // Hard gate: a candidate that fails any non-negotiable (title/
+        // description/prize substance, official rules URL, entry URL,
+        // no-purchase signal, live end date) never becomes a row — not even a
+        // review-queue draft. This is the single hold path, so every held
+        // candidate's failed check ids land in the run notes for operators.
+        // (The title/description/prize hard checks also cover the DB's
+        // NOT NULL constraints — nothing uncreatable gets past this point.)
+        const verification = verifyCandidate(candidate);
+        if (!verification.publishable) {
           counts.failed += 1;
+          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
           continue;
         }
 
@@ -136,7 +171,6 @@ export async function runIngestion(
           continue;
         }
 
-        const verification = verifyCandidate(candidate);
         const listingId = await createIngestedListing(candidate);
         const snapshotRef = await snapshotOfficialRules(lead.officialUrl, extraction.pageText);
         await recordProvenance(listingId, {
@@ -153,12 +187,21 @@ export async function runIngestion(
         counts.created += 1;
       }
 
+      // Both sides of the merge are wanted: main (#78) reports which candidates
+      // were held back, this branch reports gate + request telemetry. The notes
+      // and telemetry parameters are independent, so neither is dropped.
       const stats = http.stats();
-      await finishIngestionRun(runId, counts, "ok", null, {
-        gateDecision: "allowed",
-        requestsMade: stats.requests + officialHttp.stats().requests,
-        notModified: stats.notModified + officialHttp.stats().notModified,
-      });
+      await finishIngestionRun(
+        runId,
+        counts,
+        "ok",
+        held.length > 0 ? `held: ${held.join("; ")}`.slice(0, 2000) : null,
+        {
+          gateDecision: "allowed",
+          requestsMade: stats.requests + officialStats().requests,
+          notModified: stats.notModified + officialStats().notModified,
+        },
+      );
       await recordRunOutcome(descriptor.id, {
         ok: true,
         failureThreshold: descriptor.failureThreshold,

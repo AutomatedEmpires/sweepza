@@ -27,6 +27,8 @@ const schema = z.object({
   RESEND_FROM_EMAIL: z.string().optional(),
   /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
   CRON_SECRET: z.string().optional(),
+  /** "true" flips CSP from report-only to enforcing (nonce-based). Redeploy required. */
+  CSP_ENFORCE: z.string().optional(),
   /** Anthropic key for the ingestion extractor. Ingestion no-ops if unset. */
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Override the extraction model (defaults to claude-opus-4-8). */
