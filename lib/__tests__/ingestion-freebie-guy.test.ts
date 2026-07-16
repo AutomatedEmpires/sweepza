@@ -79,6 +79,18 @@ describe("parseFreebieGuyOfficialUrl", () => {
     const html = `<div class="entry-content"><a href="https://thefreebieguy.com/about">About</a><a href="https://sponsor.example.com/enter">Enter</a></div>`;
     expect(parseFreebieGuyOfficialUrl(html)).toBe("https://sponsor.example.com/enter");
   });
+
+  it("is not fooled by a lookalike host that only prefixes the blog domain", () => {
+    // A string-prefix check would misclassify thefreebieguy.com.evil.example as
+    // internal and skip it; a parsed-host check treats it as the external lead.
+    const html = `<div class="entry-content"><a href="https://thefreebieguy.com.evil.example/phish">Enter</a></div>`;
+    expect(parseFreebieGuyOfficialUrl(html)).toBe("https://thefreebieguy.com.evil.example/phish");
+  });
+
+  it("treats a real blog subdomain as internal", () => {
+    const html = `<div class="entry-content"><a href="https://www.thefreebieguy.com/x">nav</a><a href="https://cdn.thefreebieguy.com/y">asset</a><a href="https://sponsor.example.com/enter">Enter</a></div>`;
+    expect(parseFreebieGuyOfficialUrl(html)).toBe("https://sponsor.example.com/enter");
+  });
 });
 
 describe("freebieGuyAdapter.discover", () => {

@@ -1,4 +1,5 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
+import { stripHtmlToText } from "@/lib/ingestion/html-text";
 import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
 
 // Tier-1 discovery adapter for Sweepstakes Today (build priority #3).
@@ -21,17 +22,6 @@ export interface SweepstakesTodayRow {
   hintFrequency?: string;
 }
 
-function stripTags(value: string): string {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 /**
  * Parse the listings index into rows. Each row must yield a detail link; a row
  * without one is skipped rather than guessed at, because a fabricated path
@@ -46,7 +36,7 @@ export function parseSweepstakesTodayIndex(html: string): SweepstakesTodayRow[] 
     if (!linkMatch) continue;
 
     const detailPath = linkMatch[1];
-    const title = stripTags(linkMatch[2]);
+    const title = stripHtmlToText(linkMatch[2]);
     if (!title) continue;
 
     const endMatch = block.match(/Ends:\s*(\d{4}-\d{2}-\d{2})/i);
@@ -56,7 +46,7 @@ export function parseSweepstakesTodayIndex(html: string): SweepstakesTodayRow[] 
       detailPath,
       title,
       hintEndDate: endMatch ? endMatch[1] : undefined,
-      hintFrequency: freqMatch ? stripTags(freqMatch[1]) : undefined,
+      hintFrequency: freqMatch ? stripHtmlToText(freqMatch[1]) : undefined,
     });
   }
 

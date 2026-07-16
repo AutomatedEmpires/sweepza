@@ -1,4 +1,5 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
+import { stripHtmlToText } from "@/lib/ingestion/html-text";
 import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
 
 // Tier-1 discovery adapter for The Freebie Guy (build priority #2).
@@ -15,6 +16,7 @@ import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingest
 // paginating: fewer requests, same yield.
 
 const HOST = "https://thefreebieguy.com";
+const SOURCE_HOST = "thefreebieguy.com";
 const ARCHIVE_PATH = "/category/sweepstakes";
 
 export interface FreebieGuyPost {
@@ -23,14 +25,17 @@ export interface FreebieGuyPost {
   publishedOn?: string;
 }
 
-function stripTags(value: string): string {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/** True when a normalized URL's host is the blog itself (exact or subdomain). */
+function isSourceHost(normalizedUrl: string): boolean {
+  let host: string;
+  try {
+    host = new URL(normalizedUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return false;
+  }
+  // Exact host or a real subdomain — never a lookalike like
+  // "thefreebieguy.com.evil.example" (which a startsWith check would misclassify).
+  return host === SOURCE_HOST || host.endsWith(`.${SOURCE_HOST}`);
 }
 
 /**
@@ -69,7 +74,7 @@ export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
     if (!linkMatch) continue;
 
     const url = normalizeUrl(linkMatch[1]);
-    const title = stripTags(linkMatch[2]);
+    const title = stripHtmlToText(linkMatch[2]);
     if (!url || !title) continue;
 
     const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/i);
@@ -95,7 +100,9 @@ export function parseFreebieGuyOfficialUrl(html: string): string | null {
   for (const href of hrefs) {
     const normalized = normalizeUrl(href);
     if (!normalized) continue;
-    if (normalized.startsWith("https://thefreebieguy.com")) continue;
+    // Skip links back to the blog itself; compare by parsed host, not string
+    // prefix, so a lookalike domain can't masquerade as internal (or vice versa).
+    if (isSourceHost(normalized)) continue;
     return normalized;
   }
   return null;
