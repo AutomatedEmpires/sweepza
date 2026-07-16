@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { DiscoverFeed } from "@/components/discover-feed";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
+import { CATEGORY_HUBS } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
@@ -65,6 +67,25 @@ export default async function DiscoverPage({
         <DiscoverModeToggle />
       </header>
       <DiscoverFeed listings={listings} query={q} />
+
+      {/* Crawlable category hub links — server-rendered so search engines can
+          reach every /discover/{category} landing page from here. */}
+      <nav aria-label="Browse by category" className="mt-10">
+        <h2 className="mb-3 px-1 font-display text-xl text-ink">
+          Browse by prize category
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {CATEGORY_HUBS.map((hub) => (
+            <Link
+              key={hub.slug}
+              href={`/discover/${hub.slug}`}
+              className="inline-flex min-h-11 items-center rounded-pill border border-line bg-surface px-3.5 text-sm font-semibold text-ink/70 transition hover:border-ink/25 hover:text-ink"
+            >
+              {hub.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
     </section>
   );
 }
