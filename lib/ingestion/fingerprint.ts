@@ -140,3 +140,123 @@ export function isLikelyDuplicate(a: DedupKeys, b: DedupKeys): boolean {
   if (a.urlKey && b.urlKey) return a.urlKey === b.urlKey;
   return a.contentKey === b.contentKey;
 }
+
+// Explainable duplicate detection. A silent "these are the same" is exactly what
+// the mandate warns against — distinct regional or recurring sweepstakes must
+// not be collapsed without evidence, and a reviewer resolving a suspected
+// duplicate needs to see WHICH signals matched. This layer reports the matched
+// signals and a strength, and it deliberately treats matches on identity
+// (official URL) as conclusive while treating content-only matches as suspected
+// (a human confirms).
+
+export interface DuplicateSignal {
+  id:
+    | "same_official_url"
+    | "same_entry_url"
+    | "same_sponsor"
+    | "same_prize"
+    | "same_end_date"
+    | "same_country";
+  matched: boolean;
+  detail: string;
+}
+
+export type DuplicateVerdict = "identical" | "suspected" | "distinct";
+
+export interface DuplicateExplanation {
+  verdict: DuplicateVerdict;
+  /** 0..1 share of comparable content signals that matched. */
+  strength: number;
+  signals: DuplicateSignal[];
+  reason: string;
+}
+
+/**
+ * Explain whether two candidates are the same sweep, with evidence. An
+ * official-URL identity match is conclusive ("identical"). Otherwise the
+ * content signals (sponsor + prize + end date + country) are weighed: a strong
+ * agreement is "suspected" (route to review), while weak agreement is
+ * "distinct" — because a national and a Canada-only variant of the same
+ * promotion, or this year's and last year's relaunch, legitimately share a
+ * sponsor and prize but are different sweepstakes.
+ */
+export function explainDuplicate(
+  a: FingerprintInput,
+  b: FingerprintInput,
+): DuplicateExplanation {
+  const aKeys = dedupKeys(a);
+  const bKeys = dedupKeys(b);
+
+  const sameOfficialUrl = Boolean(aKeys.urlKey) && aKeys.urlKey === bKeys.urlKey;
+  const aEntry = normalizeUrl(a.entryUrl);
+  const bEntry = normalizeUrl(b.entryUrl);
+  const sameEntryUrl = Boolean(aEntry) && aEntry === bEntry;
+
+  const sameSponsor =
+    normalizeText(a.sponsorName) !== "" &&
+    normalizeText(a.sponsorName) === normalizeText(b.sponsorName);
+  const samePrize =
+    normalizeText(a.prizeName) !== "" &&
+    normalizeText(a.prizeName) === normalizeText(b.prizeName);
+  const sameEndDate =
+    Boolean(a.endDate) && (a.endDate ?? "").slice(0, 10) === (b.endDate ?? "").slice(0, 10);
+  const sameCountry =
+    normalizeText(a.eligibilityCountry) !== "" &&
+    normalizeText(a.eligibilityCountry) === normalizeText(b.eligibilityCountry);
+
+  const signals: DuplicateSignal[] = [
+    { id: "same_official_url", matched: sameOfficialUrl, detail: aKeys.urlKey ?? "no official url" },
+    { id: "same_entry_url", matched: sameEntryUrl, detail: aEntry ?? "no entry url" },
+    { id: "same_sponsor", matched: sameSponsor, detail: a.sponsorName ?? "no sponsor" },
+    { id: "same_prize", matched: samePrize, detail: a.prizeName ?? "no prize" },
+    { id: "same_end_date", matched: sameEndDate, detail: a.endDate ?? "no end date" },
+    { id: "same_country", matched: sameCountry, detail: a.eligibilityCountry ?? "no country" },
+  ];
+
+  if (sameOfficialUrl) {
+    return {
+      verdict: "identical",
+      strength: 1,
+      signals,
+      reason: "same normalized official URL — conclusively the same sweepstakes",
+    };
+  }
+
+  // Weigh the content signals. End date and country are the discriminators that
+  // separate regional/recurring variants, so they carry weight alongside the
+  // sponsor/prize identity.
+  const contentSignals = [sameSponsor, samePrize, sameEndDate, sameCountry];
+  const matchedCount = contentSignals.filter(Boolean).length;
+  const strength = Number((matchedCount / contentSignals.length).toFixed(2));
+
+  // Suspected requires sponsor AND prize to match AND BOTH discriminators to
+  // agree (or be absent). A single contradiction is decisive:
+  //   - different end date  ⇒ a recurring relaunch (this year vs last year)
+  //   - different country   ⇒ a regional variant (US vs Canada-only)
+  // Both are legitimately distinct sweepstakes that happen to share a sponsor
+  // and prize, so they must never be silently merged.
+  const coreMatch = sameSponsor && samePrize;
+  const bothCountriesAbsent =
+    normalizeText(a.eligibilityCountry) === "" && normalizeText(b.eligibilityCountry) === "";
+  const bothDatesAbsent = !a.endDate && !b.endDate;
+  const dateOk = sameEndDate || bothDatesAbsent;
+  const countryOk = sameCountry || bothCountriesAbsent;
+
+  if (coreMatch && dateOk && countryOk) {
+    return {
+      verdict: "suspected",
+      strength,
+      signals,
+      reason: "same sponsor, prize, end date and region — suspected duplicate, confirm before merging",
+    };
+  }
+
+  return {
+    verdict: "distinct",
+    strength,
+    signals,
+    reason: coreMatch
+      ? "same sponsor and prize but a differing end date or region — a regional or recurring variant, kept distinct"
+      : "insufficient signal agreement — treated as distinct",
+  };
+}
