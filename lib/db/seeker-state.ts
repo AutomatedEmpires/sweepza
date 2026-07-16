@@ -115,4 +115,20 @@ export async function updateSeekerState(args: {
     .from("listing_seeker_state")
     .upsert(row, { onConflict: "app_user_id,listing_id" });
   if (error) throw new Error(`updateSeekerState failed: ${error.message}`);
+
+  // Record an entry event for streaks/badges. Append-only and idempotent per
+  // day (one row per listing per day). Best-effort: a logging failure must
+  // never fail the core state write.
+  if (primaryUiState === "entered") {
+    const { error: eventError } = await supabase
+      .from("seeker_entry_event")
+      .upsert(
+        { app_user_id: appUserId, listing_id: listingId },
+        { onConflict: "app_user_id,listing_id,entered_on", ignoreDuplicates: true },
+      );
+    if (eventError) {
+      // eslint-disable-next-line no-console
+      console.error(`seeker_entry_event insert failed: ${eventError.message}`);
+    }
+  }
 }

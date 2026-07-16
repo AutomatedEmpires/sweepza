@@ -23,6 +23,13 @@ export function ensurePosthog(): void {
     api_host: host,
     capture_pageview: false,
     autocapture: false,
+    // Privacy-forward, cookieless: store in browser storage (not cookies), skip
+    // anonymous person profiles, and honor Do Not Track. Keeps analytics
+    // essential/first-party so a US-first launch needs no consent banner — the
+    // /cookies page documents this. Revisit if entering EU/UK/CA markets.
+    persistence: "localStorage",
+    person_profiles: "identified_only",
+    respect_dnt: true,
   });
 
   initialized = true;

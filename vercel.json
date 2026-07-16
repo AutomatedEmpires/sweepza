@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/expire-stale",
       "schedule": "10 6 * * *"
+    },
+    {
+      "path": "/api/cron/seeker-reminders",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/ingest",
+      "schedule": "30 5 * * *"
     }
   ]
 }

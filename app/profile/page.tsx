@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
+import { GamificationStrip } from "@/components/gamification-strip";
 import { ProfileSignOut } from "@/components/profile-sign-out";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { getSeekerGamification } from "@/lib/db/gamification";
 
 export const metadata = { title: "Profile" };
 export const dynamic = "force-dynamic";
@@ -44,6 +46,9 @@ export default async function ProfilePage() {
   const isAdmin = Boolean(
     authUser?.appUser.is_admin || authUser?.appUser.is_owner,
   );
+  const gamification = authUser
+    ? await getSeekerGamification(authUser.appUserId)
+    : null;
 
   return (
     <section className="flex flex-col gap-5 px-4 pb-8 pt-8 lg:mx-auto lg:w-full lg:max-w-2xl">
@@ -107,6 +112,11 @@ export default async function ProfilePage() {
         </div>
       )}
 
+      {/* Streak & badges */}
+      {gamification && gamification.stats.totalEntries > 0 && (
+        <GamificationStrip data={gamification} />
+      )}
+
       {/* Your activity */}
       <div>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
@@ -124,6 +134,12 @@ export default async function ProfilePage() {
             icon="trophy"
             title="Share a win"
             body="Post your win to the Winner Wall"
+          />
+          <LinkRow
+            href="/profile/notifications"
+            icon="bell"
+            title="Reminders"
+            body="Choose which reminder emails you get"
           />
         </div>
       </div>
@@ -175,6 +191,12 @@ export default async function ProfilePage() {
             icon="info"
             title="About Sweepza"
             body="What we are and how listings get here"
+          />
+          <LinkRow
+            href="/faq"
+            icon="info"
+            title="FAQ"
+            body="Common questions, answered"
           />
           <LinkRow
             href="/privacy"

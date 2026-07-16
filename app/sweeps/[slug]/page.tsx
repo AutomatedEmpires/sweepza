@@ -9,6 +9,7 @@ import {
   listingPath,
   serializeJsonLd,
 } from "@/lib/listing-seo";
+import { buildBreadcrumbJsonLd } from "@/lib/structured-data";
 import { APP_NAME, SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +66,13 @@ export default async function ListingDetailPage({
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL).toString();
   const jsonLd = serializeJsonLd(buildListingJsonLd(listing, canonicalUrl));
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: "Home", url: SITE_URL.toString() },
+      { name: "Discover", url: new URL("/discover", SITE_URL).toString() },
+      { name: listing.title, url: canonicalUrl },
+    ]),
+  );
   const [authUser] = await Promise.all([ensureCurrentAppUser()]);
   const clerkConfigured = isClerkConfigured();
 
@@ -73,6 +81,10 @@ export default async function ListingDetailPage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLd }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }}
       />
       <ListingDetail
         listing={listing}
