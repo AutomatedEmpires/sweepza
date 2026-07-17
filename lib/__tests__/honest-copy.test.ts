@@ -104,7 +104,11 @@ const BANNED_FAMILIES: BannedFamily[] = [
       // requirement: this phrasing is an assertion however the sentence ends.
       // Verified safe for llms.txt, which negates in a different word order
       // ("requires no purchase", "no purchase is necessary") and never says
-      // "ever"; the only files that say this are policy canon, by design.
+      // "ever". This pattern is what now keeps /faq honest: the page header was
+      // rewritten to be true unscoped rather than exempted, so this fires there
+      // if the claim ever comes back. The only file that may still say it is
+      // lib/faq.ts, which scopes it to "the sweepstakes we list" — a policy
+      // statement, not a certification.
       /no purchase is ever necessary/i,
       /(?:always|never) (?:no purchase|pay-to-play|pay to enter)/i,
       /pay-to-enter is never listed/i,
@@ -276,6 +280,15 @@ interface Surface {
    * States Sweepza's OWN listing policy (an editorial commitment with a
    * reporting path) rather than a fact about a third party's promotion. Skips
    * only the per-listing no-purchase family; every other family still applies.
+   *
+   * ⚠️ This is per-FILE, not per-sentence, so it only belongs on a surface whose
+   * every claim is scoped policy — i.e. the curated data modules (lib/faq.ts,
+   * lib/trust-copy.ts), where the founder writes each string deliberately and
+   * scopes it ("…on the sweepstakes we list"). It does NOT belong on a route
+   * that renders free-text prose: setting it there to bless one sentence
+   * switches the family off for the whole file, and a live unsupported claim
+   * elsewhere on the page then ships green. That was tried on app/faq/page.tsx
+   * and rejected — fix the sentence, do not exempt the file.
    */
   policyCanon?: boolean;
   /**
@@ -312,13 +325,34 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/not-found.tsx"),
   routeSurface("app/about/page.tsx"),
   routeSurface("app/cookies/page.tsx"),
-  // The /faq page paraphrases lib/faq.ts, which is already policy canon.
-  // Exempting the module but not the page that renders its own paraphrase was
-  // incoherent — and it hid a real hole: the header sentence ("no purchase is
-  // ever necessary") is the claim, and the detector's word order missed it.
-  // FOUNDER-OWNED LINE: stating Sweepza's listing policy is legitimate;
-  // certifying a specific sponsor's promotion is not. This marks the former.
-  routeSurface("app/faq/page.tsx", { policyCanon: true }),
+  // /faq is scanned by every family, INCLUDING the per-listing no-purchase one.
+  //
+  // A route-wide `policyCanon: true` was tried here and REJECTED. The argument
+  // for it was that /faq paraphrases lib/faq.ts, which is already canon, so
+  // exempting the module while holding its own paraphrase to the per-listing
+  // rule was incoherent. The argument is real; the conclusion was backwards.
+  // The incoherence was answerable by fixing the paraphrase, and the module's
+  // phrasing does work the header's did not: lib/faq.ts SCOPES the claim ("no
+  // purchase is ever necessary ON THE SWEEPSTAKES WE LIST" — an editorial
+  // policy, with a reporting path). The header said "Sweepza is free, no
+  // purchase is ever necessary, and we're a directory": three coordinate
+  // facts, the middle one of which a reader takes as certification of a
+  // sponsor's promotion. Same words, different act.
+  //
+  // And the mechanics were worse than the wording. `policyCanon` is per-FILE,
+  // not per-sentence, so exempting the route to bless one header sentence
+  // switched the family off for the whole page — leaving a live unsupported
+  // claim while this suite went green. Exempting a surface to pass is this
+  // file's own failure mode; rounds 1 and 2 were both green for exactly that
+  // reason. A guard cannot be the thing it bans.
+  //
+  // So the header was rewritten to be true unscoped (see app/faq/page.tsx),
+  // and this route stays honest by passing, not by exemption. lib/faq.ts and
+  // lib/trust-copy.ts keep `policyCanon` — those ARE the founder's scoped
+  // canon. FOUNDER-OWNED LINE: stating Sweepza's own listing policy is
+  // legitimate; certifying a specific sponsor's promotion is not. A route that
+  // renders free-text prose is the wrong granularity to draw it at.
+  routeSurface("app/faq/page.tsx"),
   // Legal canon — see `legalCanon` above. Read, verified negated.
   routeSurface("app/privacy/page.tsx", { legalCanon: true }),
   routeSurface("app/terms/page.tsx", { legalCanon: true }),
