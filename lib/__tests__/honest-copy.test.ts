@@ -60,15 +60,27 @@ const BANNED_FAMILIES: BannedFamily[] = [
       "no_purchase_necessary is nullable, unchecked by listing_publish_guard(), " +
       "and absent from both write schemas — Sweepza cannot assert it for a promotion it does not run",
     patterns: [
+      // The BARE assertion. This is the one that actually shipped, on every
+      // listing detail page: "No purchase necessary · See official rules".
+      // The first cut of this family had five clever patterns and NONE of them
+      // matched it — the detector would have stayed green if the exact phrase
+      // it was written for came back. Ban the literal words on any surface that
+      // is not policy canon; there is no honest way to state this about a
+      // promotion we do not run. (Safe for the negating guidance in llms.txt,
+      // which says "requires no purchase" / "no purchase IS necessary" — the
+      // word order differs, deliberately.)
+      /\bno purchase necessary\b/i,
       // Asserting it OF the listings — the sponsor's legal representation, not ours.
       /(?:each|every|all|any) listed? [^.]*no[- ]purchase/i,
       /no purchase is ever necessary (?:to enter )?(?:any|each|every)/i,
       /(?:always|never) (?:no purchase|pay-to-play|pay to enter)/i,
       /pay-to-enter is never listed/i,
-      /(?:free to enter|no purchase necessary)[^.]*(?:each|every|all) listing/i,
-      /(?:each|every|all) listing[^.]*(?:free to enter|no purchase necessary)/i,
+      /(?:each|every|all) listing[^.]*free to enter/i,
+      /free to enter[^.]*(?:each|every|all) listing/i,
     ],
     fixtures: [
+      // The literal string this PR removed from components/listing-detail.tsx.
+      "No purchase necessary · See official rules",
       "No purchase necessary is required — pay-to-enter is never listed.",
       "No purchase is ever necessary to enter any listed sweepstakes",
       "always no purchase necessary",
@@ -171,6 +183,14 @@ const SURFACES: { name: string; texts: string[]; policyCanon?: boolean }[] = [
     // exactly how its enforcement claim escaped this guard.
     name: "host pitch (/host)",
     texts: [source("components/host-pitch.tsx")],
+  },
+  {
+    // The claim was printed HERE, on every listing detail page, and the first
+    // cut of this very guard omitted this file — I fixed the surface and left
+    // it unscanned, which is precisely the defect this guard exists to catch.
+    // Reintroducing "No purchase necessary · See official rules" must fail.
+    name: "listing detail (/sweeps/[slug])",
+    texts: [source("components/listing-detail.tsx")],
   },
 ];
 

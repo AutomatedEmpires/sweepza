@@ -18,14 +18,23 @@
 -- rules claim TRUE rather than merely unstated, and removes the excuse.
 --
 -- Data risk: nil. The column is `not null default false` and no row can have
--- true (no writer exists). The listings table is empty in production today.
+-- true (no writer exists). The listing table is empty in production today.
 --
--- After this, listing_publish_guard() refuses to publish without a rules URL —
--- which is what the product already promised and the schemas already required.
+-- NOTE THE TABLE NAME: it is `listing`, SINGULAR (20260604120200_core.sql:36),
+-- and every query is `.from("listing")`. An earlier draft of this migration said
+-- `public.listings` — Explore & Earn's plural spelling — which would have failed
+-- on the first statement with "relation public.listings does not exist". The two
+-- products do not share a schema.
 
 -- 1. The guard: an official rules URL is now non-negotiable to go live.
 create or replace function listing_publish_guard() returns trigger
-language plpgsql as $$
+language plpgsql
+-- Pinned, because `create or replace` REPLACES the whole function object and
+-- would otherwise silently drop the hardening applied by
+-- 20260607000000_harden_function_search_path.sql, regressing the Supabase
+-- function_search_path_mutable advisory.
+set search_path = public, pg_temp
+as $$
 begin
   if new.lifecycle_status = 'active' then
     if coalesce(new.title, '') = '' then raise exception 'publish blocked: title required'; end if;
@@ -54,7 +63,7 @@ begin
 end;
 $$;
 
--- 2. Drop the hatch. Guard no longer references it, so this cannot orphan the
---    trigger. Idempotent.
-alter table public.listings
+-- 2. Drop the hatch. The guard no longer references it, so this cannot orphan
+--    the trigger. Idempotent.
+alter table public.listing
   drop column if exists official_rules_exception;
