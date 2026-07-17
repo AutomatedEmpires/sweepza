@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SourceFetchError } from "@/lib/ingestion/source";
 import {
   parseNewestDailyPath,
   parseSweepsAdvantageDaily,
@@ -140,6 +141,31 @@ describe("sweepsAdvantageAdapter.discover", () => {
     const leads = await sweepsAdvantageAdapter.discover({ http, limit: 10 });
     expect(leads).toHaveLength(1);
     expect(leads[0].officialUrl).toContain("sponsor-cash");
+  });
+
+  it("RAISES when the hub is down — a down source is not a quiet day", async () => {
+    // This adapter had no unavailable-source test at all, which is why it alone
+    // passed while its siblings' `toEqual([])` assertions failed. The gap was
+    // the point: nothing proved a 500 on the hub reached the circuit breaker.
+    const http = createFixtureHttpClient(descriptor, {
+      [`${BASE}/new-sweepstakes`]: { status: 500 },
+    });
+
+    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
+  });
+
+  it("RAISES when the daily page is down", async () => {
+    // The hub answered; the daily index — also a source-level fetch — did not.
+    const broken = pages();
+    broken[`${BASE}/new-sweepstakes-1784073600.html`] = { status: 503 };
+    const http = createFixtureHttpClient(descriptor, broken);
+
+    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toThrow(
+      SourceFetchError,
+    );
   });
 
   it("returns nothing when the hub has no daily link", async () => {

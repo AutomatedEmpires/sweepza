@@ -509,6 +509,180 @@ describe("redirects are re-checked, not followed blindly", () => {
   });
 });
 
+describe("budget and concurrency are enforced, not just declared", () => {
+  it("never exceeds the request budget under concurrent calls", async () => {
+    // The budget check and the increment used to be split by an await, so
+    // parallel callers all saw the last slot free and all took it.
+    let concurrent = 0;
+    let peak = 0;
+    const fetchImpl = vi.fn(async () => {
+      concurrent += 1;
+      peak = Math.max(peak, concurrent);
+      await new Promise((r) => setTimeout(r, 5));
+      concurrent -= 1;
+      return new Response("<html>ok</html>", { status: 200 });
+    });
+    const client = createSourceHttpClient(
+      descriptor({ requestBudgetPerRun: 3, maxConcurrency: 1 }),
+      { fetchImpl: fetchImpl as never },
+    );
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => client.get(`https://example.com/p${i}`)),
+    );
+
+    expect(fetchImpl.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(client.stats().requests).toBeLessThanOrEqual(3);
+    expect(results.filter((r) => r.status === "failed").length).toBeGreaterThan(0);
+    for (const r of results) {
+      if (r.status === "failed") expect(r.failure).toBe("budget_exhausted");
+    }
+  });
+
+  it("honours maxConcurrency instead of ignoring it", async () => {
+    // maxConcurrency was never read at all.
+    let concurrent = 0;
+    let peak = 0;
+    const fetchImpl = vi.fn(async () => {
+      concurrent += 1;
+      peak = Math.max(peak, concurrent);
+      await new Promise((r) => setTimeout(r, 5));
+      concurrent -= 1;
+      return new Response("<html>ok</html>", { status: 200 });
+    });
+    const client = createSourceHttpClient(
+      descriptor({ requestBudgetPerRun: 50, maxConcurrency: 1 }),
+      { fetchImpl: fetchImpl as never },
+    );
+
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) => client.get(`https://example.com/p${i}`)),
+    );
+
+    expect(peak, "maxConcurrency: 1 means strictly sequential").toBe(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
+  });
+
+  it("spaces concurrent callers by the crawl delay rather than letting them race", async () => {
+    // All requests used to wait out the same lastRequestAt simultaneously, so
+    // the politeness floor a source's robots review asked for evaporated.
+    const waits: number[] = [];
+    const client = createSourceHttpClient(
+      descriptor({ crawlDelayMs: 100, requestBudgetPerRun: 10 }),
+      {
+        fetchImpl: (async () => new Response("<html>ok</html>", { status: 200 })) as never,
+        sleepImpl: async (ms) => { waits.push(ms); },
+      },
+    );
+
+    await Promise.all([
+      client.get("https://example.com/a"),
+      client.get("https://example.com/b"),
+      client.get("https://example.com/c"),
+    ]);
+
+    // Two of the three had to wait behind a predecessor.
+    expect(waits.filter((w) => w > 0).length).toBe(2);
+  });
+
+  it("reports the attempts it actually made when the budget runs out", async () => {
+    // attempt was incremented BEFORE the budget check, so a single request that
+    // consumed the last slot reported two attempts. Telemetry has to match the
+    // network activity it audits.
+    const fetchImpl = vi.fn(async () => new Response("boom", { status: 500 }));
+    const client = createSourceHttpClient(
+      descriptor({ requestBudgetPerRun: 1, maxRetries: 3, crawlDelayMs: 0 }),
+      { fetchImpl: fetchImpl as never, sleepImpl: async () => {} },
+    );
+
+    const result = await client.get("https://example.com/p");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("server_error");
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(result.attempts, "one request was made, so one attempt").toBe(1);
+    }
+  });
+});
+
+describe("conditional GET is wired, not decorative", () => {
+  it("sends a stored validator and saves the one it gets back", async () => {
+    const store = new Map<string, { etag: string | null; lastModified: string | null }>();
+    let sentIfNoneMatch: string | null = null;
+
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      sentIfNoneMatch = new Headers(init?.headers ?? {}).get("if-none-match");
+      return new Response("<html>fresh</html>", {
+        status: 200,
+        headers: { etag: 'W/"v2"' },
+      });
+    });
+
+    const client = createSourceHttpClient(descriptor({ supportsConditionalRequests: true }), {
+      fetchImpl: fetchImpl as never,
+      fetchState: {
+        async load(url) { return store.get(url) ?? null; },
+        async save(url, s) { store.set(url, { etag: s.etag, lastModified: s.lastModified }); },
+      },
+    });
+
+    // First pass: nothing stored, nothing sent, validator recorded.
+    await client.get("https://example.com/hub");
+    expect(sentIfNoneMatch).toBeNull();
+    expect(store.get("https://example.com/hub")?.etag).toBe('W/"v2"');
+
+    // Second pass: the stored validator is sent without the caller doing a thing.
+    await client.get("https://example.com/hub");
+    expect(sentIfNoneMatch).toBe('W/"v2"');
+  });
+
+  it("keeps the validator across a 304 and counts it", async () => {
+    const store = new Map<string, { etag: string | null; lastModified: string | null }>([
+      ["https://example.com/hub", { etag: 'W/"v1"', lastModified: null }],
+    ]);
+    const client = createSourceHttpClient(descriptor({ supportsConditionalRequests: true }), {
+      fetchImpl: (async () => new Response(null, { status: 304 })) as never,
+      fetchState: {
+        async load(url) { return store.get(url) ?? null; },
+        async save(url, s) { store.set(url, { etag: s.etag, lastModified: s.lastModified }); },
+      },
+    });
+
+    const result = await client.get("https://example.com/hub");
+
+    expect(result.status).toBe("not_modified");
+    expect(client.stats().notModified).toBe(1);
+    expect(store.get("https://example.com/hub")?.etag, "a 304 must not erase it").toBe('W/"v1"');
+  });
+
+  it("does not consult the store for a source that ignores validators", async () => {
+    const load = vi.fn(async () => ({ etag: 'W/"x"', lastModified: null }));
+    const client = createSourceHttpClient(descriptor({ supportsConditionalRequests: false }), {
+      fetchImpl: (async () => new Response("<html>ok</html>", { status: 200 })) as never,
+      fetchState: { load, save: async () => {} },
+    });
+
+    await client.get("https://example.com/p");
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("survives a store that throws — remembering an ETag is never worth a failed fetch", async () => {
+    const client = createSourceHttpClient(descriptor({ supportsConditionalRequests: true }), {
+      fetchImpl: (async () => new Response("<html>ok</html>", { status: 200 })) as never,
+      fetchState: {
+        async load() { throw new Error("db down"); },
+        async save() { throw new Error("db down"); },
+      },
+    });
+
+    const result = await client.get("https://example.com/p");
+
+    expect(result.status).toBe("ok");
+  });
+});
+
 describe("body cap bounds the read, not just the result", () => {
   it("stops reading and cancels once the cap is reached", async () => {
     let cancelled = false;

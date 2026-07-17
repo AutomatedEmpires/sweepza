@@ -1,6 +1,11 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { stripHtmlToText } from "@/lib/ingestion/html-text";
-import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
+import {
+  SourceFetchError,
+  type AdapterContext,
+  type DiscoveredLead,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 
 // Tier-1 discovery adapter for The Freebie Guy (build priority #2).
 //
@@ -111,8 +116,13 @@ export function parseFreebieGuyOfficialUrl(html: string): string | null {
 export const freebieGuyAdapter: SourceAdapter = {
   id: "freebie_guy",
   async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    // Source-level fetch: a classified failure here is an outage, not a quiet
+    // day, and must reach the circuit breaker rather than becoming [].
     const archive = await http.get(`${HOST}${ARCHIVE_PATH}`);
-    if (archive.status !== "ok") return [];
+    if (archive.status === "not_modified") return [];
+    if (archive.status !== "ok") {
+      throw new SourceFetchError(archive.url, archive.failure, archive.message);
+    }
 
     const posts = parseFreebieGuyArchive(archive.body).filter(looksLikeSweepstakes);
     const leads: DiscoveredLead[] = [];

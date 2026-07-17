@@ -178,6 +178,82 @@ describe("the shipped registry is dark", () => {
   });
 });
 
+describe("gate — refresh interval", () => {
+  // refreshIntervalMinutes was declared per source and never read, so every
+  // approved source ran on every cron tick. Politeness that only exists in a
+  // config field is not politeness.
+  const NOW = new Date("2026-07-16T12:00:00Z");
+  const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000).toISOString();
+
+  it("defers a source that ran more recently than its reviewed interval", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ refreshIntervalMinutes: 720 }),
+      record: record({ lastRunAt: minutesAgo(60) }),
+      ingestionEnabled: "true",
+      now: NOW,
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toBe("refresh_not_due");
+      expect(decision.detail).toContain("720m");
+    }
+  });
+
+  it("allows once the interval has elapsed", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ refreshIntervalMinutes: 720 }),
+      record: record({ lastRunAt: minutesAgo(721) }),
+      ingestionEnabled: "true",
+      now: NOW,
+    });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("allows a source that has never run", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ refreshIntervalMinutes: 720 }),
+      record: record({ lastRunAt: null }),
+      ingestionEnabled: "true",
+      now: NOW,
+    });
+    expect(decision.allowed).toBe(true);
+  });
+
+  it("defers rather than guessing when last_run_at is unreadable", () => {
+    // A bad timestamp must not silently mean "crawl now".
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ refreshIntervalMinutes: 720 }),
+      record: record({ lastRunAt: "not-a-date" }),
+      ingestionEnabled: "true",
+      now: NOW,
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.reason).toBe("refresh_not_due");
+  });
+
+  it("honours each source's own interval, not a global one", () => {
+    // Freebie Guy asks for a 10s crawl delay and a daily refresh; Sweeps
+    // Advantage is twice-daily. The same elapsed time answers differently.
+    const elapsed = record({ lastRunAt: minutesAgo(800) });
+    expect(
+      evaluateSourceGate({
+        descriptor: descriptor({ refreshIntervalMinutes: 720 }),
+        record: elapsed,
+        ingestionEnabled: "true",
+        now: NOW,
+      }).allowed,
+    ).toBe(true);
+    expect(
+      evaluateSourceGate({
+        descriptor: descriptor({ refreshIntervalMinutes: 1440 }),
+        record: elapsed,
+        ingestionEnabled: "true",
+        now: NOW,
+      }).allowed,
+    ).toBe(false);
+  });
+});
+
 describe("gate — terms-of-service posture", () => {
   // SourceDescriptor always SAID an unreviewed source cannot reach production.
   // Nothing enforced it: a descriptor at approved_for_production with an

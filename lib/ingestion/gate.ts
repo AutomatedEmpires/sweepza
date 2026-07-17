@@ -26,7 +26,8 @@ export type GateDenialReason =
   | "record_missing"
   | "record_not_production_approved"
   | "kill_switch"
-  | "circuit_open";
+  | "circuit_open"
+  | "refresh_not_due";
 
 export type GateDecision =
   | { allowed: true; descriptor: SourceDescriptor }
@@ -38,6 +39,8 @@ export interface SourceApprovalSnapshot {
   complianceState: SourceComplianceState;
   killSwitch: boolean;
   circuitOpenedAt: string | null;
+  /** When this source last ran; enforces the descriptor's refresh interval. */
+  lastRunAt?: string | null;
 }
 
 export interface GateInput {
@@ -45,6 +48,8 @@ export interface GateInput {
   record: SourceApprovalSnapshot | null;
   /** Raw value of env.INGESTION_ENABLED. Only the literal "true" enables. */
   ingestionEnabled: string | null | undefined;
+  /** Injected so the refresh window is testable without faking the clock. */
+  now?: Date;
 }
 
 /**
@@ -134,6 +139,34 @@ export function evaluateSourceGate(input: GateInput): GateDecision {
       reason: "circuit_open",
       detail: `The circuit breaker for "${descriptor.id}" opened at ${record.circuitOpenedAt} after repeated failures. Resolve the failure and reset it before running.`,
     };
+  }
+
+  // refreshIntervalMinutes is a REVIEWED crawl schedule, not a hint. Nothing
+  // enforced it, so every approved source ran on every cron invocation — the
+  // declared per-source cadence was inert, and we could crawl a source far more
+  // often than its own robots/ToS review allows. Politeness that only exists in
+  // a config field is not politeness.
+  const lastRunAt = record.lastRunAt;
+  if (lastRunAt) {
+    const last = Date.parse(lastRunAt);
+    // An unparseable timestamp must not silently mean "run now" — treat the
+    // schedule as unknown and defer rather than crawl on bad data.
+    if (Number.isNaN(last)) {
+      return {
+        allowed: false,
+        reason: "refresh_not_due",
+        detail: `Source "${descriptor.id}" has an unreadable last_run_at (${lastRunAt}); refusing rather than guessing at its refresh window.`,
+      };
+    }
+    const elapsedMinutes = ((input.now ?? new Date()).getTime() - last) / 60_000;
+    if (elapsedMinutes < descriptor.refreshIntervalMinutes) {
+      const waitMinutes = Math.ceil(descriptor.refreshIntervalMinutes - elapsedMinutes);
+      return {
+        allowed: false,
+        reason: "refresh_not_due",
+        detail: `Source "${descriptor.id}" ran ${Math.floor(elapsedMinutes)}m ago and its reviewed refresh interval is ${descriptor.refreshIntervalMinutes}m. Next run in ~${waitMinutes}m.`,
+      };
+    }
   }
 
   return { allowed: true, descriptor };

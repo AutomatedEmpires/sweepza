@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SourceFetchError } from "@/lib/ingestion/source";
 import {
   parseSweepstakesTodayIndex,
   parseSweepstakesTodayOfficialUrl,
@@ -98,10 +99,26 @@ describe("sweepstakesTodayAdapter.discover", () => {
     expect(leads).toHaveLength(1);
   });
 
-  it("returns nothing when the index is unavailable", async () => {
+  it("RAISES when the index is unavailable — a down source is not a quiet day", async () => {
+    // Was: `toEqual([])`. That assertion WAS the bug — see the freebie-guy
+    // suite. A 503 on the index means the source is down, and that fact has to
+    // reach the circuit breaker instead of being flattened into "no results".
     const http = createFixtureHttpClient(descriptor, {
       "https://www.sweepstakestoday.com/listings": { status: 503 },
     });
+
+    await expect(sweepstakesTodayAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
+  });
+
+  it("still returns nothing when the source is HEALTHY but has no listings", async () => {
+    // The distinction the throw exists to preserve: this really is a quiet day.
+    const http = createFixtureHttpClient(descriptor, {
+      "https://www.sweepstakestoday.com/listings": { body: "<html><body>none</body></html>" },
+    });
+
     expect(await sweepstakesTodayAdapter.discover({ http, limit: 10 })).toEqual([]);
   });
 

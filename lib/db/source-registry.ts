@@ -102,10 +102,22 @@ export type TransitionResult =
   | { ok: false; error: string };
 
 /**
- * Move a source along the compliance ladder, recording the decision. Refuses
- * illegal transitions (the state machine is the authority, not the caller) and
- * writes the audit event before the state change so a failed write can never
- * leave an unexplained approval.
+ * Move a source along the compliance ladder, recording the decision.
+ *
+ * Legality is decided HERE — the state machine in lib/ingestion/compliance.ts is
+ * the single authority, and duplicating its transition table in SQL would just
+ * create a second one that drifts. Atomicity is decided in the DATABASE: the
+ * `transition_source_compliance` RPC locks the source row, compare-and-sets on
+ * the state we validated against, and writes the audit event + state change in
+ * one transaction.
+ *
+ * That split matters. This function used to insert the event and then update the
+ * row as two independent writes, with a comment claiming the ordering meant "a
+ * failed write can never leave an unexplained approval" — the exact opposite was
+ * true: a failed update left the append-only log permanently asserting a
+ * transition that never happened. An audit trail that lies is worse than none,
+ * because it is trusted. The unlocked read-then-write also let two concurrent
+ * transitions both validate the same from_state and write an illegal history.
  */
 export async function transitionSourceCompliance(
   input: TransitionInput,
@@ -127,34 +139,43 @@ export async function transitionSourceCompliance(
 
   const supabase = createServiceRoleClient();
 
-  const { error: eventError } = await supabase.from("source_approval_event").insert({
-    source_id: input.sourceId,
-    from_state: current.complianceState,
-    to_state: input.to,
-    actor,
-    reason: input.reason ?? null,
-  });
-  if (eventError) {
-    return { ok: false, error: `Could not record the decision: ${eventError.message}` };
+  const { data: outcome, error: rpcError } = await supabase.rpc(
+    "transition_source_compliance",
+    {
+      p_source_id: input.sourceId,
+      // The state legality was checked against — the CAS key. If the row moved
+      // underneath us, the RPC refuses instead of writing a false history.
+      p_from: current.complianceState,
+      p_to: input.to,
+      p_actor: actor,
+      p_reason: input.reason ?? null,
+      p_approving: input.to === "approved_for_production",
+    },
+  );
+
+  if (rpcError) {
+    return { ok: false, error: `Could not record the decision: ${rpcError.message}` };
   }
 
-  const approving = input.to === "approved_for_production";
-  const { data, error } = await supabase
-    .from("source_registry")
-    .update({
-      compliance_state: input.to,
-      // Approval attribution reflects the live production grant specifically —
-      // it is cleared on the way down so a paused source never displays as
-      // "approved by X" while it is not, in fact, approved.
-      approved_by: approving ? actor : null,
-      approved_at: approving ? new Date().toISOString() : null,
-    })
-    .eq("id", input.sourceId)
-    .select(COLUMNS)
-    .single<SourceRegistryRow>();
+  const result = outcome as { ok: boolean; error?: string; actual?: string } | null;
+  if (!result?.ok) {
+    if (result?.error === "stale_state") {
+      return {
+        ok: false,
+        error: `Source moved to ${result.actual} while this decision was being made. Re-read it and decide again.`,
+      };
+    }
+    if (result?.error === "unknown_source") {
+      return { ok: false, error: `Unknown source "${input.sourceId}".` };
+    }
+    return { ok: false, error: `Could not update the source: ${result?.error ?? "unknown"}` };
+  }
 
-  if (error) return { ok: false, error: `Could not update the source: ${error.message}` };
-  return { ok: true, record: toRecord(data) };
+  const record = await getSourceRecord(input.sourceId);
+  if (!record) {
+    return { ok: false, error: `Source "${input.sourceId}" vanished after the transition.` };
+  }
+  return { ok: true, record };
 }
 
 export interface ApprovalEvent {

@@ -1,5 +1,10 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
+import {
+  SourceFetchError,
+  type AdapterContext,
+  type DiscoveredLead,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 import type { EntryFrequency } from "@/lib/db/enums";
 
 // Tier-1 discovery adapter for Sweepstakes Advantage (build priority #1 — 200+
@@ -136,14 +141,22 @@ export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
 export const sweepsAdvantageAdapter: SourceAdapter = {
   id: "sweeps_advantage",
   async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    // Source-level fetches. A 500/timeout/rate-limit here means THE SOURCE is
+    // down, which is not the same fact as "no new sweeps" — collapsing both to
+    // [] let the orchestrator record `ok`, reset consecutive_failures, and kept
+    // the circuit breaker from ever opening on a real outage.
     const hub = await http.get(`${BASE}${HUB_PATH}`);
-    if (hub.status !== "ok") return [];
+    if (hub.status === "not_modified") return []; // genuinely nothing new
+    if (hub.status !== "ok") throw new SourceFetchError(hub.url, hub.failure, hub.message);
 
+    // Not a fetch failure: the source answered, our parser found no daily link.
+    // Left as a quiet result rather than an outage signal.
     const dailyPath = parseNewestDailyPath(hub.body);
     if (!dailyPath) return [];
 
     const daily = await http.get(`${BASE}${dailyPath}`);
-    if (daily.status !== "ok") return [];
+    if (daily.status === "not_modified") return [];
+    if (daily.status !== "ok") throw new SourceFetchError(daily.url, daily.failure, daily.message);
 
     const cards = parseSweepsAdvantageDaily(daily.body);
 

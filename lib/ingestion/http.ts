@@ -98,6 +98,30 @@ export interface SourceHttpClient {
 /** Resolve a hostname to its IP addresses. Injectable so tests stay offline. */
 export type HostLookup = (hostname: string) => Promise<string[]>;
 
+/**
+ * Persistence for conditional-GET validators, injected as a port so this module
+ * never imports the database (and stays testable with a fake).
+ *
+ * Without it, `supportsConditionalRequests` was decoration: nothing loaded an
+ * ETag, nothing saved one, `source_fetch_state` stayed empty and `not_modified`
+ * was always zero — so every pass re-downloaded pages the source would happily
+ * have told us were unchanged. Wiring it HERE rather than in each adapter means
+ * the hub/index fetches get it too, which is where it actually pays: those are
+ * re-fetched on every single run.
+ */
+export interface FetchStatePort {
+  load(url: string): Promise<ConditionalState | null>;
+  save(
+    url: string,
+    state: {
+      etag: string | null;
+      lastModified: string | null;
+      httpStatus: number;
+      notModified: boolean;
+    },
+  ): Promise<void>;
+}
+
 export interface HttpClientOptions {
   /** Injected for tests/dry runs; defaults to global fetch. */
   fetchImpl?: typeof fetch;
@@ -111,6 +135,8 @@ export interface HttpClientOptions {
    * one explicitly to exercise the guard with a fake fetch.
    */
   lookupImpl?: HostLookup | null;
+  /** Loads/stores conditional-GET validators. Omitted → no conditional GET. */
+  fetchState?: FetchStatePort;
   signal?: AbortSignal;
   /** Identify ourselves honestly; a source may block us by this string. */
   userAgent?: string;
@@ -311,6 +337,56 @@ export function createSourceHttpClient(
   let failures = 0;
   let lastRequestAt = 0;
 
+  // ---- concurrency + budget, enforced together ------------------------------
+  //
+  // maxConcurrency was declared and never read, and `requests` incremented only
+  // AFTER the crawl-delay await. Concurrent get() calls could therefore all pass
+  // the budget check, all observe the same lastRequestAt, and blow straight
+  // through both the declared budget and the politeness floor a source's robots
+  // review actually asked for. A limit nothing reads is not a limit.
+  //
+  // The slot is transferred, never released-then-reacquired: handing it directly
+  // to the next waiter closes the microtask gap where a fresh caller could
+  // otherwise slip in and push inFlight past the cap.
+  const maxInFlight = Math.max(1, descriptor.maxConcurrency);
+  let inFlight = 0;
+  const waiting: Array<() => void> = [];
+
+  async function acquireSlot(): Promise<void> {
+    if (inFlight < maxInFlight) {
+      inFlight += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => waiting.push(resolve)); // inherits a slot
+  }
+
+  function releaseSlot(): void {
+    const next = waiting.shift();
+    if (next) return next(); // hand the slot over; inFlight stays put
+    inFlight -= 1;
+  }
+
+  /**
+   * Take a budget slot. Synchronous by design: the check and the take cannot be
+   * split by an await, so two callers can never both see the last slot free.
+   */
+  function reserveBudget(): boolean {
+    if (requests >= descriptor.requestBudgetPerRun) return false;
+    requests += 1;
+    return true;
+  }
+
+  function budgetExhausted(url: string): SourceFetchResult {
+    return {
+      status: "failed",
+      url,
+      failure: "budget_exhausted",
+      httpStatus: null,
+      attempts: 0,
+      message: `source "${descriptor.id}" exhausted its ${descriptor.requestBudgetPerRun}-request budget`,
+    };
+  }
+
   function policyFailure(
     url: string,
     failure: FetchFailureClass,
@@ -386,6 +462,22 @@ export function createSourceHttpClient(
   }
 
   async function once(url: string, init: RequestInit, readBody: boolean): Promise<Hop> {
+    // Hold a concurrency slot across the ENTIRE request, crawl delay included:
+    // the delay is only politeness if it actually spaces requests out, which it
+    // cannot do if parallel callers wait it out simultaneously.
+    await acquireSlot();
+    try {
+      return await request(url, init, readBody);
+    } finally {
+      releaseSlot();
+    }
+  }
+
+  async function request(url: string, init: RequestInit, readBody: boolean): Promise<Hop> {
+    // Reserve before the await. Anything after this point has a slot; anything
+    // that can't get one never reaches the network.
+    if (!reserveBudget()) return { kind: "result", result: budgetExhausted(url) };
+
     await respectCrawlDelay();
 
     const timeout = new AbortController();
@@ -396,7 +488,6 @@ export function createSourceHttpClient(
       .filter((s): s is AbortSignal => Boolean(s));
 
     try {
-      requests += 1;
       lastRequestAt = Date.now();
       const response = await fetchImpl(url, {
         ...init,
@@ -596,8 +687,12 @@ export function createSourceHttpClient(
       isRetryable(last.failure) &&
       attempt < descriptor.maxRetries
     ) {
-      attempt += 1;
+      // Budget BEFORE the counter. Incrementing first meant that when the
+      // initial request consumed the last slot, the reported `attempts` claimed
+      // two requests where only one was made — audit telemetry has to match the
+      // network activity it is auditing, or it is worse than none.
       if (requests >= descriptor.requestBudgetPerRun) break;
+      attempt += 1;
       // Exponential backoff on top of the crawl delay: a struggling source gets
       // less traffic from us, not the same traffic repeated.
       await sleep(descriptor.crawlDelayMs * 2 ** attempt);
@@ -615,31 +710,55 @@ export function createSourceHttpClient(
         `${url} is outside the declared reach of source "${descriptor.id}"`,
       );
     }
-    if (requests >= descriptor.requestBudgetPerRun) {
-      // Not a policy breach — don't count it as a failure.
-      return {
-        status: "failed",
-        url,
-        failure: "budget_exhausted",
-        httpStatus: null,
-        attempts: 0,
-        message: `source "${descriptor.id}" exhausted its ${descriptor.requestBudgetPerRun}-request budget`,
-      };
-    }
+    // Fast path only — the authoritative check is reserveBudget(), which takes
+    // the slot atomically. This just avoids a pointless DNS lookup and slot
+    // wait when the budget is already visibly gone. Not a policy breach, so it
+    // is not counted as a failure.
+    if (requests >= descriptor.requestBudgetPerRun) return budgetExhausted(url);
     return null;
   }
 
   return {
     async get(url, getOptions) {
       const headers: Record<string, string> = {};
-      const conditional = getOptions?.conditional;
       // Only send validators to sources that actually honor them; a source that
       // ignores If-None-Match would return 200 forever and the header is noise.
+      let conditional = getOptions?.conditional;
+      if (descriptor.supportsConditionalRequests && !conditional && options.fetchState) {
+        // A stored validator is best-effort: never fail a fetch because we
+        // could not remember what we saw last time.
+        conditional = (await options.fetchState.load(url).catch(() => null)) ?? undefined;
+      }
       if (descriptor.supportsConditionalRequests && conditional) {
         if (conditional.etag) headers["If-None-Match"] = conditional.etag;
         if (conditional.lastModified) headers["If-Modified-Since"] = conditional.lastModified;
       }
-      return withRetries(url, { headers }, true, "fetch");
+
+      const result = await withRetries(url, { headers }, true, "fetch");
+
+      if (descriptor.supportsConditionalRequests && options.fetchState) {
+        if (result.status === "ok") {
+          await options.fetchState
+            .save(url, {
+              etag: result.etag,
+              lastModified: result.lastModified,
+              httpStatus: result.httpStatus,
+              notModified: false,
+            })
+            .catch(() => undefined);
+        } else if (result.status === "not_modified") {
+          // Refresh last_fetched_at and keep the validators we already hold.
+          await options.fetchState
+            .save(url, {
+              etag: conditional?.etag ?? null,
+              lastModified: conditional?.lastModified ?? null,
+              httpStatus: 304,
+              notModified: true,
+            })
+            .catch(() => undefined);
+        }
+      }
+      return result;
     },
 
     async resolve(url) {

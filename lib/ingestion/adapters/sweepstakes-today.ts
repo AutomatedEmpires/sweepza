@@ -1,6 +1,11 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { stripHtmlToText } from "@/lib/ingestion/html-text";
-import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
+import {
+  SourceFetchError,
+  type AdapterContext,
+  type DiscoveredLead,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 
 // Tier-1 discovery adapter for Sweepstakes Today (build priority #3).
 //
@@ -77,8 +82,13 @@ export function parseSweepstakesTodayOfficialUrl(html: string): string | null {
 export const sweepstakesTodayAdapter: SourceAdapter = {
   id: "sweepstakes_today",
   async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    // Source-level fetch: a classified failure here is an outage, not a quiet
+    // day, and must reach the circuit breaker rather than becoming [].
     const index = await http.get(`${BASE}${INDEX_PATH}`);
-    if (index.status !== "ok") return [];
+    if (index.status === "not_modified") return [];
+    if (index.status !== "ok") {
+      throw new SourceFetchError(index.url, index.failure, index.message);
+    }
 
     const rows = parseSweepstakesTodayIndex(index.body);
     const leads: DiscoveredLead[] = [];

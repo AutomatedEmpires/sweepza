@@ -1,5 +1,5 @@
 import { isFixtureExecutable, type SourceComplianceState } from "@/lib/ingestion/compliance";
-import type { SourceHttpClient } from "@/lib/ingestion/http";
+import type { FetchFailureClass, SourceHttpClient } from "@/lib/ingestion/http";
 
 // Source-adapter seam. The orchestrator is source-agnostic: a discovery source
 // yields candidate official URLs (links only), and the pipeline fetches +
@@ -37,6 +37,30 @@ export interface AdapterContext {
   /** Max leads to return this pass. */
   limit: number;
   signal?: AbortSignal;
+}
+
+/**
+ * A SOURCE-LEVEL fetch failed — the hub or index page the adapter needs before
+ * it can discover anything. Thrown, not returned, because it must not be
+ * confusable with "no new sweeps".
+ *
+ * That distinction is the whole point. An adapter that turned a 500 on the hub
+ * into `[]` made a down source indistinguishable from a quiet day: the
+ * orchestrator recorded `ok`, `recordRunOutcome` reset `consecutive_failures`,
+ * and the circuit breaker could never open for the outages it exists to
+ * contain. A PER-LEAD failure is different and still just drops that lead — one
+ * sponsor's page being down is not the source being down.
+ */
+export class SourceFetchError extends Error {
+  readonly failure: FetchFailureClass;
+  readonly url: string;
+
+  constructor(url: string, failure: FetchFailureClass, detail?: string) {
+    super(`source fetch failed (${failure}) for ${url}${detail ? `: ${detail}` : ""}`);
+    this.name = "SourceFetchError";
+    this.failure = failure;
+    this.url = url;
+  }
 }
 
 export interface SourceAdapter {

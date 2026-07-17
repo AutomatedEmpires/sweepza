@@ -7,7 +7,7 @@ import { sweepstakesTodayAdapter } from "@/lib/ingestion/adapters/sweepstakes-to
 import { extractOfficialPage } from "@/lib/ingestion/extract";
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { evaluateSourceGate, describeGateDecision } from "@/lib/ingestion/gate";
-import { createSourceHttpClient } from "@/lib/ingestion/http";
+import { createSourceHttpClient, type FetchStatePort } from "@/lib/ingestion/http";
 import { mapExtraction } from "@/lib/ingestion/mapper";
 import { snapshotOfficialRules } from "@/lib/ingestion/snapshot";
 import { SOURCE_REGISTRY, getSourceDescriptor, type SourceAdapter } from "@/lib/ingestion/source";
@@ -22,7 +22,12 @@ import {
   touchLastSeen,
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
-import { getSourceRecord, recordRunOutcome } from "@/lib/db/source-registry";
+import {
+  getFetchState,
+  getSourceRecord,
+  recordRunOutcome,
+  saveFetchState,
+} from "@/lib/db/source-registry";
 
 // The pipeline assembly: for each source, ASK THE GATE → discover leads →
 // resolve official URL → skip if already known (idempotent) → extract at the
@@ -47,6 +52,38 @@ export interface IngestionSourceSummary extends IngestionRunCounts {
   status: "ok" | "error" | "skipped";
   /** Present whenever the gate refused the source. */
   gate?: string;
+}
+
+/**
+ * Backs the client's conditional-GET with the real `source_fetch_state` table.
+ *
+ * `supportsConditionalRequests` was true on three of four sources and did
+ * nothing: nobody loaded a validator, nobody saved one, so the table stayed
+ * empty and every pass re-downloaded pages the source would have 304'd. Every
+ * operation is best-effort — remembering an ETag is an optimisation, and it must
+ * never be the reason a fetch fails.
+ */
+function fetchStatePort(sourceId: string): FetchStatePort {
+  return {
+    async load(url) {
+      const key = normalizeUrl(url);
+      if (!key) return null;
+      const state = await getFetchState(sourceId, key).catch(() => null);
+      if (!state) return null;
+      return { etag: state.etag, lastModified: state.lastModified };
+    },
+    async save(url, state) {
+      const key = normalizeUrl(url);
+      if (!key) return;
+      await saveFetchState(sourceId, key, {
+        etag: state.etag,
+        lastModified: state.lastModified,
+        lastStatus: state.httpStatus,
+        // A 304 means the page did NOT change — only a 200 advances last_changed_at.
+        changed: !state.notModified,
+      }).catch(() => undefined);
+    },
+  };
 }
 
 /** Official pages are fetched under their own policy, not the discoverer's. */
@@ -113,8 +150,12 @@ export async function runIngestion(
       discovered: 0, fetched: 0, created: 0, updated: 0, skipped: 0, failed: 0,
     };
 
-    const http = createSourceHttpClient(descriptor);
-    const officialHttp = createSourceHttpClient(official);
+    const http = createSourceHttpClient(descriptor, {
+      fetchState: fetchStatePort(descriptor.id),
+    });
+    const officialHttp = createSourceHttpClient(official, {
+      fetchState: fetchStatePort(official.id),
+    });
     const officialStats = () => officialHttp.stats();
 
     try {
@@ -123,6 +164,11 @@ export async function runIngestion(
 
       const seenThisRun = new Set<string>();
       const held: string[] = [];
+      // Tracked apart from counts.failed, which deliberately conflates two very
+      // different facts: an official page we could not fetch (an outage signal)
+      // and a candidate we fetched fine and then rejected (a policy outcome).
+      // Only the former may trip the circuit breaker.
+      let fetchFailures = 0;
       for (const lead of leads) {
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
@@ -145,6 +191,7 @@ export async function runIngestion(
         counts.fetched += 1;
         if (!extraction) {
           counts.failed += 1;
+          fetchFailures += 1;
           continue;
         }
 
@@ -190,12 +237,27 @@ export async function runIngestion(
       // Both sides of the merge are wanted: main (#78) reports which candidates
       // were held back, this branch reports gate + request telemetry. The notes
       // and telemetry parameters are independent, so neither is dropped.
+      // A pass that fetched official pages and failed EVERY one is an outage,
+      // not a quiet day. Recording `ok` here reset consecutive_failures on
+      // exactly the outages the breaker exists to contain — adapters turn
+      // discovery failures into [] and extractOfficialPage turns fetch failures
+      // into null, so neither reached `catch`. Zero leads with zero failures is
+      // still a genuine quiet day; held candidates are a policy outcome and are
+      // excluded, because the source answered us perfectly well.
+      const outage = counts.fetched > 0 && fetchFailures === counts.fetched;
+      const outageNote = `every official fetch failed (${fetchFailures}/${counts.fetched})`;
+
       const stats = http.stats();
+      const notes = [
+        outage ? outageNote : null,
+        held.length > 0 ? `held: ${held.join("; ")}` : null,
+      ].filter(Boolean).join(" | ");
+
       await finishIngestionRun(
         runId,
         counts,
-        "ok",
-        held.length > 0 ? `held: ${held.join("; ")}`.slice(0, 2000) : null,
+        outage ? "error" : "ok",
+        notes.length > 0 ? notes.slice(0, 2000) : null,
         {
           gateDecision: "allowed",
           requestsMade: stats.requests + officialStats().requests,
@@ -203,16 +265,24 @@ export async function runIngestion(
         },
       );
       await recordRunOutcome(descriptor.id, {
-        ok: true,
+        ok: !outage,
+        ...(outage ? { failureClass: outageNote } : {}),
         failureThreshold: descriptor.failureThreshold,
       });
-      summaries.push({ source: descriptor.id, status: "ok", ...counts });
+      summaries.push({
+        source: descriptor.id,
+        status: outage ? "error" : "ok",
+        ...counts,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Include the official client's requests: the success path counted them,
+      // so omitting them here made every failed run under-report its own
+      // network activity — the audit was wrong exactly when it mattered most.
       await finishIngestionRun(runId, counts, "error", message, {
         gateDecision: "allowed",
-        requestsMade: http.stats().requests,
-        notModified: http.stats().notModified,
+        requestsMade: http.stats().requests + officialStats().requests,
+        notModified: http.stats().notModified + officialStats().notModified,
       });
       // Feed the circuit breaker: enough consecutive failures and the gate
       // itself will refuse this source until a human resolves it.

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawExtraction } from "@/lib/ingestion/mapper";
+import { SourceFetchError } from "@/lib/ingestion/source";
 
 // runIngestion with every I/O boundary mocked; mapExtraction and
 // verifyCandidate run for real, so these tests exercise the actual
@@ -57,13 +58,20 @@ vi.mock("@/lib/env", () => ({
   env: { INGESTION_ENABLED: "true", ANTHROPIC_API_KEY: "test" },
 }));
 
-vi.mock("@/lib/ingestion/source", () => ({
-  SOURCE_REGISTRY: [approvedSource("sweeps_advantage", "discovery")],
-  getSourceDescriptor: (id: string) =>
-    id === "official_direct"
-      ? approvedSource("official_direct", "official")
-      : approvedSource(id, "discovery"),
-}));
+// importActual, not a bare object: this module also exports SourceFetchError,
+// which the orchestrator and these tests both need to be the REAL class —
+// a replaced module would hand back undefined and every instanceof would lie.
+vi.mock("@/lib/ingestion/source", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/ingestion/source")>();
+  return {
+    ...actual,
+    SOURCE_REGISTRY: [approvedSource("sweeps_advantage", "discovery")],
+    getSourceDescriptor: (id: string) =>
+      id === "official_direct"
+        ? approvedSource("official_direct", "official")
+        : approvedSource(id, "discovery"),
+  };
+});
 
 vi.mock("@/lib/db/source-registry", () => ({
   getSourceRecord: mocks.getSourceRecord,
@@ -138,6 +146,109 @@ beforeEach(() => {
   mocks.createIngestedListing.mockResolvedValue("listing-1");
   mocks.finishIngestionRun.mockResolvedValue(undefined);
   mocks.recordProvenance.mockResolvedValue(undefined);
+});
+
+describe("runIngestion — a down source must reach the circuit breaker", () => {
+  // The breaker exists to contain outages, and could never trip for one: the
+  // adapters turned discovery failures into [], extractOfficialPage turned
+  // official fetch failures into null, so nothing reached `catch` and every run
+  // recorded ok:true — resetting consecutive_failures on exactly the outages it
+  // was built to catch.
+
+  it("records a FAILURE when every official fetch fails", async () => {
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/b" },
+    ]);
+    mocks.extractOfficialPage.mockResolvedValue(null); // the source is down
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: false }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "error", fetched: 2, failed: 2, created: 0 });
+    const notes = mocks.finishIngestionRun.mock.calls[0][3] as string;
+    expect(notes).toContain("every official fetch failed (2/2)");
+  });
+
+  it("still calls a quiet day a SUCCESS — zero leads is not an outage", async () => {
+    mocks.discover.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "ok", discovered: 0 });
+  });
+
+  it("does not call a HELD candidate an outage", async () => {
+    // The source answered us perfectly well; we rejected the content. That is a
+    // policy outcome, and counts.failed conflates the two — so the breaker must
+    // key off fetch failures alone or a run of unpublishable sweeps would open
+    // the circuit on a perfectly healthy source.
+    mocks.extractOfficialPage.mockResolvedValue({
+      raw: raw({ noPurchaseNecessary: null, officialRulesUrl: null }),
+      pageText: "page text",
+      contentHash: "hash",
+    });
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
+  });
+
+  it("counts a partial failure as a success — one dead sponsor page is not an outage", async () => {
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/b" },
+    ]);
+    mocks.extractOfficialPage
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ raw: raw(), pageText: "t", contentHash: "h" });
+
+    await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+  });
+
+  it("feeds the breaker when the adapter reports the source itself is down", async () => {
+    mocks.discover.mockRejectedValue(
+      new SourceFetchError("https://example.com/hub", "server_error", "500"),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: false }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "error" });
+  });
+
+  it("counts official-client requests in the ERROR path too", async () => {
+    // The success path counted them; the error path did not, so a failed run
+    // under-reported its own network activity — wrong exactly when it matters.
+    mocks.discover.mockRejectedValue(new Error("boom"));
+
+    await runIngestion();
+
+    const telemetry = mocks.finishIngestionRun.mock.calls[0][4];
+    expect(telemetry).toMatchObject({
+      requestsMade: expect.any(Number),
+      notModified: expect.any(Number),
+    });
+  });
 });
 
 describe("runIngestion — official_direct is gated on its own", () => {

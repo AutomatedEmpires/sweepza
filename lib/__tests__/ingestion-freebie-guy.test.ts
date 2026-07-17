@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SourceFetchError } from "@/lib/ingestion/source";
 import {
   freebieGuyAdapter,
   isClosedPost,
@@ -104,11 +105,29 @@ describe("freebieGuyAdapter.discover", () => {
     expect(leads[0].sourceUrl).toBe("https://thefreebieguy.com/sweepstakes/win-a-year-of-coffee");
   });
 
-  it("returns nothing when the archive is unavailable", async () => {
+  it("RAISES when the archive is unavailable — a down source is not a quiet day", async () => {
+    // Was: `toEqual([])`. That assertion WAS the bug. Returning [] made a dead
+    // source indistinguishable from "no new sweeps", so the orchestrator
+    // recorded ok, reset consecutive_failures, and the circuit breaker could
+    // never open for the outage it exists to contain.
     const http = createFixtureHttpClient(descriptor, {
       "https://thefreebieguy.com/category/sweepstakes": { networkError: "ECONNRESET" },
     });
-    expect(await freebieGuyAdapter.discover({ http, limit: 10 })).toEqual([]);
+
+    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toThrow(
+      SourceFetchError,
+    );
+  });
+
+  it("carries the failure class so the breaker can record WHY", async () => {
+    const http = createFixtureHttpClient(descriptor, {
+      "https://thefreebieguy.com/category/sweepstakes": { status: 503 },
+    });
+
+    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
   });
 
   it("never leaves thefreebieguy.com during discovery", async () => {
