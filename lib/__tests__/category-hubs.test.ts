@@ -58,10 +58,22 @@ describe("category hubs", () => {
       // Canon bright-lines: never promise wins or imply paid entry...
       expect(copy, `${hub.slug} promises`).not.toContain("guarantee");
       expect(copy, `${hub.slug} promises`).not.toContain("purchase required");
-      // ...and never make per-listing claims the data model does not enforce
-      // (unreviewed listings can be public; official-rules exceptions exist).
+      // ...and never make per-listing claims the data model does not enforce.
+      // Unreviewed listings can be public, so "verified" stays banned.
       expect(copy, `${hub.slug} verification claim`).not.toContain("verified");
-      expect(copy, `${hub.slug} rules claim`).not.toContain("official rules");
+
+      // "official rules" is NO LONGER banned. It was, on the grounds that
+      // "official-rules exceptions exist" — but `official_rules_exception` was
+      // an escape hatch nothing could open (both write schemas require
+      // officialRulesUrl; no writer ever set it). It is dropped, and
+      // listing_publish_guard() now hard-requires official_rules_url, so the
+      // claim is TRUE. Meanwhile the copy USED to assert "no purchase
+      // necessary" and "the sponsor's entry page" — which nothing enforces or
+      // verifies — so this file banned the true claim and shipped the false
+      // ones. Those are now caught by lib/__tests__/honest-copy.test.ts, which
+      // scans this module.
+      expect(copy, `${hub.slug} no-purchase claim`).not.toContain("no purchase necessary");
+      expect(copy, `${hub.slug} ownership claim`).not.toContain("sponsor's entry page");
     }
   });
 });
