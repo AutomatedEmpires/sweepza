@@ -191,7 +191,11 @@ function isPublicIPv4(ip: string): boolean {
 function isPublicIPv6(raw: string): boolean {
   const s = raw.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
   if (s === "::1" || s === "::") return false; // loopback / unspecified
-  if (s.startsWith("fe80")) return false; //     link-local
+  // Link-local is fe80::/10 — the first hextet runs fe80..febf, NOT just fe80.
+  // `startsWith("fe80")` only covered fe80::/16 and let febf::1 (and everything
+  // between) through as "public". Mask the top 10 bits instead of the spelling.
+  const firstHextet = Number.parseInt(s.split(":")[0] || "0", 16);
+  if (!Number.isNaN(firstHextet) && (firstHextet & 0xffc0) === 0xfe80) return false;
   if (/^f[cd]/.test(s)) return false; //         fc00::/7 unique-local
   if (s.startsWith("ff")) return false; //       multicast
 

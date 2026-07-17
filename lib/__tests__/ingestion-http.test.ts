@@ -297,6 +297,11 @@ describe("SSRF — non-public destinations", () => {
       "https://printer.local/",
       "https://[::1]:8080/",
       "https://[fe80::1]/",
+      // Link-local is fe80::/10, not fe80::/16 — everything up to febf. A check
+      // matching the fe80 spelling let these through as public.
+      "https://[fe90::1]/",
+      "https://[fea0::1]/",
+      "https://[febf:ffff::1]/",
       "https://[fd00::1]/",
       "https://[::ffff:127.0.0.1]/", // IPv4-mapped loopback via v6 syntax…
       "https://[::ffff:7f00:1]/", // …and the hex form WHATWG URL normalises it to
@@ -310,6 +315,13 @@ describe("SSRF — non-public destinations", () => {
   it("still allows an IPv4-mapped PUBLIC address", () => {
     // The mapped-address handling must reject by range, not reject on sight.
     expect(isUrlAllowed(open(), "https://[::ffff:5db8:d822]/")).toBe(true); // 93.184.216.34
+  });
+
+  it("does not over-block adjacent IPv6 that is genuinely public", () => {
+    // fec0::/10 was deprecated site-local and fe00:: is not link-local; the /10
+    // mask must stop at febf rather than swallowing the neighbourhood.
+    expect(isUrlAllowed(open(), "https://[2606:4700::1111]/")).toBe(true); // Cloudflare
+    expect(isUrlAllowed(open(), "https://[2001:4860:4860::8888]/")).toBe(true); // Google
   });
 
   it("still allows a genuine public sponsor page", () => {
