@@ -1,17 +1,39 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CATEGORY_HUBS } from "@/lib/category-hubs";
 import { FAQ_ITEMS } from "@/lib/faq";
 import { TRUST_BAND_ITEMS } from "@/lib/trust-copy";
 
 // Public trust copy must never claim more than the platform enforces.
-// The data model allows published listings without an official-rules link
-// (`official_rules_exception`, see listing_publish_guard), allows hosts with
-// `verification_status = 'none'`, never verifies that an entry URL is
-// sponsor-owned, and review is a manual queue with no SLA. So universal
-// rules-link claims, blanket verification claims, sponsor-ownership claims,
-// and timing promises are banned. What we DO claim maps to hard mechanisms:
-// the free-to-enter listing policy, the public serving boundary that only
-// returns reviewed/verified rows (lib/db/listings.ts), and the structural
-// fact that entries happen off-platform via the listing's entry_url.
+//
+// ⚠️ THIS GUARD EXISTED AND THE SITE LIED ANYWAY — because it only scanned two
+// data modules (the trust band and the FAQ) while the claims lived elsewhere.
+// `public/llms.txt` said "the sponsor's official entry page" twice and
+// `lib/category-hubs.ts` said "the sponsor's entry page" eight times: both
+// already banned by the sponsor-ownership family below, both never looked at.
+// A detector that does not scan the surface is decoration. SURFACES now covers
+// every public claim surface, including the ones that are not data modules —
+// a .tsx component and a static .txt are scanned as raw source.
+//
+// The model allows hosts with `verification_status = 'none'`, never verifies
+// that an entry URL is sponsor-owned, and review is a manual queue with no SLA.
+// So blanket verification claims, sponsor-ownership claims, and timing promises
+// are banned.
+//
+// NO-PURCHASE (the expensive one): `no_purchase_necessary` is nullable, is not
+// checked by listing_publish_guard(), and is absent from BOTH write schemas — a
+// host cannot affirm it even if they want to. It is a third party's legal
+// representation about their own promotion, and it is the phrase separating a
+// lawful sweepstakes from an illegal lottery. Sweepza may state its own listing
+// POLICY ("we only list free-to-enter sweepstakes" — an editorial commitment
+// with a reporting path); it may NOT assert on a specific listing's behalf that
+// no purchase is necessary. That distinction is what this family enforces.
+//
+// UNIVERSAL RULES CLAIMS were banned here for `official_rules_exception` — an
+// escape hatch nothing could ever open (both write schemas require a rules URL;
+// no writer ever set it). The column is dropped and listing_publish_guard() now
+// hard-requires official_rules_url, so that claim is TRUE and the ban is gone.
 //
 // Each banned family carries positive fixtures — representative phrasings
 // that MUST be caught — so the detectors are themselves regression-proofed
@@ -26,20 +48,32 @@ interface BannedFamily {
 }
 
 const BANNED_FAMILIES: BannedFamily[] = [
+  // REMOVED: "universal official-rules claims". It was banned because
+  // `official_rules_exception` "let" a listing publish without a rules link —
+  // an escape hatch nothing could open (both write schemas require
+  // officialRulesUrl; no writer ever set it true). The column is dropped and
+  // listing_publish_guard() hard-requires official_rules_url, so "every listing
+  // links to its official rules" is now TRUE and may be said.
   {
-    name: "universal official-rules claims",
-    reason: "published listings may carry a documented rules exception",
+    name: "per-listing no-purchase claims",
+    reason:
+      "no_purchase_necessary is nullable, unchecked by listing_publish_guard(), " +
+      "and absent from both write schemas — Sweepza cannot assert it for a promotion it does not run",
     patterns: [
-      /official rules (?:\w+ ){0,3}(?:on|for|with|to) (?:each|every|all)\b/i,
-      /(?:each|every|all) listings? (?:links?|includes?|carr(?:y|ies)|comes? with|provides?|has|have)[^.]*rules/i,
+      // Asserting it OF the listings — the sponsor's legal representation, not ours.
+      /(?:each|every|all|any) listed? [^.]*no[- ]purchase/i,
+      /no purchase is ever necessary (?:to enter )?(?:any|each|every)/i,
+      /(?:always|never) (?:no purchase|pay-to-play|pay to enter)/i,
+      /pay-to-enter is never listed/i,
+      /(?:free to enter|no purchase necessary)[^.]*(?:each|every|all) listing/i,
+      /(?:each|every|all) listing[^.]*(?:free to enter|no purchase necessary)/i,
     ],
     fixtures: [
-      "Official rules on every listing",
-      "official rules are provided for all listings",
-      "official rules linked on each listing",
-      "Each listing links to the sponsor's official rules",
-      "all listings include official rules",
-      "every listing comes with the official rules",
+      "No purchase necessary is required — pay-to-enter is never listed.",
+      "No purchase is ever necessary to enter any listed sweepstakes",
+      "always no purchase necessary",
+      "Every listing is free to enter",
+      "each listing is free to enter and links to the sponsor's page",
     ],
   },
   {
@@ -88,14 +122,55 @@ const BANNED_FAMILIES: BannedFamily[] = [
   },
 ];
 
-const SURFACES: { name: string; texts: string[] }[] = [
+/**
+ * Read a public claim surface that is not a data module (component / static
+ * file), with comments stripped.
+ *
+ * Stripping matters: the honest fix for a false claim is usually to delete it
+ * and leave a comment saying what it used to say and why it was wrong. Scanning
+ * raw source makes that comment trip the very detector it documents — the
+ * explanation reads as the lie. Only shipped strings are claims.
+ */
+function source(relativePath: string): string {
+  return readFileSync(join(process.cwd(), relativePath), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ") // block + JSX-adjacent comments
+    .replace(/^\s*\/\/.*$/gm, " ") // whole-line //
+    .replace(/\s\/\/[^\n"'`]*$/gm, " "); // trailing // (never inside a string)
+}
+
+// Every surface that makes a public claim — NOT just the two data modules.
+// The trust band and FAQ state Sweepza's own listing POLICY (an editorial
+// commitment: what we undertake to list, with a reporting path), which is the
+// founder's canon and is a different act from asserting a fact about a specific
+// third party's promotion. `policyCanon` marks those two so the per-listing
+// no-purchase family does not fire on a policy statement — every other family
+// still applies to them.
+const SURFACES: { name: string; texts: string[]; policyCanon?: boolean }[] = [
   {
     name: "homepage trust band",
     texts: TRUST_BAND_ITEMS.map((item) => item.label),
+    policyCanon: true,
   },
   {
     name: "FAQ",
     texts: FAQ_ITEMS.flatMap((item) => [item.question, item.answer]),
+    policyCanon: true,
+  },
+  {
+    name: "category hubs (12 indexed landing pages)",
+    texts: CATEGORY_HUBS.flatMap((hub) => [hub.title, hub.description]),
+  },
+  {
+    // Machine-read by assistants, which then repeat these claims to users —
+    // a false claim here escapes the site entirely.
+    name: "llms.txt",
+    texts: [source("public/llms.txt")],
+  },
+  {
+    // Copy lives inline in the component rather than a data module, which is
+    // exactly how its enforcement claim escaped this guard.
+    name: "host pitch (/host)",
+    texts: [source("components/host-pitch.tsx")],
   },
 ];
 
@@ -113,6 +188,10 @@ describe("banned-claim detectors catch their own family", () => {
 describe("honest trust copy", () => {
   for (const surface of SURFACES) {
     for (const family of BANNED_FAMILIES) {
+      // Policy canon may state Sweepza's own listing commitment; it may not be
+      // held to the per-listing family, which exists to stop us asserting a
+      // sponsor's legal representation for them.
+      if (surface.policyCanon && family.name === "per-listing no-purchase claims") continue;
       it(`${surface.name} makes no "${family.name}" (${family.reason})`, () => {
         for (const text of surface.texts) {
           for (const pattern of family.patterns) {

@@ -81,7 +81,6 @@ export interface ListingRow {
   category_fallback_image: string | null;
   entry_url: string | null;
   official_rules_url: string | null;
-  official_rules_exception: boolean;
   start_date: DateString | null;
   end_date: DateString | null;
   entry_frequency: EntryFrequency | null;

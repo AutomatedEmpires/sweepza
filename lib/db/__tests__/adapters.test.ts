@@ -26,7 +26,6 @@ function makeListingRow(overrides: Partial<ListingRow> = {}): ListingRow {
     category_fallback_image: null,
     entry_url: "https://example.com/enter",
     official_rules_url: null,
-    official_rules_exception: false,
     start_date: null,
     end_date: "2026-08-01",
     entry_frequency: "one_time",
