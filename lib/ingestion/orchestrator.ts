@@ -185,17 +185,33 @@ export async function runIngestion(
           continue;
         }
 
-        // Fetch + extract the official page (the source of truth).
-        const extraction = await extractOfficialPage(lead.officialUrl, { http: officialHttp })
-          .catch(() => null);
+        // Fetch + extract the official page (the source of truth). The result is
+        // CLASSIFIED: only a real HTTP failure from the source counts toward the
+        // circuit breaker. A 304 is not a failure at all, and an extractor that
+        // returned nothing is our problem, not the sponsor's — charging either
+        // to the source would open its circuit for our own bugs.
+        const result = await extractOfficialPage(lead.officialUrl, { http: officialHttp })
+          .catch((error: unknown) => ({
+            status: "unextractable" as const,
+            message: error instanceof Error ? error.message : String(error),
+          }));
         counts.fetched += 1;
-        if (!extraction) {
+
+        if (result.status === "not_modified") {
+          counts.skipped += 1;
+          continue;
+        }
+        if (result.status === "failed") {
           counts.failed += 1;
-          fetchFailures += 1;
+          fetchFailures += 1; // the source answered badly — this is its fault
+          continue;
+        }
+        if (result.status === "unextractable") {
+          counts.failed += 1; // ours: recorded, but never fed to the breaker
           continue;
         }
 
-        const { candidate } = mapExtraction(extraction.raw);
+        const { candidate } = mapExtraction(result.extraction.raw);
 
         // Hard gate: a candidate that fails any non-negotiable (title/
         // description/prize substance, official rules URL, entry URL,
@@ -219,7 +235,7 @@ export async function runIngestion(
         }
 
         const listingId = await createIngestedListing(candidate);
-        const snapshotRef = await snapshotOfficialRules(lead.officialUrl, extraction.pageText);
+        const snapshotRef = await snapshotOfficialRules(lead.officialUrl, result.extraction.pageText);
         await recordProvenance(listingId, {
           officialUrlKey: candidate.dedup.urlKey,
           contentFingerprint: candidate.dedup.contentKey,
@@ -229,7 +245,7 @@ export async function runIngestion(
           extractionConfidence: verification.confidence,
           extractionFactors: verification.factors,
           extractionSummary: verification.summary,
-          contentHash: extraction.contentHash,
+          contentHash: result.extraction.contentHash,
         });
         counts.created += 1;
       }

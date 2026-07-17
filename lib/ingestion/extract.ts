@@ -3,7 +3,11 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { stableHash } from "@/lib/ingestion/fingerprint";
-import type { ConditionalState, SourceHttpClient } from "@/lib/ingestion/http";
+import type {
+  ConditionalState,
+  FetchFailureClass,
+  SourceHttpClient,
+} from "@/lib/ingestion/http";
 import type { RawExtraction } from "@/lib/ingestion/mapper";
 
 // Tier-2 extraction — read the sponsor's OFFICIAL page and turn it into the
@@ -54,7 +58,9 @@ export interface FetchedPage {
 export type FetchPageResult =
   | { status: "ok"; page: FetchedPage }
   | { status: "not_modified" }
-  | { status: "failed"; failure: string; message: string };
+  // `failure` was typed `string`, which threw away the very classification this
+  // function exists to expose — the taxonomy is the contract (see http.ts).
+  | { status: "failed"; failure: FetchFailureClass; message: string };
 
 /**
  * Fetch an official page through the policy client and reduce it to bounded
@@ -140,21 +146,50 @@ export interface ExtractOptions {
 }
 
 /**
- * Fetch + extract one official page. Returns null when the page can't be
- * fetched, the extractor is unconfigured, or no structured result comes back.
- * `fetchOfficialPage` exposes the failure class for callers that need to
- * distinguish a dead link from a transient error.
+ * The outcome of one official-page extraction, CLASSIFIED.
+ *
+ * This used to be `Extraction | null`, which flattened four different facts into
+ * one: the sponsor took the page down (a listing signal), the CDN blipped (retry
+ * it), nothing changed since last time (not a failure at all), and the extractor
+ * produced nothing (our problem, not theirs). The orchestrator then counted
+ * every null as an official-fetch failure — so a run of 304s looked exactly like
+ * an outage and could trip the circuit breaker on a perfectly healthy source.
+ * The distinction already existed inside fetchOfficialPage; it was being thrown
+ * away at this boundary.
+ */
+export type ExtractionResult =
+  | { status: "ok"; extraction: Extraction }
+  | { status: "not_modified" }
+  /** The source answered badly — carries the transport's failure class. */
+  | { status: "failed"; failure: FetchFailureClass; message: string }
+  /** We could not extract from a page we DID fetch. Ours, not the source's. */
+  | { status: "unextractable"; message: string };
+
+/**
+ * Fetch + extract one official page, preserving WHY it did not yield a listing.
+ * `fetchOfficialPage` classifies the transport failure; this keeps that
+ * classification instead of collapsing it.
  */
 export async function extractOfficialPage(
   url: string,
   options: ExtractOptions,
-): Promise<Extraction | null> {
-  if (!env.ANTHROPIC_API_KEY) return null;
+): Promise<ExtractionResult> {
+  if (!env.ANTHROPIC_API_KEY) {
+    // Not the source's fault — never let this trip a source's circuit breaker.
+    return { status: "unextractable", message: "ANTHROPIC_API_KEY is not configured" };
+  }
 
   const fetched = await fetchOfficialPage(url, options.http, options.conditional).catch(
-    () => null,
+    (error: unknown) => ({
+      status: "failed" as const,
+      failure: "network" as FetchFailureClass,
+      message: error instanceof Error ? error.message : String(error),
+    }),
   );
-  if (!fetched || fetched.status !== "ok") return null;
+  if (fetched.status === "not_modified") return { status: "not_modified" };
+  if (fetched.status === "failed") {
+    return { status: "failed", failure: fetched.failure, message: fetched.message };
+  }
   const page = fetched.page;
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -173,11 +208,21 @@ export async function extractOfficialPage(
   });
 
   const toolUse = message.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") return null;
+  if (!toolUse || toolUse.type !== "tool_use") {
+    // We fetched the page fine; the extractor gave us nothing structured. That
+    // is our failure, and must not be charged to the source.
+    return {
+      status: "unextractable",
+      message: `the extractor returned no structured result for ${url}`,
+    };
+  }
 
   return {
-    raw: toolUse.input as RawExtraction,
-    pageText: page.text,
-    contentHash: page.contentHash,
+    status: "ok",
+    extraction: {
+      raw: toolUse.input as RawExtraction,
+      pageText: page.text,
+      contentHash: page.contentHash,
+    },
   };
 }

@@ -1,5 +1,5 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import { stripHtmlToText } from "@/lib/ingestion/html-text";
+import { decodeHtmlEntities, stripHtmlToText } from "@/lib/ingestion/html-text";
 import {
   SourceFetchError,
   type AdapterContext,
@@ -78,7 +78,9 @@ export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
     );
     if (!linkMatch) continue;
 
-    const url = normalizeUrl(linkMatch[1]);
+    // hrefs are HTML-encoded — `&amp;` is the normal serialization of `&`, and
+    // normalizing it raw renames query parameters (`&amp;b=2` → `amp;b`).
+    const url = normalizeUrl(decodeHtmlEntities(linkMatch[1]));
     const title = stripHtmlToText(linkMatch[2]);
     if (!url || !title) continue;
 
@@ -103,7 +105,7 @@ export function parseFreebieGuyOfficialUrl(html: string): string | null {
   const hrefs = [...content.matchAll(/href="([^"]+)"/gi)].map((m) => m[1]);
 
   for (const href of hrefs) {
-    const normalized = normalizeUrl(href);
+    const normalized = normalizeUrl(decodeHtmlEntities(href));
     if (!normalized) continue;
     // Skip links back to the blog itself; compare by parsed host, not string
     // prefix, so a lookalike domain can't masquerade as internal (or vice versa).

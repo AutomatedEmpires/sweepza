@@ -1,5 +1,5 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import { stripHtmlToText } from "@/lib/ingestion/html-text";
+import { decodeHtmlEntities, stripHtmlToText } from "@/lib/ingestion/html-text";
 import {
   SourceFetchError,
   type AdapterContext,
@@ -73,7 +73,10 @@ export function parseSweepstakesTodayOfficialUrl(html: string): string | null {
 
   for (const candidate of [rules?.[1], entry?.[1]]) {
     if (!candidate) continue;
-    const normalized = normalizeUrl(candidate);
+    // An href is HTML-encoded: `?a=1&amp;b=2` is the NORMAL serialization of
+    // `?a=1&b=2`. Handing that to normalizeUrl silently renames the parameter
+    // to `amp;b`, so the lead's identity — and its dedup key — is wrong.
+    const normalized = normalizeUrl(decodeHtmlEntities(candidate));
     if (normalized) return normalized;
   }
   return null;

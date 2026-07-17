@@ -102,6 +102,25 @@ const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
 
+// extractOfficialPage returns a CLASSIFIED result, not `Extraction | null`. The
+// distinction is the point: only a real HTTP failure from the source may feed
+// its circuit breaker — a 304 is not a failure, and our own extractor coming up
+// empty is not the sponsor's fault.
+const ok = (r: RawExtraction) => ({
+  status: "ok" as const,
+  extraction: { raw: r, pageText: "page text", contentHash: "hash" },
+});
+const httpFailed = (failure = "server_error") => ({
+  status: "failed" as const,
+  failure,
+  message: `official page -> ${failure}`,
+});
+const notModified = () => ({ status: "not_modified" as const });
+const unextractable = () => ({
+  status: "unextractable" as const,
+  message: "the extractor returned no structured result",
+});
+
 function raw(overrides: Partial<RawExtraction> = {}): RawExtraction {
   return {
     title: "Win a Dream Vacation",
@@ -134,11 +153,7 @@ beforeEach(() => {
   mocks.discover.mockResolvedValue([
     { officialUrl: "https://brand.com/official-rules" },
   ]);
-  mocks.extractOfficialPage.mockResolvedValue({
-    raw: raw(),
-    pageText: "page text",
-    contentHash: "hash",
-  });
+  mocks.extractOfficialPage.mockResolvedValue(ok(raw()));
   mocks.snapshotOfficialRules.mockResolvedValue("snapshot-ref");
   mocks.findExistingListingId.mockResolvedValue(null);
   mocks.findIngestionByUrlKey.mockResolvedValue(null);
@@ -160,7 +175,7 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       { officialUrl: "https://brand.com/a" },
       { officialUrl: "https://brand.com/b" },
     ]);
-    mocks.extractOfficialPage.mockResolvedValue(null); // the source is down
+    mocks.extractOfficialPage.mockResolvedValue(httpFailed()); // the source is down
 
     const summaries = await runIngestion();
 
@@ -190,11 +205,9 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
     // policy outcome, and counts.failed conflates the two — so the breaker must
     // key off fetch failures alone or a run of unpublishable sweeps would open
     // the circuit on a perfectly healthy source.
-    mocks.extractOfficialPage.mockResolvedValue({
-      raw: raw({ noPurchaseNecessary: null, officialRulesUrl: null }),
-      pageText: "page text",
-      contentHash: "hash",
-    });
+    mocks.extractOfficialPage.mockResolvedValue(
+      ok(raw({ noPurchaseNecessary: null, officialRulesUrl: null })),
+    );
 
     const summaries = await runIngestion();
 
@@ -211,8 +224,8 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       { officialUrl: "https://brand.com/b" },
     ]);
     mocks.extractOfficialPage
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ raw: raw(), pageText: "t", contentHash: "h" });
+      .mockResolvedValueOnce(httpFailed("not_found"))
+      .mockResolvedValueOnce(ok(raw()));
 
     await runIngestion();
 
@@ -220,6 +233,39 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       "sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
+  });
+
+  it("does NOT blame the source for a 304 — not-modified is not a failure", async () => {
+    // Collapsing everything to `null` made a run of unchanged pages look exactly
+    // like an outage and could open the circuit on a perfectly healthy source.
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/b" },
+    ]);
+    mocks.extractOfficialPage.mockResolvedValue(notModified());
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "ok", skipped: 2, created: 0 });
+  });
+
+  it("does NOT blame the source when OUR extractor comes up empty", async () => {
+    // We fetched the page fine. An extractor that returns nothing is our bug,
+    // and must never trip a sponsor's circuit breaker.
+    mocks.discover.mockResolvedValue([{ officialUrl: "https://brand.com/a" }]);
+    mocks.extractOfficialPage.mockResolvedValue(unextractable());
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
   });
 
   it("feeds the breaker when the adapter reports the source itself is down", async () => {
@@ -320,11 +366,9 @@ describe("runIngestion publishable gate", () => {
 
   it("holds a candidate that fails a hard check — no draft row, reasons in run notes", async () => {
     // Missing no-purchase signal AND missing rules URL: both are hard gates.
-    mocks.extractOfficialPage.mockResolvedValue({
-      raw: raw({ noPurchaseNecessary: null, officialRulesUrl: null }),
-      pageText: "page text",
-      contentHash: "hash",
-    });
+    mocks.extractOfficialPage.mockResolvedValue(
+      ok(raw({ noPurchaseNecessary: null, officialRulesUrl: null })),
+    );
 
     const summaries = await runIngestion();
     expect(mocks.createIngestedListing).not.toHaveBeenCalled();
@@ -340,11 +384,7 @@ describe("runIngestion publishable gate", () => {
   });
 
   it("holds a candidate whose end date has passed", async () => {
-    mocks.extractOfficialPage.mockResolvedValue({
-      raw: raw({ endDate: "2020-01-01" }),
-      pageText: "page text",
-      contentHash: "hash",
-    });
+    mocks.extractOfficialPage.mockResolvedValue(ok(raw({ endDate: "2020-01-01" })));
 
     await runIngestion();
     expect(mocks.createIngestedListing).not.toHaveBeenCalled();
@@ -355,11 +395,7 @@ describe("runIngestion publishable gate", () => {
   it("routes substance failures (empty title/description) through the same hold path", async () => {
     // These used to short-circuit on a separate NOT NULL guard that never
     // reported reasons; they must land in the run notes like any hard failure.
-    mocks.extractOfficialPage.mockResolvedValue({
-      raw: raw({ title: "", shortDescription: "" }),
-      pageText: "page text",
-      contentHash: "hash",
-    });
+    mocks.extractOfficialPage.mockResolvedValue(ok(raw({ title: "", shortDescription: "" })));
 
     const summaries = await runIngestion();
     expect(mocks.createIngestedListing).not.toHaveBeenCalled();

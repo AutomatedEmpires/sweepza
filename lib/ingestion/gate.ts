@@ -1,5 +1,9 @@
 import { isProductionExecutable, type SourceComplianceState } from "@/lib/ingestion/compliance";
-import type { SourceDescriptor } from "@/lib/ingestion/source";
+import {
+  descriptorIneligibility,
+  type DescriptorIneligibility,
+  type SourceDescriptor,
+} from "@/lib/ingestion/source";
 
 // The execution gate. Every path that could put ingestion on the live network
 // asks this module first, and it answers with a REASON, not just a boolean —
@@ -27,7 +31,9 @@ export type GateDenialReason =
   | "record_not_production_approved"
   | "kill_switch"
   | "circuit_open"
-  | "refresh_not_due";
+  | "refresh_not_due"
+  | "record_mismatch"
+  | "robots_not_permitted";
 
 export type GateDecision =
   | { allowed: true; descriptor: SourceDescriptor }
@@ -50,6 +56,29 @@ export interface GateInput {
   ingestionEnabled: string | null | undefined;
   /** Injected so the refresh window is testable without faking the clock. */
   now?: Date;
+}
+
+/** Operator-facing wording for each registry-side denial. */
+function describeIneligibility(
+  descriptor: SourceDescriptor,
+  reason: DescriptorIneligibility,
+): string {
+  switch (reason) {
+    case "kill_switch":
+      return `Source "${descriptor.id}" has its code-level kill switch engaged.`;
+    case "registry_not_production_approved":
+      return `Registry policy for "${descriptor.id}" is ${descriptor.complianceState}, not approved_for_production.`;
+    case "tos_not_permitted":
+      return (
+        `Terms-of-service posture for "${descriptor.id}" is ${descriptor.tosPosture}, not permits_use. ` +
+        `Only a completed ToS review that permits our use lets a source run live.`
+      );
+    case "robots_not_permitted":
+      return (
+        `Robots posture for "${descriptor.id}" is ${descriptor.robotsPosture}. We crawl only where robots ` +
+        `is permissive (with or without a delay) — "restricted" and "unknown" both mean we do not have permission.`
+      );
+  }
 }
 
 /**
@@ -76,36 +105,14 @@ export function evaluateSourceGate(input: GateInput): GateDecision {
     };
   }
 
-  if (descriptor.killSwitch) {
-    return {
-      allowed: false,
-      reason: "kill_switch",
-      detail: `Source "${descriptor.id}" has its code-level kill switch engaged.`,
-    };
-  }
-
-  if (!isProductionExecutable(descriptor.complianceState)) {
-    return {
-      allowed: false,
-      reason: "registry_not_production_approved",
-      detail: `Registry policy for "${descriptor.id}" is ${descriptor.complianceState}, not approved_for_production.`,
-    };
-  }
-
-  // ToS is an INDEPENDENT condition, not a footnote of the compliance ladder.
-  // SourceDescriptor states that an unreviewed source cannot reach production,
-  // but nothing enforced it: a descriptor sitting at approved_for_production
-  // with tosPosture "unreviewed" — or outright "prohibits_use" — executed. Fail
-  // closed on an allowlist of one, so a posture added later denies by default
-  // instead of silently permitting.
-  if (descriptor.tosPosture !== "permits_use") {
-    return {
-      allowed: false,
-      reason: "tos_not_permitted",
-      detail:
-        `Terms-of-service posture for "${descriptor.id}" is ${descriptor.tosPosture}, not permits_use. ` +
-        `Only a completed ToS review that permits our use lets a source run live.`,
-    };
+  // The registry-side conditions live in ONE predicate (source.ts), which
+  // productionApprovedSources() also uses. They used to be implemented twice,
+  // in different subsets: the registry helper checked only state + kill switch,
+  // so a source whose ToS prohibits use, or whose robots posture is restricted,
+  // was reported "approved" there while the gate refused it.
+  const ineligible = descriptorIneligibility(descriptor);
+  if (ineligible) {
+    return { allowed: false, reason: ineligible, detail: describeIneligibility(descriptor, ineligible) };
   }
 
   const record = input.record;
@@ -114,6 +121,18 @@ export function evaluateSourceGate(input: GateInput): GateDecision {
       allowed: false,
       reason: "record_missing",
       detail: `No approval record exists for "${descriptor.id}". An approval must be recorded before it can run.`,
+    };
+  }
+
+  // The record must be THIS source's. Nothing checked, so a caller that
+  // cross-wired the lookup could authorize one source with another's approval —
+  // and the whole gate rests on the record actually belonging to the descriptor
+  // it is being asked about.
+  if (record.id !== descriptor.id) {
+    return {
+      allowed: false,
+      reason: "record_mismatch",
+      detail: `Approval record "${record.id}" does not belong to source "${descriptor.id}". Refusing rather than authorizing one source with another's approval.`,
     };
   }
 

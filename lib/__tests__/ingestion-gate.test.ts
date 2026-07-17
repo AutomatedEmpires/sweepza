@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { SOURCE_COMPLIANCE_STATES, type SourceComplianceState } from "@/lib/ingestion/compliance";
 import { evaluateSourceGate, type SourceApprovalSnapshot } from "@/lib/ingestion/gate";
-import { SOURCE_REGISTRY, type SourceDescriptor } from "@/lib/ingestion/source";
+import {
+  SOURCE_REGISTRY,
+  productionApprovedSources,
+  type SourceDescriptor,
+} from "@/lib/ingestion/source";
 
 // These tests are the safety proof for the whole ingestion platform: they must
 // demonstrate that a source which has not been explicitly approved cannot
@@ -174,6 +178,74 @@ describe("the shipped registry is dark", () => {
     // floor is the only thing left holding a source back — revisit the gate.
     for (const source of SOURCE_REGISTRY) {
       expect(source.tosPosture).toBe("unreviewed");
+    }
+  });
+});
+
+describe("gate — the record must belong to the descriptor", () => {
+  it("refuses an approval record for a DIFFERENT source", () => {
+    // Nothing checked this, so a caller that cross-wired the lookup could
+    // authorize one source with another's approval — and the entire gate rests
+    // on the record actually being this source's.
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ id: "sweeps_advantage" }),
+      record: record({ id: "some_other_source" }),
+      ingestionEnabled: "true",
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toBe("record_mismatch");
+      expect(decision.detail).toContain("some_other_source");
+    }
+  });
+
+  it("allows when the record is the descriptor's own", () => {
+    const decision = evaluateSourceGate({
+      descriptor: descriptor({ id: "sweeps_advantage" }),
+      record: record({ id: "sweeps_advantage" }),
+      ingestionEnabled: "true",
+    });
+    expect(decision.allowed).toBe(true);
+  });
+});
+
+describe("gate — robots posture", () => {
+  it("refuses restricted and unknown robots, even at full approval", () => {
+    for (const robotsPosture of ["restricted", "unknown"] as const) {
+      const decision = evaluateSourceGate({
+        descriptor: descriptor({ robotsPosture }),
+        record: record(),
+        ingestionEnabled: "true",
+      });
+      expect(decision.allowed, `robots "${robotsPosture}" must not execute`).toBe(false);
+      if (!decision.allowed) expect(decision.reason).toBe("robots_not_permitted");
+    }
+  });
+
+  it("allows both permissive postures", () => {
+    for (const robotsPosture of ["permissive", "permissive_with_delay"] as const) {
+      const decision = evaluateSourceGate({
+        descriptor: descriptor({ robotsPosture }),
+        record: record(),
+        ingestionEnabled: "true",
+      });
+      expect(decision.allowed, `robots "${robotsPosture}" should execute`).toBe(true);
+    }
+  });
+
+  it("the registry helper cannot disagree with the gate", () => {
+    // These implemented different subsets of the same policy: the helper checked
+    // only state + kill switch, so a source whose ToS prohibits use — or whose
+    // robots posture is restricted — was reported "approved" by the registry
+    // while the gate refused it. Two answers to one question.
+    for (const source of SOURCE_REGISTRY) {
+      const gateAllows = evaluateSourceGate({
+        descriptor: source,
+        record: record({ id: source.id }),
+        ingestionEnabled: "true",
+      }).allowed;
+      const registryApproves = productionApprovedSources().some((s) => s.id === source.id);
+      expect(registryApproves, `${source.id}: registry and gate must agree`).toBe(gateAllows);
     }
   });
 });

@@ -262,16 +262,48 @@ export function getSourceDescriptor(id: string): SourceDescriptor | undefined {
   return SOURCE_REGISTRY.find((source) => source.id === id);
 }
 
+/** Robots postures under which we may crawl at all. Fail-closed: an allowlist. */
+const CRAWLABLE_ROBOTS: readonly RobotsPosture[] = ["permissive", "permissive_with_delay"];
+
+export type DescriptorIneligibility =
+  | "kill_switch"
+  | "registry_not_production_approved"
+  | "tos_not_permitted"
+  | "robots_not_permitted";
+
 /**
- * The registry's own answer to "may this source run live?" — the static half of
- * the gate. The authoritative answer additionally requires the database
- * approval record and the INGESTION_ENABLED switch; see
+ * The registry-side half of "may this source run live?", in ONE place.
+ *
+ * This exists because the gate and `productionApprovedSources()` implemented
+ * DIFFERENT subsets of the same policy: the helper checked only the compliance
+ * state and kill switch, so a source whose ToS prohibits use — or whose robots
+ * posture is `restricted` — was reported as production-approved by the registry
+ * while the gate refused it. Two answers to one question is how a prohibited
+ * source ends up on an admin screen labelled "approved".
+ *
+ * Fail-closed throughout: each check is an allowlist, so a posture or state
+ * added later denies by default instead of inheriting permission. The
+ * authoritative answer still needs the DB record and INGESTION_ENABLED — see
  * `lib/ingestion/gate.ts`, which is what execution paths must call.
  */
+export function descriptorIneligibility(
+  descriptor: SourceDescriptor,
+): DescriptorIneligibility | null {
+  if (descriptor.killSwitch) return "kill_switch";
+  if (descriptor.complianceState !== "approved_for_production") {
+    return "registry_not_production_approved";
+  }
+  if (descriptor.tosPosture !== "permits_use") return "tos_not_permitted";
+  if (!CRAWLABLE_ROBOTS.includes(descriptor.robotsPosture)) return "robots_not_permitted";
+  return null;
+}
+
+/**
+ * The registry's own answer to "may this source run live?" — the static half of
+ * the gate, delegating to the shared predicate so it cannot drift from it.
+ */
 export function productionApprovedSources(): SourceDescriptor[] {
-  return SOURCE_REGISTRY.filter(
-    (source) => source.complianceState === "approved_for_production" && !source.killSwitch,
-  );
+  return SOURCE_REGISTRY.filter((source) => descriptorIneligibility(source) === null);
 }
 
 /**
