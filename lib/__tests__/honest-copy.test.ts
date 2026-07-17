@@ -7,14 +7,24 @@ import { TRUST_BAND_ITEMS } from "@/lib/trust-copy";
 
 // Public trust copy must never claim more than the platform enforces.
 //
-// ⚠️ THIS GUARD EXISTED AND THE SITE LIED ANYWAY — because it only scanned two
-// data modules (the trust band and the FAQ) while the claims lived elsewhere.
-// `public/llms.txt` said "the sponsor's official entry page" twice and
-// `lib/category-hubs.ts` said "the sponsor's entry page" eight times: both
-// already banned by the sponsor-ownership family below, both never looked at.
-// A detector that does not scan the surface is decoration. SURFACES now covers
-// every public claim surface, including the ones that are not data modules —
-// a .tsx component and a static .txt are scanned as raw source.
+// ⚠️ THIS GUARD EXISTED AND THE SITE LIED ANYWAY — TWICE, the same way both
+// times: the detectors were right and SURFACES was short.
+//
+// Round 1: it scanned two data modules (the trust band and the FAQ) while the
+// claims lived elsewhere. `public/llms.txt` said "the sponsor's official entry
+// page" twice and `lib/category-hubs.ts` said "the sponsor's entry page" eight
+// times: both already banned below, both never looked at.
+//
+// Round 2: the fix for round 1 added `lib/`, `public/` and `components/` files
+// and then asserted, right here, that SURFACES "covers every public claim
+// surface". It did not scan a single `app/` route. Seven more surfaces were
+// shipping the no-purchase claim the whole time, including the homepage and the
+// social OG card. The comment claiming full coverage was itself the kind of
+// unbacked assertion this file exists to ban.
+//
+// So: a detector that does not scan the surface is decoration, and a coverage
+// claim is only as good as the enumeration behind it. When you add a
+// user-visible string, add its file to SURFACES in the same commit.
 //
 // The model allows hosts with `verification_status = 'none'`, never verifies
 // that an entry URL is sponsor-owned, and review is a manual queue with no SLA.
@@ -191,6 +201,52 @@ const SURFACES: { name: string; texts: string[]; policyCanon?: boolean }[] = [
     // Reintroducing "No purchase necessary · See official rules" must fail.
     name: "listing detail (/sweeps/[slug])",
     texts: [source("components/listing-detail.tsx")],
+  },
+  // ⚠️ AND IT HAPPENED A SECOND TIME. Everything above scans `lib/`, `public/`
+  // and `components/` — no `app/` route was ever looked at. So the six entries
+  // above were the whole guard while SEVEN more claim surfaces shipped the
+  // no-purchase assertion unscanned: the HOMEPAGE said it twice, and the
+  // social OG CARD — the preview for every shared link, the one claim surface
+  // that travels off the site entirely — put it on a trust chip. The nav rail
+  // printed it on every page. Fixing a surface is not the fix; SCANNING it is.
+  // A claim surface is any file that ships a user-visible string, not just the
+  // ones that happen to be data modules or components.
+  {
+    // Said it twice: footer trust line + hero sub-CTA.
+    name: "homepage (/)",
+    texts: [source("app/page.tsx")],
+  },
+  {
+    name: "category hub pages (/discover/[category])",
+    texts: [source("app/discover/[category]/page.tsx")],
+  },
+  {
+    // The page's own inline copy only — FAQ_ITEMS answers are policy canon and
+    // are scanned as the "FAQ" surface above, which this file merely renders.
+    name: "FAQ page (/faq)",
+    texts: [source("app/faq/page.tsx")],
+  },
+  {
+    name: "profile (/profile)",
+    texts: [source("app/profile/page.tsx")],
+  },
+  {
+    // Travels off-site into every social embed; nothing on the page corrects it.
+    name: "social OG card (opengraph-image)",
+    texts: [source("app/opengraph-image.tsx")],
+  },
+  {
+    name: "about (/about)",
+    texts: [source("app/about/page.tsx")],
+  },
+  {
+    name: "host page (/host)",
+    texts: [source("app/host/page.tsx")],
+  },
+  {
+    // Persistent left nav — its copy renders on every route.
+    name: "side rail (all routes)",
+    texts: [source("components/side-rail.tsx")],
   },
 ];
 

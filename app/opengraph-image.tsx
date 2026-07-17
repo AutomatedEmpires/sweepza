@@ -6,9 +6,12 @@ import { APP_NAME, APP_TAGLINE, SITE_URL } from "@/lib/site";
 // generateMetadata sets openGraph.images, which overrides this file downtree.
 // Brand values are the light-theme tokens from app/tokens.css; satori can't
 // read CSS variables, so the hex values are pinned here with their names.
-// Copy must stay honest: only claims the platform enforces (free-to-enter
-// listing policy, no purchase necessary) — never universal rules/verification
-// claims or timing promises.
+// Copy must stay honest: only claims the platform enforces. The free-to-enter
+// LISTING POLICY is Sweepza's own editorial commitment and may be stated. Its
+// no-purchase claim was NOT policy and nothing enforces it: `no_purchase_necessary`
+// is nullable, unchecked by listing_publish_guard(), and absent from both write
+// schemas — it is the sponsor's legal representation, not ours. Never assert it
+// here, and never make universal rules/verification claims or timing promises.
 
 export const alt = `${APP_NAME} — ${APP_TAGLINE}`;
 export const size = { width: 1200, height: 630 };
@@ -146,9 +149,11 @@ export default function OpenGraphImage() {
               justifyContent: "space-between",
             }}
           >
+            {/* Was: "No purchase necessary" — this card is the social preview for every
+                route, so it broadcast a sponsor's legal representation nothing backs. */}
             <div style={{ display: "flex", gap: 14 }}>
               <TrustChip>Free to enter — always</TrustChip>
-              <TrustChip>No purchase necessary</TrustChip>
+              <TrustChip>Free for seekers</TrustChip>
             </div>
             <div
               style={{
