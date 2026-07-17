@@ -25,9 +25,26 @@ export default function FaqPage() {
         <h1 className="font-display text-3xl text-ink lg:text-4xl">
           Frequently asked questions
         </h1>
+        {/* Was: "Sweepza is free, no purchase is ever necessary, and we're a
+            directory — not the sponsor." Three coordinate facts, and the middle
+            one certified a sponsor's legal representation for every listed
+            promotion. Nothing backs it: no_purchase_necessary is nullable,
+            unchecked by listing_publish_guard(), and absent from both write
+            schemas, so a host cannot affirm it even if they want to.
+
+            lib/faq.ts may say the same words because it SCOPES them — "no
+            purchase is ever necessary on the sweepstakes we list" is Sweepza's
+            own listing policy, an editorial commitment with a reporting path.
+            Unscoped, in a page header, it reads as certification of a third
+            party's promotion. Same words, different act.
+
+            The fix is not to exempt this route (tried, rejected — see
+            lib/__tests__/honest-copy.test.ts). Sweepza's own fee is ours to
+            state; the entry terms are the sponsor's, so point at the rules. */}
         <p className="mt-2 max-w-[52ch] text-[15px] leading-relaxed text-graphite">
-          The short version: Sweepza is free, no purchase is ever necessary, and
-          we&apos;re a directory — not the sponsor. Here are the details.
+          The short version: Sweepza is free to use, we&apos;re a directory — not
+          the sponsor — and each sweepstakes is governed by its own official
+          rules, which every listing links to. Here are the details.
         </p>
       </header>
 
@@ -63,8 +80,10 @@ export default function FaqPage() {
         .
       </p>
 
+      {/* Was: "Free for seekers · No purchase necessary" — the second half asserted the
+          sponsor's legal representation. Sweepza can only speak to its own fee. */}
       <p className="mt-6 text-center text-[10px] uppercase tracking-[0.15em] text-graphite">
-        Free for seekers · No purchase necessary
+        Free for seekers — Sweepza never charges you
       </p>
     </section>
   );
