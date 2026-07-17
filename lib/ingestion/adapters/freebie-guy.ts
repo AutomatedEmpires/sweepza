@@ -1,5 +1,6 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { decodeHtmlEntities, stripHtmlToText } from "@/lib/ingestion/html-text";
+import { isRetryable, type FetchFailureClass } from "@/lib/ingestion/http";
 import {
   SourceFetchError,
   type AdapterContext,
@@ -129,9 +130,35 @@ export const freebieGuyAdapter: SourceAdapter = {
     const posts = parseFreebieGuyArchive(archive.body).filter(looksLikeSweepstakes);
     const leads: DiscoveredLead[] = [];
 
+    // The archive answering does not prove the site is healthy. If every detail
+    // request then fails transiently, returning [] would report a quiet day
+    // while the source is down — the same defect as the archive fetch, one level
+    // in. Isolated 404s stay isolated: a single removed post is a fact about
+    // that post, not about the source.
+    let attempted = 0;
+    let answered = 0;
+    let transientFailures = 0;
+    let lastFailure: { url: string; failure: FetchFailureClass; message: string } | null = null;
+
     for (const post of posts.slice(0, limit)) {
+      attempted += 1;
       const detail = await http.get(post.url);
-      if (detail.status !== "ok") continue;
+
+      if (detail.status === "not_modified") {
+        answered += 1; // the source responded; nothing changed
+        continue;
+      }
+      if (detail.status !== "ok") {
+        if (isRetryable(detail.failure)) {
+          transientFailures += 1;
+          lastFailure = { url: detail.url, failure: detail.failure, message: detail.message };
+        } else {
+          answered += 1; // a 404/410 is a real answer about that post
+        }
+        continue;
+      }
+      answered += 1;
+
       // A closed giveaway is a correct discovery outcome, not a failure: skip it
       // quietly rather than sending an already-over sweepstakes to review.
       if (isClosedPost(detail.body)) continue;
@@ -144,6 +171,17 @@ export const freebieGuyAdapter: SourceAdapter = {
         sourceUrl: post.url,
         hint: { title: post.title },
       });
+    }
+
+    // Every detail we tried failed transiently and nothing answered: that is an
+    // outage, and it must reach the circuit breaker rather than look like "no
+    // new sweeps".
+    if (attempted > 0 && answered === 0 && transientFailures === attempted && lastFailure) {
+      throw new SourceFetchError(
+        lastFailure.url,
+        lastFailure.failure,
+        `all ${attempted} detail request(s) failed transiently — ${lastFailure.message}`,
+      );
     }
 
     return leads;

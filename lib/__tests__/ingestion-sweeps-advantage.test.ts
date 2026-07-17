@@ -168,11 +168,18 @@ describe("sweepsAdvantageAdapter.discover", () => {
     );
   });
 
-  it("returns nothing when the hub has no daily link", async () => {
+  it("RAISES when the hub has no daily link — a stale parser is not a quiet day", async () => {
+    // Was: `toEqual([])`. That locked in silent success, so a hub whose markup
+    // changed shape would report "no new sweeps" forever and never reach failure
+    // telemetry. The source answered; there was nothing usable in it.
     const http = createFixtureHttpClient(descriptor, {
       [`${BASE}/new-sweepstakes`]: { body: "<h2>New Sweepstakes</h2>" },
     });
-    expect(await sweepsAdvantageAdapter.discover({ http, limit: 10 })).toEqual([]);
+
+    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "empty_body",
+    });
   });
 
   it("stays on sweepsadvantage.com throughout discovery", async () => {

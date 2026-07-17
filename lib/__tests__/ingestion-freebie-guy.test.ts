@@ -119,6 +119,37 @@ describe("freebieGuyAdapter.discover", () => {
     );
   });
 
+  it("RAISES when every detail request fails transiently", async () => {
+    // The archive answering does not prove the site is healthy. If every detail
+    // then times out, returning [] reports a quiet day during an outage — the
+    // same defect as the archive fetch, one level in.
+    const pages: Record<string, { body?: string; status?: number; networkError?: string }> = {
+      "https://thefreebieguy.com/category/sweepstakes": { body: FG_ARCHIVE_HTML },
+    };
+    for (const url of parseFreebieGuyArchive(FG_ARCHIVE_HTML).map((p) => p.url)) {
+      pages[url] = { status: 503 }; // retryable
+    }
+    const http = createFixtureHttpClient(descriptor, pages);
+
+    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
+  });
+
+  it("does NOT raise for isolated 404s — a removed post is a fact, not an outage", async () => {
+    // A 404 is the source answering clearly about that post. Only transient
+    // failures across the board mean the source itself is down.
+    const posts = parseFreebieGuyArchive(FG_ARCHIVE_HTML);
+    const pages: Record<string, { body?: string; status?: number }> = {
+      "https://thefreebieguy.com/category/sweepstakes": { body: FG_ARCHIVE_HTML },
+    };
+    for (const p of posts) pages[p.url] = { status: 404 };
+    const http = createFixtureHttpClient(descriptor, pages);
+
+    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).resolves.toEqual([]);
+  });
+
   it("carries the failure class so the breaker can record WHY", async () => {
     const http = createFixtureHttpClient(descriptor, {
       "https://thefreebieguy.com/category/sweepstakes": { status: 503 },

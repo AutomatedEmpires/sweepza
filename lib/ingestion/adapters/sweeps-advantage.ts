@@ -149,10 +149,19 @@ export const sweepsAdvantageAdapter: SourceAdapter = {
     if (hub.status === "not_modified") return []; // genuinely nothing new
     if (hub.status !== "ok") throw new SourceFetchError(hub.url, hub.failure, hub.message);
 
-    // Not a fetch failure: the source answered, our parser found no daily link.
-    // Left as a quiet result rather than an outage signal.
+    // The source answered, but its markup no longer contains the daily link this
+    // adapter is built around. That is not a quiet day — it means the page
+    // changed shape or is serving something unexpected, and returning [] would
+    // hide a broken parser behind "no new sweeps" indefinitely. Classified as
+    // `empty_body`: we got a response with nothing usable in it.
     const dailyPath = parseNewestDailyPath(hub.body);
-    if (!dailyPath) return [];
+    if (!dailyPath) {
+      throw new SourceFetchError(
+        `${BASE}${HUB_PATH}`,
+        "empty_body",
+        "the hub returned no daily-sweepstakes link — the page shape changed or the parser is stale",
+      );
+    }
 
     const daily = await http.get(`${BASE}${dailyPath}`);
     if (daily.status === "not_modified") return [];
