@@ -8,7 +8,7 @@
   end with `ae finish sweepza`. Work counts as done ONLY when pushed and remote-SHA-verified.
 - **Deploys:** merging `main` auto-deploys production via Vercel — **LIVE at sweepza.com**.
 - **Validate before merge:** `pnpm typecheck && pnpm lint` (CI must be green; squash merges).
-- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, email=resend (sender isolation — OWN identity, never E&E's), storage=cloudinary (own account/env), ai=anthropic (ingestion extraction, claude-opus-4-8).
+- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, email=resend (sender isolation — OWN identity, never E&E's), storage=none (Sweepza has no Cloudinary account, code, or env — the previous "own account/env" claim was false; corrected 2026-07-18), ai=anthropic (ingestion extraction, claude-opus-4-8).
 - **LOCKED:** Sweepza is FULLY INDEPENDENT from Explore & Earn — no shared Stripe/Resend/Supabase resources, ever
 - **LOCKED:** Launch gate: NO-GO until 6 founder decisions are made — CI-green code is not launch permission
 - **LOCKED:** Theme: tokenized day/night hybrid (auto by local clock, dark 8pm-6am) — edit app/tokens.css only
