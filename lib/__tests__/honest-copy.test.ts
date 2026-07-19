@@ -323,6 +323,7 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/error.tsx"),
   routeSurface("app/global-error.tsx"),
   routeSurface("app/not-found.tsx"),
+  routeSurface("app/dead-listing/page.tsx"),
   routeSurface("app/about/page.tsx"),
   routeSurface("app/cookies/page.tsx"),
   // /faq is scanned by every family, INCLUDING the per-listing no-purchase one.

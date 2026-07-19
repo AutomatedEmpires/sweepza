@@ -19,8 +19,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  // Throws notFound() during the metadata phase — before any bytes stream —
-  // so a dead slug is a real HTTP 404 (see requirePublicListingBySlug).
+  // Middleware performs the hard-404 preflight. This lookup still protects
+  // metadata during client transitions and availability races.
   const listing = await requirePublicListingBySlug(slug);
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL);
