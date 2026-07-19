@@ -272,10 +272,21 @@ describe("middleware CSP flag branch", () => {
     const request = new NextRequest(
       "https://sweepza.test/sweeps/signed-in-missing-sweep",
     );
+    request.headers.set("cookie", "_vercel_jwt=preview-session");
+    request.headers.set("x-vercel-protection-bypass", "preview-bypass");
+    request.headers.set("authorization", "Bearer do-not-forward");
+    request.headers.set("x-unrelated", "do-not-forward");
     const response = await middleware(request, EVENT);
 
     expect(clerk.impl).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(1);
+    const probeHeaders = vi.mocked(fetch).mock.calls[0][1]?.headers as Headers;
+    expect(probeHeaders.get("cookie")).toBe("_vercel_jwt=preview-session");
+    expect(probeHeaders.get("x-vercel-protection-bypass")).toBe(
+      "preview-bypass",
+    );
+    expect(probeHeaders.get("authorization")).toBeNull();
+    expect(probeHeaders.get("x-unrelated")).toBeNull();
     expect(response.status).toBe(404);
     const nonce = request.headers.get("x-nonce");
     expect(nonce).toBeTruthy();

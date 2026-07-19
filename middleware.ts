@@ -88,6 +88,21 @@ function requestHeadersForRewrite(
   return headers;
 }
 
+function headersForListingProbe(request: NextRequest): Headers {
+  const headers = new Headers({
+    "user-agent": "sweepza-listing-availability/1.0",
+  });
+
+  // Preview deployments are protected before middleware runs. Vercel's
+  // documented server-side pattern is to pass the incoming same-origin
+  // cookie; automation uses the project-scoped bypass header instead.
+  for (const name of ["cookie", "x-vercel-protection-bypass"] as const) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
+}
+
 /**
  * App Router loading boundaries stream before a page-level notFound() can
  * change the status code. Probe the existing public listing endpoint before
@@ -117,7 +132,7 @@ async function rewriteMissingSweep(
     const probe = await fetch(probeUrl, {
       method: "HEAD",
       cache: "no-store",
-      headers: { "user-agent": "sweepza-listing-availability/1.0" },
+      headers: headersForListingProbe(request),
       signal: controller.signal,
     });
     if (probe.status !== 404) return null;
