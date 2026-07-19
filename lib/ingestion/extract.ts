@@ -3,6 +3,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { stableHash } from "@/lib/ingestion/fingerprint";
+import { stripHtmlTagsQuoteAware } from "@/lib/ingestion/html-text";
 import type {
   ConditionalState,
   FetchFailureClass,
@@ -25,16 +26,11 @@ const DEFAULT_MODEL = "claude-opus-4-8";
  * so the prompt stays bounded. Pure and unit-tested.
  */
 export function htmlToText(html: string): string {
-  const withoutHead = html
-    .replace(/<head\b[^>]*>[\s\S]*?<\/head[^>]*>/gi, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript[^>]*>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ");
+  const withBoundaries = html
+    .replace(/<!--[^]*?-->/g, " ")
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, "\n");
 
-  const text = withoutHead
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
+  const text = stripHtmlTagsQuoteAware(withBoundaries)
     .replace(/&nbsp;/gi, " ")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&rsquo;|&lsquo;/gi, "'")
@@ -53,6 +49,8 @@ export interface FetchedPage {
   text: string;
   /** Cheap hash of the readable text — "changed since last run?" check. */
   contentHash: string;
+  /** Actual response URL. Redirected validators must never be keyed to the request URL. */
+  finalUrl: string;
   fetchState: {
     etag: string | null;
     lastModified: string | null;
@@ -101,6 +99,7 @@ export async function fetchOfficialPage(
     page: {
       text,
       contentHash: stableHash(text),
+      finalUrl: result.finalUrl,
       fetchState: {
         etag: result.etag,
         lastModified: result.lastModified,
@@ -156,6 +155,7 @@ export interface Extraction {
   raw: RawExtraction;
   pageText: string;
   contentHash: string;
+  finalUrl: string;
   fetchState: FetchedPage["fetchState"];
 }
 
@@ -243,6 +243,7 @@ export async function extractOfficialPage(
       raw: toolUse.input as RawExtraction,
       pageText: page.text,
       contentHash: page.contentHash,
+      finalUrl: page.finalUrl,
       fetchState: page.fetchState,
     },
   };

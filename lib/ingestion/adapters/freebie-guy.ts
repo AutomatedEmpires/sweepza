@@ -1,9 +1,14 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import { decodeHtmlEntities, stripHtmlToText } from "@/lib/ingestion/html-text";
+import {
+  decodeHtmlEntities,
+  protectQuotedTagDelimiters,
+  stripHtmlToText,
+} from "@/lib/ingestion/html-text";
 import { isRetryable, type FetchFailureClass } from "@/lib/ingestion/http";
 import {
   SourceFetchError,
   type AdapterContext,
+  type DiscoveryWorkItem,
   type DiscoveredLead,
   type SourceAdapter,
 } from "@/lib/ingestion/source";
@@ -71,7 +76,7 @@ export function isClosedPost(html: string): boolean {
 /** Parse the category archive into candidate posts. */
 export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
   const posts: FreebieGuyPost[] = [];
-  const blocks = html.split(/<article\b/i).slice(1);
+  const blocks = protectQuotedTagDelimiters(html).split(/<article\b/i).slice(1);
 
   for (const block of blocks) {
     const linkMatch = block.match(
@@ -102,7 +107,8 @@ export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
  * entry destination; links back to the blog itself are navigation, not leads.
  */
 export function parseFreebieGuyOfficialUrl(html: string): string | null {
-  const content = html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/article>/i)?.[1] ?? html;
+  const safeHtml = protectQuotedTagDelimiters(html);
+  const content = safeHtml.match(/class="entry-content"[^>]*>([\s\S]*?)<\/article>/i)?.[1] ?? safeHtml;
   const hrefs = [...content.matchAll(/href="([^"]+)"/gi)].map((m) => m[1]);
 
   for (const href of hrefs) {
@@ -118,16 +124,31 @@ export function parseFreebieGuyOfficialUrl(html: string): string | null {
 
 export const freebieGuyAdapter: SourceAdapter = {
   id: "freebie_guy",
-  async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+  async discover({ http, workQueue, limit }: AdapterContext): Promise<DiscoveredLead[]> {
     // Source-level fetch: a classified failure here is an outage, not a quiet
     // day, and must reach the circuit breaker rather than becoming [].
     const archive = await http.get(`${HOST}${ARCHIVE_PATH}`);
-    if (archive.status === "not_modified") return [];
-    if (archive.status !== "ok") {
+    if (archive.status !== "ok" && archive.status !== "not_modified") {
       throw new SourceFetchError(archive.url, archive.failure, archive.message);
     }
 
-    const posts = parseFreebieGuyArchive(archive.body).filter(looksLikeSweepstakes);
+    if (archive.status === "ok") {
+      const parsedPosts = parseFreebieGuyArchive(archive.body);
+      if (parsedPosts.length === 0) {
+        throw new SourceFetchError(
+          archive.url,
+          "empty_body",
+          "the sweepstakes archive returned no parseable posts",
+        );
+      }
+      const posts = parsedPosts.filter(looksLikeSweepstakes);
+      await workQueue.enqueue(posts.map((post): DiscoveryWorkItem => ({
+        key: post.url,
+        payload: { ...post },
+      })));
+      // The archive is acknowledged only after every child is durable.
+      await http.commitFetchState(`${HOST}${ARCHIVE_PATH}`, archive);
+    }
     const leads: DiscoveredLead[] = [];
 
     // The archive answering does not prove the site is healthy. If every detail
@@ -140,20 +161,29 @@ export const freebieGuyAdapter: SourceAdapter = {
     let transientFailures = 0;
     let lastFailure: { url: string; failure: FetchFailureClass; message: string } | null = null;
 
-    for (const post of posts.slice(0, limit)) {
+    for (const item of await workQueue.take(limit)) {
+      const post = item.payload as unknown as FreebieGuyPost;
+      if (!post.url || !post.title) {
+        await workQueue.complete(item.key);
+        continue;
+      }
       attempted += 1;
       const detail = await http.get(post.url);
 
       if (detail.status === "not_modified") {
         answered += 1; // the source responded; nothing changed
+        await workQueue.complete(item.key);
         continue;
       }
       if (detail.status !== "ok") {
         if (isRetryable(detail.failure)) {
           transientFailures += 1;
           lastFailure = { url: detail.url, failure: detail.failure, message: detail.message };
-        } else {
+        } else if (detail.failure === "not_found") {
           answered += 1; // a 404/410 is a real answer about that post
+          await workQueue.complete(item.key);
+        } else {
+          await workQueue.defer(item.key);
         }
         continue;
       }
@@ -161,16 +191,28 @@ export const freebieGuyAdapter: SourceAdapter = {
 
       // A closed giveaway is a correct discovery outcome, not a failure: skip it
       // quietly rather than sending an already-over sweepstakes to review.
-      if (isClosedPost(detail.body)) continue;
+      if (isClosedPost(detail.body)) {
+        await http.commitFetchState(post.url, detail);
+        await workQueue.complete(item.key);
+        continue;
+      }
 
       const officialUrl = parseFreebieGuyOfficialUrl(detail.body);
-      if (!officialUrl) continue;
-
-      leads.push({
-        officialUrl,
-        sourceUrl: post.url,
-        hint: { title: post.title },
-      });
+      if (officialUrl) {
+        leads.push({
+          officialUrl,
+          sourceUrl: post.url,
+          hint: { title: post.title },
+          discoveryWorkKey: item.key,
+        });
+        // Completion belongs to the orchestrator after the lead reaches a
+        // durable terminal outcome. Until then a failed official fetch/LLM/DB
+        // operation must leave this item retryable.
+        continue;
+      }
+      // No sponsor link may be a page still being populated. Do not save its
+      // validator or complete its work item; a later run must fetch it again.
+      await workQueue.defer(item.key);
     }
 
     // Every detail we tried failed transiently and nothing answered: that is an

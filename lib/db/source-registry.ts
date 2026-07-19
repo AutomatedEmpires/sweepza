@@ -104,12 +104,11 @@ export type TransitionResult =
 /**
  * Move a source along the compliance ladder, recording the decision.
  *
- * Legality is decided HERE — the state machine in lib/ingestion/compliance.ts is
- * the single authority, and duplicating its transition table in SQL would just
- * create a second one that drifts. Atomicity is decided in the DATABASE: the
- * `transition_source_compliance` RPC locks the source row, compare-and-sets on
- * the state we validated against, and writes the audit event + state change in
- * one transaction.
+ * The TypeScript state machine gives the operator an immediate explanation,
+ * while the database independently enforces the same legal edges as the final
+ * authority. The `transition_source_compliance` RPC locks the source row,
+ * compare-and-sets on the state we validated against, derives approval
+ * attribution, and writes the audit event + state change in one transaction.
  *
  * That split matters. This function used to insert the event and then update the
  * row as two independent writes, with a comment claiming the ordering meant "a
@@ -149,7 +148,6 @@ export async function transitionSourceCompliance(
       p_to: input.to,
       p_actor: actor,
       p_reason: input.reason ?? null,
-      p_approving: input.to === "approved_for_production",
     },
   );
 
@@ -167,6 +165,12 @@ export async function transitionSourceCompliance(
     }
     if (result?.error === "unknown_source") {
       return { ok: false, error: `Unknown source "${input.sourceId}".` };
+    }
+    if (result?.error === "illegal_transition") {
+      return { ok: false, error: `The database refused illegal transition ${current.complianceState} → ${input.to}.` };
+    }
+    if (result?.error === "actor_required") {
+      return { ok: false, error: "An actor is required to record an approval." };
     }
     return { ok: false, error: `Could not update the source: ${result?.error ?? "unknown"}` };
   }
@@ -235,24 +239,79 @@ export async function setSourceKillSwitch(
   if (error) throw new Error(`setSourceKillSwitch failed: ${error.message}`);
 }
 
+export type SourceRunLeaseResult =
+  | { ok: true; token: string; startedAt: string; expiresAt: string }
+  | { ok: false; error: string; detail?: string };
+
 /**
- * Record the outcome of a run for circuit-breaker accounting. A success resets
- * the counter and closes the breaker; a failure increments it and trips the
- * breaker once the source's threshold is reached.
+ * Atomically acquire the database-authoritative run slot. The pure gate still
+ * fails early and explains static policy, but this locked RPC is what prevents
+ * two serverless invocations from both passing a stale read and crawling.
  */
-export async function recordRunOutcome(
+export async function acquireSourceRunLease(
   sourceId: string,
+  refreshIntervalMinutes: number,
+): Promise<SourceRunLeaseResult> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("acquire_source_run_lease", {
+    p_source_id: sourceId,
+    p_refresh_interval_minutes: refreshIntervalMinutes,
+    p_lease_seconds: 600,
+  });
+  if (error) throw new Error(`acquireSourceRunLease failed: ${error.message}`);
+  const result = data as {
+    ok?: boolean;
+    token?: string;
+    started_at?: string;
+    expires_at?: string;
+    error?: string;
+    next_run_at?: string;
+  } | null;
+  if (result?.ok && result.token && result.started_at && result.expires_at) {
+    return {
+      ok: true,
+      token: result.token,
+      startedAt: result.started_at,
+      expiresAt: result.expires_at,
+    };
+  }
+  return {
+    ok: false,
+    error: result?.error ?? "invalid_result",
+    detail: result?.next_run_at ?? result?.expires_at,
+  };
+}
+
+/** Finish only the matching, unexpired lease and update breaker health. */
+export async function finishSourceRunLease(
+  sourceId: string,
+  token: string,
   outcome: { ok: boolean; failureClass?: string | null; failureThreshold: number },
 ): Promise<void> {
   const supabase = createServiceRoleClient();
-  const { data, error } = await supabase.rpc("record_source_run_outcome", {
+  const { data, error } = await supabase.rpc("finish_source_run_lease", {
     p_source_id: sourceId,
+    p_token: token,
     p_ok: outcome.ok,
     p_failure_class: outcome.failureClass ?? null,
     p_failure_threshold: outcome.failureThreshold,
   });
-  if (error) throw new Error(`recordRunOutcome failed: ${error.message}`);
-  if (data !== true) throw new Error(`recordRunOutcome failed: unknown source "${sourceId}"`);
+  if (error) throw new Error(`finishSourceRunLease failed: ${error.message}`);
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (!result?.ok) {
+    throw new Error(`finishSourceRunLease failed: ${result?.error ?? "invalid_result"}`);
+  }
+}
+
+/** Abandon a pre-network lease without writing cadence or source health. */
+export async function releaseSourceRunLease(sourceId: string, token: string): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("release_source_run_lease", {
+    p_source_id: sourceId,
+    p_token: token,
+  });
+  if (error) throw new Error(`releaseSourceRunLease failed: ${error.message}`);
+  if (data !== true) throw new Error(`releaseSourceRunLease failed: stale lease for "${sourceId}"`);
 }
 
 export interface FetchStateRecord {

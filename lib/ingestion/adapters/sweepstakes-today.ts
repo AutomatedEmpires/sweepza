@@ -1,8 +1,13 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import { decodeHtmlEntities, stripHtmlToText } from "@/lib/ingestion/html-text";
+import {
+  decodeHtmlEntities,
+  protectQuotedTagDelimiters,
+  stripHtmlToText,
+} from "@/lib/ingestion/html-text";
 import {
   SourceFetchError,
   type AdapterContext,
+  type DiscoveryWorkItem,
   type DiscoveredLead,
   type SourceAdapter,
 } from "@/lib/ingestion/source";
@@ -34,7 +39,9 @@ export interface SweepstakesTodayRow {
  */
 export function parseSweepstakesTodayIndex(html: string): SweepstakesTodayRow[] {
   const rows: SweepstakesTodayRow[] = [];
-  const blocks = html.split(/<tr\b[^>]*class="[^"]*sweep-row/i).slice(1);
+  const blocks = protectQuotedTagDelimiters(html)
+    .split(/<tr\b[^>]*class="[^"]*sweep-row/i)
+    .slice(1);
 
   for (const block of blocks) {
     const linkMatch = block.match(/href="(\/sweepstakes\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
@@ -66,10 +73,11 @@ export function parseSweepstakesTodayIndex(html: string): SweepstakesTodayRow[] 
  * outcome.
  */
 export function parseSweepstakesTodayOfficialUrl(html: string): string | null {
-  const rules = html.match(/class="rules-link"[^>]*href="([^"]+)"/i)
-    ?? html.match(/href="([^"]+)"[^>]*class="rules-link"/i);
-  const entry = html.match(/class="enter-btn"[^>]*href="([^"]+)"/i)
-    ?? html.match(/href="([^"]+)"[^>]*class="enter-btn"/i);
+  const safeHtml = protectQuotedTagDelimiters(html);
+  const rules = safeHtml.match(/class="rules-link"[^>]*href="([^"]+)"/i)
+    ?? safeHtml.match(/href="([^"]+)"[^>]*class="rules-link"/i);
+  const entry = safeHtml.match(/class="enter-btn"[^>]*href="([^"]+)"/i)
+    ?? safeHtml.match(/href="([^"]+)"[^>]*class="enter-btn"/i);
 
   for (const candidate of [rules?.[1], entry?.[1]]) {
     if (!candidate) continue;
@@ -84,29 +92,65 @@ export function parseSweepstakesTodayOfficialUrl(html: string): string | null {
 
 export const sweepstakesTodayAdapter: SourceAdapter = {
   id: "sweepstakes_today",
-  async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+  async discover({ http, workQueue, limit }: AdapterContext): Promise<DiscoveredLead[]> {
     // Source-level fetch: a classified failure here is an outage, not a quiet
     // day, and must reach the circuit breaker rather than becoming [].
     const index = await http.get(`${BASE}${INDEX_PATH}`);
-    if (index.status === "not_modified") return [];
-    if (index.status !== "ok") {
+    if (index.status === "failed") {
       throw new SourceFetchError(index.url, index.failure, index.message);
     }
 
-    const rows = parseSweepstakesTodayIndex(index.body);
+    let rows: SweepstakesTodayRow[] = [];
+    if (index.status === "ok") {
+      rows = parseSweepstakesTodayIndex(index.body);
+      if (rows.length === 0) {
+        // The source has an explicit empty-state marker. Any other 200 with no
+        // rows is parser/layout drift and must reach source health telemetry.
+        if (!/\bno sweepstakes today\b/i.test(stripHtmlToText(index.body))) {
+          throw new SourceFetchError(
+            index.url,
+            "empty_body",
+            "the listings page contained neither sweep rows nor the known empty-state marker",
+          );
+        }
+      }
+    }
+    // A 304 (if a transport supplies one despite this descriptor's current
+    // policy) means no new children, never "discard the durable backlog".
+    await workQueue.enqueue(rows.map((row): DiscoveryWorkItem => ({
+      key: row.detailPath,
+      payload: { ...row },
+    })));
     const leads: DiscoveredLead[] = [];
 
-    for (const row of rows.slice(0, limit)) {
+    for (const item of await workQueue.take(limit)) {
+      const row = item.payload as unknown as SweepstakesTodayRow;
+      if (!row.detailPath || !row.title) {
+        await workQueue.complete(item.key);
+        continue;
+      }
       const detail = await http.get(`${BASE}${row.detailPath}`);
-      if (detail.status !== "ok") continue;
+      if (detail.status === "not_modified") {
+        await workQueue.complete(item.key);
+        continue;
+      }
+      if (detail.status !== "ok") {
+        if (detail.failure === "not_found") await workQueue.complete(item.key);
+        else await workQueue.defer(item.key);
+        continue;
+      }
 
       const officialUrl = parseSweepstakesTodayOfficialUrl(detail.body);
-      if (!officialUrl) continue;
+      if (!officialUrl) {
+        await workQueue.defer(item.key);
+        continue;
+      }
 
       leads.push({
         officialUrl,
         sourceUrl: `${BASE}${row.detailPath}`,
         hint: { title: row.title, endDate: row.hintEndDate },
+        discoveryWorkKey: item.key,
       });
     }
 

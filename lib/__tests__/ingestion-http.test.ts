@@ -55,7 +55,12 @@ describe("isUrlAllowed", () => {
   });
 
   it("treats an empty allowlist as unbounded (official_direct)", () => {
-    const open = descriptor({ allowedHosts: [], allowedPathPrefixes: [] });
+    const open = descriptor({
+      id: "official_direct",
+      tier: "official",
+      allowedHosts: [],
+      allowedPathPrefixes: [],
+    });
     expect(isUrlAllowed(open, "https://any-sponsor.example.org/rules")).toBe(true);
     expect(isUrlAllowed(open, "ftp://sponsor.example.org/rules")).toBe(false);
   });
@@ -69,7 +74,10 @@ describe("policy client — reach", () => {
     const result = await client.get("https://somewhere-else.example.net/page");
 
     expect(result.status).toBe("failed");
-    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(0);
+    }
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
@@ -279,7 +287,12 @@ describe("SSRF — non-public destinations", () => {
   // adapter could hand us the cloud metadata endpoint and the server would
   // fetch its own credentials. official_direct has NO allowlist, so reach
   // policy cannot be what stops this.
-  const open = () => descriptor({ allowedHosts: [], allowedPathPrefixes: [] });
+  const open = () => descriptor({
+    id: "official_direct",
+    tier: "official",
+    allowedHosts: [],
+    allowedPathPrefixes: [],
+  });
 
   it("rejects the cloud metadata endpoint and other non-public literals", () => {
     for (const url of [
@@ -353,7 +366,10 @@ describe("SSRF — non-public destinations", () => {
     const result = await client.get("https://sponsor.example.org/rules");
 
     expect(result.status).toBe("failed");
-    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(0);
+    }
     expect(fetchImpl, "must refuse BEFORE the request").not.toHaveBeenCalled();
   });
 
@@ -410,7 +426,10 @@ describe("redirects are re-checked, not followed blindly", () => {
     const result = await client.get("https://example.com/start");
 
     expect(result.status).toBe("failed");
-    if (result.status === "failed") expect(result.failure).toBe("blocked_by_policy");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(1);
+    }
     expect(fetchImpl).toHaveBeenCalledOnce(); // only the first hop
     expect(fetchImpl).not.toHaveBeenCalledWith("https://evil.example.net/pwn", expect.anything());
   });
@@ -444,6 +463,31 @@ describe("redirects are re-checked, not followed blindly", () => {
     }
   });
 
+  it("does not leak or mis-key validators across redirect hops", async () => {
+    const sent: Array<string | null> = [];
+    const save = vi.fn(async () => {});
+    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      sent.push(new Headers(init?.headers).get("if-none-match"));
+      if (String(url).endsWith("/start")) {
+        return new Response(null, { status: 302, headers: { location: "/final" } });
+      }
+      return new Response("fresh", { status: 200, headers: { etag: 'W/"final"' } });
+    });
+    const client = createSourceHttpClient(descriptor(), {
+      fetchImpl: fetchImpl as never,
+      fetchState: {
+        load: async () => ({ etag: 'W/"start"', lastModified: null }),
+        save,
+      },
+    });
+
+    const result = await client.get("https://example.com/start");
+    await client.commitFetchState("https://example.com/start", result);
+
+    expect(sent).toEqual(['W/"start"', null]);
+    expect(save, "a final-hop ETag must not be stored under the redirector URL").not.toHaveBeenCalled();
+  });
+
   it("resolves a relative Location against the current URL", async () => {
     const fetchImpl = redirectingFetch({
       "https://example.com/a/start": { status: 302, location: "/b/end" },
@@ -472,7 +516,10 @@ describe("redirects are re-checked, not followed blindly", () => {
     const result = await client.get("https://example.com/hop?n=0");
 
     expect(result.status).toBe("failed");
-    if (result.status === "failed") expect(result.failure).toBe("too_many_redirects");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("too_many_redirects");
+      expect(result.attempts).toBe(fetchImpl.mock.calls.length);
+    }
   });
 
   it("resolve() REPORTS an off-reach destination without fetching it", async () => {
@@ -635,6 +682,9 @@ describe("conditional GET is wired, not decorative", () => {
 
     expect(result.status).toBe("ok");
     expect(save, "an unaccepted candidate must not strand itself behind a 304").not.toHaveBeenCalled();
+
+    await client.commitFetchState("https://example.com/hub", result);
+    expect(save, "accepted work explicitly commits its validator").toHaveBeenCalledTimes(1);
   });
 
   it("sends a stored validator and saves the one it gets back", async () => {
@@ -658,8 +708,10 @@ describe("conditional GET is wired, not decorative", () => {
     });
 
     // First pass: nothing stored, nothing sent, validator recorded.
-    await client.get("https://example.com/hub");
+    const first = await client.get("https://example.com/hub");
     expect(sentIfNoneMatch).toBeNull();
+    expect(store.get("https://example.com/hub")).toBeUndefined();
+    await client.commitFetchState("https://example.com/hub", first);
     expect(store.get("https://example.com/hub")?.etag).toBe('W/"v2"');
 
     // Second pass: the stored validator is sent without the caller doing a thing.

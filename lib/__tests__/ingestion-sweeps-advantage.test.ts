@@ -7,6 +7,7 @@ import {
 } from "@/lib/ingestion/adapters/sweeps-advantage";
 import { createFixtureHttpClient } from "@/lib/ingestion/fixtures/http";
 import { getSourceDescriptor } from "@/lib/ingestion/source";
+import { createMemoryDiscoveryWorkQueue } from "@/lib/ingestion/work-queue";
 
 // Fixtures reproduce the real Sweeps Advantage markup structure (container
 // data-link_id, panel-heading title link, sweepstake-details labeled fields)
@@ -98,11 +99,21 @@ describe("parseSweepsAdvantageDaily", () => {
   it("ignores markup with no listing containers", () => {
     expect(parseSweepsAdvantageDaily("<div>no listings</div>")).toEqual([]);
   });
+
+  it("does not leak quoted > attributes into a card title", () => {
+    const html = '<div data-link_id="7"><a href="/sweepstakes-7.html" title="1 > 0">Clean Title</a></div>';
+    expect(parseSweepsAdvantageDaily(html)[0]?.title).toBe("Clean Title");
+  });
 });
 
 describe("sweepsAdvantageAdapter.discover", () => {
   const descriptor = getSourceDescriptor("sweeps_advantage")!;
   const BASE = "https://www.sweepsadvantage.com";
+  const context = (http: ReturnType<typeof createFixtureHttpClient>, limit = 10) => ({
+    http,
+    limit,
+    workQueue: createMemoryDiscoveryWorkQueue(),
+  });
 
   function pages(): Record<string, { body?: string; finalUrl?: string; status?: number }> {
     return {
@@ -122,7 +133,7 @@ describe("sweepsAdvantageAdapter.discover", () => {
 
   it("resolves each redirect to a normalized official URL", async () => {
     const http = createFixtureHttpClient(descriptor, pages());
-    const leads = await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+    const leads = await sweepsAdvantageAdapter.discover(context(http));
 
     expect(leads.map((l) => l.officialUrl)).toEqual([
       // utm_source stripped by normalizeUrl.
@@ -138,9 +149,39 @@ describe("sweepsAdvantageAdapter.discover", () => {
     broken[`${BASE}/go.php?id=1551236`] = { status: 502 };
     const http = createFixtureHttpClient(descriptor, broken);
 
-    const leads = await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+    const leads = await sweepsAdvantageAdapter.discover(context(http));
     expect(leads).toHaveLength(1);
     expect(leads[0].officialUrl).toContain("sponsor-cash");
+  });
+
+  it("drains the durable backlog after a parent 304 instead of stranding the next batch", async () => {
+    const workQueue = createMemoryDiscoveryWorkQueue();
+    const firstHttp = createFixtureHttpClient(descriptor, pages());
+    const first = await sweepsAdvantageAdapter.discover({
+      http: firstHttp,
+      workQueue,
+      limit: 1,
+    });
+    expect(first.map((lead) => lead.officialUrl)).toEqual([
+      "https://sponsor-cash.example.com/daily-cash",
+    ]);
+    await workQueue.complete(first[0].discoveryWorkKey!); // downstream durable ack
+
+    const secondHttp = createFixtureHttpClient(descriptor, {
+      [`${BASE}/new-sweepstakes`]: { status: 304 },
+      [`${BASE}/go.php?id=1551236`]: {
+        body: "ok",
+        finalUrl: "https://sponsor-books.example.com/books-brews",
+      },
+    });
+    const second = await sweepsAdvantageAdapter.discover({
+      http: secondHttp,
+      workQueue,
+      limit: 1,
+    });
+    expect(second.map((lead) => lead.officialUrl)).toEqual([
+      "https://sponsor-books.example.com/books-brews",
+    ]);
   });
 
   it("RAISES when the hub is down — a down source is not a quiet day", async () => {
@@ -151,7 +192,7 @@ describe("sweepsAdvantageAdapter.discover", () => {
       [`${BASE}/new-sweepstakes`]: { status: 500 },
     });
 
-    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+    await expect(sweepsAdvantageAdapter.discover(context(http))).rejects.toMatchObject({
       name: "SourceFetchError",
       failure: "server_error",
     });
@@ -163,7 +204,7 @@ describe("sweepsAdvantageAdapter.discover", () => {
     broken[`${BASE}/new-sweepstakes-1784073600.html`] = { status: 503 };
     const http = createFixtureHttpClient(descriptor, broken);
 
-    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toThrow(
+    await expect(sweepsAdvantageAdapter.discover(context(http))).rejects.toThrow(
       SourceFetchError,
     );
   });
@@ -176,7 +217,7 @@ describe("sweepsAdvantageAdapter.discover", () => {
       [`${BASE}/new-sweepstakes`]: { body: "<h2>New Sweepstakes</h2>" },
     });
 
-    await expect(sweepsAdvantageAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+    await expect(sweepsAdvantageAdapter.discover(context(http))).rejects.toMatchObject({
       name: "SourceFetchError",
       failure: "empty_body",
     });
@@ -185,7 +226,7 @@ describe("sweepsAdvantageAdapter.discover", () => {
   it("stays on sweepsadvantage.com throughout discovery", async () => {
     const log: string[] = [];
     const http = createFixtureHttpClient(descriptor, pages(), { log });
-    await sweepsAdvantageAdapter.discover({ http, limit: 10 });
+    await sweepsAdvantageAdapter.discover(context(http));
     for (const url of log) {
       expect(new URL(url).hostname).toBe("www.sweepsadvantage.com");
     }

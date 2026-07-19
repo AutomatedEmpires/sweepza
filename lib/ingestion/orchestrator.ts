@@ -9,11 +9,17 @@ import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { evaluateSourceGate, describeGateDecision } from "@/lib/ingestion/gate";
 import {
   createSourceHttpClient,
+  isRetryable,
   type FetchFailureClass,
   type FetchStatePort,
 } from "@/lib/ingestion/http";
 import { mapExtraction } from "@/lib/ingestion/mapper";
-import { SOURCE_REGISTRY, getSourceDescriptor, type SourceAdapter } from "@/lib/ingestion/source";
+import {
+  SOURCE_REGISTRY,
+  SourceFetchError,
+  getSourceDescriptor,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 import { verifyCandidate } from "@/lib/ingestion/verify";
 import {
   createIngestedListingWithProvenance,
@@ -24,10 +30,13 @@ import {
   touchLastSeen,
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
+import { discoveryWorkQueue } from "@/lib/db/discovery-work";
 import {
+  acquireSourceRunLease,
+  finishSourceRunLease,
   getFetchState,
   getSourceRecord,
-  recordRunOutcome,
+  releaseSourceRunLease,
   saveFetchState,
 } from "@/lib/db/source-registry";
 
@@ -95,9 +104,27 @@ function officialPageDescriptor() {
   return descriptor;
 }
 
-/** Policy/budget refusals are our control plane, not source availability. */
+/** Only transient transport/server failures represent source availability. */
 function isSourceAvailabilityFailure(failure: FetchFailureClass): boolean {
-  return failure !== "blocked_by_policy" && failure !== "budget_exhausted";
+  return isRetryable(failure);
+}
+
+/**
+ * A validator belongs to the URL that emitted it. We intentionally do not save
+ * final-hop validators for a redirecting request: the next run starts at the
+ * original URL, so loading that validator under either key would be unsafe or
+ * useless. HTTP performs the same guard for its automatic persistence path.
+ */
+async function saveAcceptedOfficialFetchState(
+  requestedUrl: string,
+  extraction: { finalUrl: string; fetchState: { etag: string | null; lastModified: string | null; httpStatus: number } },
+  port: FetchStatePort,
+): Promise<void> {
+  // This is transport identity, not listing-dedup identity. `normalizeUrl`
+  // deliberately collapses www, scheme, tracking parameters, and trailing
+  // slash; any of those can still be a real redirect with a different ETag.
+  if (extraction.finalUrl !== requestedUrl) return;
+  await port.save(requestedUrl, { ...extraction.fetchState, notModified: false });
 }
 
 export async function runIngestion(
@@ -118,10 +145,29 @@ export async function runIngestion(
   });
   const officialFetchState = fetchStatePort(official.id);
   let officialHttp: ReturnType<typeof createSourceHttpClient> | null = null;
+  let officialLeaseToken: string | null = null;
+  let officialLeaseDenial: string | null = null;
   let officialHealthyResponses = 0;
   let officialAvailabilityFailures = 0;
 
-  for (const descriptor of SOURCE_REGISTRY) {
+  const ensureOfficialClient = async () => {
+    if (officialHttp) return officialHttp;
+    if (officialLeaseDenial) return null;
+    const lease = await acquireSourceRunLease(
+      official.id,
+      official.refreshIntervalMinutes,
+    );
+    if (!lease.ok) {
+      officialLeaseDenial = `lease_${lease.error}${lease.detail ? `: ${lease.detail}` : ""}`;
+      return null;
+    }
+    officialLeaseToken = lease.token;
+    officialHttp = createSourceHttpClient(official, { fetchState: officialFetchState });
+    return officialHttp;
+  };
+
+  try {
+    for (const descriptor of SOURCE_REGISTRY) {
     const adapter = ADAPTERS[descriptor.id];
     if (!adapter) continue;
 
@@ -159,31 +205,73 @@ export async function runIngestion(
       continue;
     }
 
-    officialHttp ??= createSourceHttpClient(official, {
-      fetchState: officialFetchState,
-    });
-
+    // The pure gate above is an early explanation. This locked database lease
+    // is the execution authority: it closes the race where two invocations
+    // read the same due row before either records last_run_at.
     const runId = await startIngestionRun(descriptor.id);
+    let sourceLease;
+    try {
+      sourceLease = await acquireSourceRunLease(
+        descriptor.id,
+        descriptor.refreshIntervalMinutes,
+      );
+    } catch (error) {
+      // The RPC may have committed before its response was lost. Without the
+      // token we cannot safely release it; the bounded TTL resolves authority.
+      // The audit row, however, must never remain permanently `running`.
+      const message = error instanceof Error ? error.message : String(error);
+      await finishIngestionRun(runId, {}, "error", message, {
+        gateDecision: "allowed",
+        requestsMade: 0,
+        notModified: 0,
+      }).catch(() => undefined);
+      summaries.push({ source: descriptor.id, status: "error" });
+      continue;
+    }
+    if (!sourceLease.ok) {
+      const gate = `lease_${sourceLease.error}${sourceLease.detail ? `: ${sourceLease.detail}` : ""}`;
+      await finishIngestionRun(runId, {}, "skipped", gate, { gateDecision: gate });
+      summaries.push({ source: descriptor.id, status: "skipped", gate });
+      continue;
+    }
+
     const counts: Required<IngestionRunCounts> = {
       discovered: 0, fetched: 0, created: 0, updated: 0, skipped: 0, failed: 0,
     };
-
-    const http = createSourceHttpClient(descriptor, {
-      fetchState: fetchStatePort(descriptor.id),
-    });
-    const officialStatsBefore = officialHttp.stats();
-    const officialRunStats = () => {
-      const current = officialHttp!.stats();
-      return {
-        requests: current.requests - officialStatsBefore.requests,
-        notModified: current.notModified - officialStatsBefore.notModified,
-      };
-    };
-
-    let discoverySucceeded = false;
+    let http: ReturnType<typeof createSourceHttpClient> | null = null;
+    let sourceNetworkStarted = false;
+    let sourceLeaseFinalized = false;
+    let sourceLeaseOutcome: {
+      ok: boolean;
+      failureClass?: string;
+      failureThreshold: number;
+    } = { ok: true, failureThreshold: descriptor.failureThreshold };
+    let officialRunStats = () => ({ requests: 0, notModified: 0 });
     try {
-      const leads = await adapter.discover({ http, limit });
-      discoverySucceeded = true;
+      http = createSourceHttpClient(descriptor, {
+        fetchState: fetchStatePort(descriptor.id),
+      });
+      const readOfficialStats = () => {
+        const client = officialHttp as ReturnType<typeof createSourceHttpClient> | null;
+        return client?.stats() ?? {
+          requests: 0, budget: official.requestBudgetPerRun, notModified: 0, failures: 0,
+        };
+      };
+      const officialStatsBefore = readOfficialStats();
+      officialRunStats = () => {
+        const current = readOfficialStats();
+        return {
+          requests: current.requests - officialStatsBefore.requests,
+          notModified: current.notModified - officialStatsBefore.notModified,
+        };
+      };
+      const workQueue = discoveryWorkQueue(descriptor.id);
+      sourceNetworkStarted = true;
+      const leads = await adapter.discover({
+        http,
+        workQueue,
+        limit,
+      });
       counts.discovered = leads.length;
 
       const seenThisRun = new Set<string>();
@@ -195,8 +283,12 @@ export async function runIngestion(
       let healthyOfficialResponses = 0;
       let officialAvailabilityFailuresThisSource = 0;
       for (const lead of leads) {
+        const acknowledgeLead = async () => {
+          if (lead.discoveryWorkKey) await workQueue.complete(lead.discoveryWorkKey);
+        };
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
+          await acknowledgeLead();
           counts.skipped += 1;
           continue;
         }
@@ -206,8 +298,18 @@ export async function runIngestion(
         const known = await findIngestionByUrlKey(urlKey);
         if (known) {
           await touchLastSeen(known.listingId);
+          await acknowledgeLead();
           counts.skipped += 1;
           continue;
+        }
+
+        // Acquire the official-source lease lazily. A quiet discovery pass, or
+        // one containing only already-known URLs, must not consume the sponsor
+        // source's independent daily cadence.
+        const activeOfficialHttp = await ensureOfficialClient();
+        if (!activeOfficialHttp) {
+          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
+          throw new Error(`official_direct ${officialLeaseDenial ?? "lease unavailable"}`);
         }
 
         // Fetch + extract the official page (the source of truth). The result is
@@ -215,7 +317,7 @@ export async function runIngestion(
         // circuit breaker. A 304 is not a failure at all, and an extractor that
         // returned nothing is our problem, not the sponsor's — charging either
         // to the source would open its circuit for our own bugs.
-        const result = await extractOfficialPage(lead.officialUrl, { http: officialHttp })
+        const result = await extractOfficialPage(lead.officialUrl, { http: activeOfficialHttp })
           .catch((error: unknown) => ({
             status: "unextractable" as const,
             message: error instanceof Error ? error.message : String(error),
@@ -226,20 +328,33 @@ export async function runIngestion(
           healthyOfficialResponses += 1;
           officialHealthyResponses += 1;
           counts.skipped += 1;
+          await acknowledgeLead();
           continue;
         }
         if (result.status === "failed") {
+          // 404/410 is a durable answer for this discovered item, not an
+          // outage and not retryable work. Policy/budget and transient failures
+          // remain deferred so authority or availability can recover later.
+          if (result.failure === "not_found") {
+            healthyOfficialResponses += 1;
+            officialHealthyResponses += 1;
+            counts.skipped += 1;
+            await acknowledgeLead();
+            continue;
+          }
           counts.failed += 1;
           if (isSourceAvailabilityFailure(result.failure)) {
             officialAvailabilityFailuresThisSource += 1;
             officialAvailabilityFailures += 1;
           }
+          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
           continue;
         }
         if (result.status === "unextractable") {
           healthyOfficialResponses += 1;
           officialHealthyResponses += 1;
           counts.failed += 1; // ours: recorded, but never fed to the breaker
+          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
           continue;
         }
 
@@ -257,19 +372,30 @@ export async function runIngestion(
         // NOT NULL constraints — nothing uncreatable gets past this point.)
         const verification = verifyCandidate(candidate);
         if (!verification.publishable) {
+          // Verification reached a durable terminal decision for this exact
+          // body. A future 304 may safely skip it; a changed ETag will re-run
+          // extraction and verification.
+          await saveAcceptedOfficialFetchState(
+            lead.officialUrl,
+            result.extraction,
+            officialFetchState,
+          );
           counts.failed += 1;
           held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
+          await acknowledgeLead();
           continue;
         }
 
         // Cross-source dedupe: same sweep already known under another link.
         const duplicateOf = await findExistingListingId(candidate.dedup);
         if (duplicateOf) {
-          await officialFetchState.save(lead.officialUrl, {
-            ...result.extraction.fetchState,
-            notModified: false,
-          });
+          await saveAcceptedOfficialFetchState(
+            lead.officialUrl,
+            result.extraction,
+            officialFetchState,
+          );
           counts.skipped += 1;
+          await acknowledgeLead();
           continue;
         }
 
@@ -283,12 +409,14 @@ export async function runIngestion(
           extractionSummary: verification.summary,
           contentHash: result.extraction.contentHash,
         });
-        await officialFetchState.save(lead.officialUrl, {
-          ...result.extraction.fetchState,
-          notModified: false,
-        });
+        await saveAcceptedOfficialFetchState(
+          lead.officialUrl,
+          result.extraction,
+          officialFetchState,
+        );
         if (claim.created) counts.created += 1;
         else counts.skipped += 1;
+        await acknowledgeLead();
       }
 
       // Both sides of the merge are wanted: main (#78) reports which candidates
@@ -322,12 +450,13 @@ export async function runIngestion(
           notModified: stats.notModified + officialStats.notModified,
         },
       );
-      await recordRunOutcome(descriptor.id, {
+      await finishSourceRunLease(descriptor.id, sourceLease.token, {
         // Per-lead sponsor failures belong to official_direct. Reaching this
         // success path proves the discovery source's own hub/index was healthy.
         ok: true,
         failureThreshold: descriptor.failureThreshold,
       });
+      sourceLeaseFinalized = true;
       summaries.push({
         source: descriptor.id,
         status: outage ? "error" : "ok",
@@ -340,34 +469,52 @@ export async function runIngestion(
       // network activity — the audit was wrong exactly when it mattered most.
       await finishIngestionRun(runId, counts, "error", message, {
         gateDecision: "allowed",
-        requestsMade: http.stats().requests + officialRunStats().requests,
-        notModified: http.stats().notModified + officialRunStats().notModified,
+        requestsMade: (http?.stats().requests ?? 0) + officialRunStats().requests,
+        notModified: (http?.stats().notModified ?? 0) + officialRunStats().notModified,
       }).catch(() => {});
       // Only the adapter's discovery request owns this source breaker. Once it
       // returned, mapper/LLM/database failures are internal pipeline failures
       // and must not disable a healthy external discovery source.
-      await recordRunOutcome(descriptor.id, {
-        ok: discoverySucceeded,
-        ...(discoverySucceeded ? {} : { failureClass: message.slice(0, 120) }),
+      const sourceUnavailable = error instanceof SourceFetchError;
+      sourceLeaseOutcome = {
+        ok: !sourceUnavailable,
+        ...(sourceUnavailable ? { failureClass: message.slice(0, 120) } : {}),
         failureThreshold: descriptor.failureThreshold,
-      }).catch(() => {});
+      };
+      try {
+        await finishSourceRunLease(descriptor.id, sourceLease.token, sourceLeaseOutcome);
+        sourceLeaseFinalized = true;
+      } catch {
+        // The finally below retries cleanup with the same outcome.
+      }
       summaries.push({ source: descriptor.id, status: "error", ...counts });
+    } finally {
+      if (!sourceLeaseFinalized) {
+        if (sourceNetworkStarted) {
+          await finishSourceRunLease(
+            descriptor.id,
+            sourceLease.token,
+            sourceLeaseOutcome,
+          ).catch(() => undefined);
+        } else {
+          await releaseSourceRunLease(descriptor.id, sourceLease.token).catch(() => undefined);
+        }
+      }
     }
-  }
-
-  // Gate state, cadence, and circuit-breaker state all belong to the same
-  // official_direct record. Only advance it when this invocation actually
-  // attempted official fetches; a quiet discovery day must not consume the
-  // official source's refresh interval.
-  if (officialHealthyResponses > 0 || officialAvailabilityFailures > 0) {
-    const outage = officialAvailabilityFailures > 0 && officialHealthyResponses === 0;
-    await recordRunOutcome(official.id, {
-      ok: !outage,
-      ...(outage
-        ? { failureClass: `every observable official response failed (${officialAvailabilityFailures} failures)` }
-        : {}),
-      failureThreshold: official.failureThreshold,
-    });
+    }
+  } finally {
+    // Every acquired official lease is owned by this function-level finally.
+    // A throw anywhere after lazy acquisition cannot leave it active until TTL.
+    if (officialLeaseToken) {
+      const outage = officialAvailabilityFailures > 0 && officialHealthyResponses === 0;
+      await finishSourceRunLease(official.id, officialLeaseToken, {
+        ok: !outage,
+        ...(outage
+          ? { failureClass: `every observable official response failed (${officialAvailabilityFailures} failures)` }
+          : {}),
+        failureThreshold: official.failureThreshold,
+      });
+    }
   }
 
   return summaries;

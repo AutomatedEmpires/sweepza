@@ -22,6 +22,8 @@ export interface DiscoveredLead {
    * prioritize/skip — never published. Every fact comes from the official page.
    */
   hint?: { title?: string; endDate?: string };
+  /** Durable discovery backlog item; completed only after downstream terminal work. */
+  discoveryWorkKey?: string;
 }
 
 /**
@@ -34,9 +36,23 @@ export interface DiscoveredLead {
  */
 export interface AdapterContext {
   http: SourceHttpClient;
+  /** Durable backlog so a conditional parent page cannot strand later items. */
+  workQueue: DiscoveryWorkQueue;
   /** Max leads to return this pass. */
   limit: number;
   signal?: AbortSignal;
+}
+
+export interface DiscoveryWorkItem {
+  key: string;
+  payload: Record<string, unknown>;
+}
+
+export interface DiscoveryWorkQueue {
+  enqueue(items: DiscoveryWorkItem[]): Promise<void>;
+  take(limit: number): Promise<DiscoveryWorkItem[]>;
+  complete(key: string): Promise<void>;
+  defer(key: string): Promise<void>;
 }
 
 /**
@@ -88,7 +104,11 @@ export interface SourceDescriptor {
   homepage: string;
 
   // ---- Reach: where this source may be fetched from at all -----------------
-  /** Hostnames the adapter may request (www./scheme-insensitive). Empty = none. */
+  /**
+   * Hostnames the adapter may request (www./scheme-insensitive). Empty is
+   * valid only for official_direct, whose reviewed per-destination policy is
+   * supplied with the lead; every discovery source requires a fixed allowlist.
+   */
   allowedHosts: string[];
   /** Path prefixes permitted on those hosts. Empty = any path on an allowed host. */
   allowedPathPrefixes: string[];

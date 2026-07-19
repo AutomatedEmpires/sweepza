@@ -94,13 +94,17 @@ export interface SourceHttpClient {
     options?: {
       conditional?: ConditionalState;
       /**
-       * Defaults to true. Official-page ingestion defers this until the
+       * Defaults to false. A caller may opt into immediate persistence only
+       * when receiving the body is itself the completed unit of work.
+       * Official-page and discovery ingestion defer this until the
        * extracted candidate has reached a durable terminal state; otherwise a
        * failed extraction can save an ETag and strand the page behind 304s.
        */
       persistFetchState?: boolean;
     },
   ): Promise<SourceFetchResult>;
+  /** Persist validators after downstream parsing/work has completed. */
+  commitFetchState(url: string, result: SourceFetchResult): Promise<void>;
   /** Resolve a redirect chain to its destination without reading the body. */
   resolve(url: string): Promise<SourceFetchResult>;
   stats(): HttpClientStats;
@@ -176,9 +180,9 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 //   2. RESOLVED — resolve DNS and reject if ANY address is non-public. Catches
 //      metadata.google.internal and any hostname pointed at 127.0.0.1.
 //
-// Known limit: this does not defeat DNS rebinding (the address can change
-// between our check and fetch's own resolution). Closing that needs connection
-// -level pinning via a custom agent; out of scope here and recorded in the PR.
+// The production transport pins one validated address into node:http(s)'s
+// lookup callback while retaining the original hostname for Host and TLS SNI,
+// so a second DNS answer cannot rebind the actual connection to a private host.
 
 function isPublicIPv4(ip: string): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
@@ -272,7 +276,11 @@ export function isUrlAllowed(descriptor: SourceDescriptor, rawUrl: string): bool
   // is the bound. That makes the destination checks matter MORE, not less — the
   // URL came out of somebody else's markup. The comment here used to promise
   // "any public https URL"; the code enforced neither half, so it does now.
-  if (descriptor.allowedHosts.length === 0) return url.protocol === "https:";
+  if (descriptor.allowedHosts.length === 0) {
+    return descriptor.id === "official_direct"
+      && descriptor.tier === "official"
+      && url.protocol === "https:";
+  }
 
   const host = url.hostname.toLowerCase().replace(/^www\./, "");
   const hostOk = descriptor.allowedHosts.some(
@@ -316,6 +324,21 @@ type Hop =
   | { kind: "result"; result: SourceFetchResult }
   | { kind: "redirect"; location: string; httpStatus: number };
 
+interface ResolvedAddress {
+  address: string;
+  family: 4 | 6;
+}
+
+interface HopAttempt {
+  hop: Hop;
+  requestMade: boolean;
+}
+
+interface ChainResult {
+  result: SourceFetchResult;
+  requestsMade: number;
+}
+
 /**
  * Real DNS, imported lazily so this module stays importable where node:dns
  * doesn't exist (edge runtime, browser test envs) as long as nothing calls it.
@@ -335,7 +358,7 @@ export function createSourceHttpClient(
   descriptor: SourceDescriptor,
   options: HttpClientOptions = {},
 ): SourceHttpClient {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const injectedFetch = options.fetchImpl;
   const sleep = options.sleepImpl ?? defaultSleep;
   const userAgent = options.userAgent ?? SWEEPZA_USER_AGENT;
   // Explicit wins; otherwise DNS guards the real network and stands down for a
@@ -351,6 +374,7 @@ export function createSourceHttpClient(
   let notModified = 0;
   let failures = 0;
   let lastRequestAt = 0;
+  let cadenceTail: Promise<void> = Promise.resolve();
 
   // ---- concurrency + budget, enforced together ------------------------------
   //
@@ -411,11 +435,23 @@ export function createSourceHttpClient(
     return { status: "failed", url, failure, httpStatus: null, attempts: 0, message };
   }
 
-  async function respectCrawlDelay(): Promise<void> {
-    if (lastRequestAt === 0) return;
-    const elapsed = Date.now() - lastRequestAt;
-    const wait = descriptor.crawlDelayMs - elapsed;
-    if (wait > 0) await sleep(wait);
+  async function reserveCrawlCadence(): Promise<void> {
+    let release!: () => void;
+    const previous = cadenceTail;
+    cadenceTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      if (lastRequestAt !== 0) {
+        const elapsed = Date.now() - lastRequestAt;
+        const wait = descriptor.crawlDelayMs - elapsed;
+        if (wait > 0) await sleep(wait);
+      }
+      // Reserve the start time while holding the cadence queue, then release it
+      // before network I/O so maxConcurrency can still overlap slow requests.
+      lastRequestAt = Date.now();
+    } finally {
+      release();
+    }
   }
 
   /**
@@ -424,32 +460,111 @@ export function createSourceHttpClient(
    * or any hostname an attacker points at 127.0.0.1. Fails closed: if ANY
    * resolved address is non-public, the destination is refused.
    */
-  async function guardResolved(url: string): Promise<SourceFetchResult | null> {
-    if (!lookupImpl) return null;
+  async function resolvePublicTarget(
+    url: string,
+  ): Promise<{ blocked: SourceFetchResult | null; addresses: ResolvedAddress[] }> {
+    if (!lookupImpl) return { blocked: null, addresses: [] };
     let hostname: string;
     try {
       hostname = new URL(url).hostname;
     } catch {
-      return policyFailure(url, "blocked_by_policy", `${url} is not a parseable URL`);
+      return {
+        blocked: policyFailure(url, "blocked_by_policy", `${url} is not a parseable URL`),
+        addresses: [],
+      };
     }
     const literal = hostname.replace(/^\[/, "").replace(/\]$/, "");
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(literal) || literal.includes(":")) return null;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(literal) || literal.includes(":")) {
+      return {
+        blocked: null,
+        addresses: [{ address: literal, family: literal.includes(":") ? 6 : 4 }],
+      };
+    }
 
     let addresses: string[];
     try {
       addresses = await lookupImpl(hostname);
     } catch {
       // Unresolvable is a network fact, not a policy verdict — let it retry.
-      return policyFailure(url, "network", `DNS lookup failed for ${hostname}`);
+      return {
+        blocked: policyFailure(url, "network", `DNS lookup failed for ${hostname}`),
+        addresses: [],
+      };
     }
     if (addresses.length === 0 || !addresses.every(isPublicAddress)) {
-      return policyFailure(
-        url,
-        "blocked_by_policy",
-        `${hostname} resolves to a non-public address (${addresses.join(", ") || "no records"}) — refusing to request it`,
-      );
+      return {
+        blocked: policyFailure(
+          url,
+          "blocked_by_policy",
+          `${hostname} resolves to a non-public address (${addresses.join(", ") || "no records"}) — refusing to request it`,
+        ),
+        addresses: [],
+      };
     }
-    return null;
+    return {
+      blocked: null,
+      addresses: addresses.map((address) => ({
+        address,
+        family: address.includes(":") ? 6 : 4,
+      })),
+    };
+  }
+
+  /** Production transport pinned to the address set that passed the SSRF guard. */
+  async function performFetch(
+    url: string,
+    init: RequestInit,
+    addresses: ResolvedAddress[],
+  ): Promise<Response> {
+    if (injectedFetch) return injectedFetch(url, init);
+    if (addresses.length === 0) {
+      throw new Error(`no validated public address is available for ${url}`);
+    }
+
+    const parsed = new URL(url);
+    const [{ request }, { Readable }] = await Promise.all([
+      parsed.protocol === "https:" ? import("node:https") : import("node:http"),
+      import("node:stream"),
+    ]);
+    const pinned = addresses[0];
+
+    return new Promise<Response>((resolve, reject) => {
+      const headers = Object.fromEntries(new Headers(init.headers).entries());
+      const outgoing = request(
+        {
+          protocol: parsed.protocol,
+          hostname: parsed.hostname,
+          port: parsed.port || undefined,
+          path: `${parsed.pathname}${parsed.search}`,
+          method: init.method ?? "GET",
+          headers,
+          signal: init.signal ?? undefined,
+          ...(parsed.protocol === "https:" ? { servername: parsed.hostname } : {}),
+          lookup: (_hostname, _options, callback) => {
+            callback(null, pinned.address, pinned.family);
+          },
+        },
+        (incoming) => {
+          const responseHeaders = new Headers();
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(name, item));
+            else if (value !== undefined) responseHeaders.set(name, value);
+          }
+          const status = incoming.statusCode ?? 500;
+          const hasNoBody = status === 204 || status === 205 || status === 304;
+          const body = hasNoBody
+            ? null
+            : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>);
+          resolve(new Response(body, {
+            status,
+            statusText: incoming.statusMessage,
+            headers: responseHeaders,
+          }));
+        },
+      );
+      outgoing.once("error", reject);
+      outgoing.end();
+    });
   }
 
   /**
@@ -476,24 +591,36 @@ export function createSourceHttpClient(
     return out.slice(0, MAX_BODY_CHARS);
   }
 
-  async function once(url: string, init: RequestInit, readBody: boolean): Promise<Hop> {
+  async function once(
+    url: string,
+    init: RequestInit,
+    readBody: boolean,
+    addresses: ResolvedAddress[],
+  ): Promise<HopAttempt> {
     // Hold a concurrency slot across the ENTIRE request, crawl delay included:
     // the delay is only politeness if it actually spaces requests out, which it
     // cannot do if parallel callers wait it out simultaneously.
     await acquireSlot();
     try {
-      return await request(url, init, readBody);
+      return await requestOnce(url, init, readBody, addresses);
     } finally {
       releaseSlot();
     }
   }
 
-  async function request(url: string, init: RequestInit, readBody: boolean): Promise<Hop> {
+  async function requestOnce(
+    url: string,
+    init: RequestInit,
+    readBody: boolean,
+    addresses: ResolvedAddress[],
+  ): Promise<HopAttempt> {
     // Reserve before the await. Anything after this point has a slot; anything
     // that can't get one never reaches the network.
-    if (!reserveBudget()) return { kind: "result", result: budgetExhausted(url) };
+    if (!reserveBudget()) {
+      return { hop: { kind: "result", result: budgetExhausted(url) }, requestMade: false };
+    }
 
-    await respectCrawlDelay();
+    await reserveCrawlCadence();
 
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), descriptor.timeoutMs);
@@ -503,8 +630,7 @@ export function createSourceHttpClient(
       .filter((s): s is AbortSignal => Boolean(s));
 
     try {
-      lastRequestAt = Date.now();
-      const response = await fetchImpl(url, {
+      const response = await performFetch(url, {
         ...init,
         // MANUAL, not "follow": fetch would chase a Location off-allowlist and
         // touch the destination before this client ever saw response.url, so
@@ -513,22 +639,22 @@ export function createSourceHttpClient(
         redirect: "manual",
         headers: { "User-Agent": userAgent, ...(init.headers ?? {}) },
         signal: signals.length > 1 ? AbortSignal.any(signals) : signals[0],
-      });
+      }, addresses);
 
       // 304 is a 3xx but is NOT a redirect — it must be settled before the
       // redirect branch or a conditional GET turns into a bogus hop.
       if (response.status === 304) {
         notModified += 1;
-        return {
+        return { requestMade: true, hop: {
           kind: "result",
           result: { status: "not_modified", url, finalUrl: url, httpStatus: 304 },
-        };
+        } };
       }
 
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         if (!location) {
-          return {
+          return { requestMade: true, hop: {
             kind: "result",
             result: {
               status: "failed",
@@ -538,13 +664,13 @@ export function createSourceHttpClient(
               attempts: 1,
               message: `GET ${url} -> ${response.status} with no Location header`,
             },
-          };
+          } };
         }
         let target: string;
         try {
           target = new URL(location, url).toString(); // Location may be relative
         } catch {
-          return {
+          return { requestMade: true, hop: {
             kind: "result",
             result: {
               status: "failed",
@@ -554,16 +680,19 @@ export function createSourceHttpClient(
               attempts: 1,
               message: `GET ${url} -> ${response.status} with an unparseable Location (${location})`,
             },
-          };
+          } };
         }
-        return { kind: "redirect", location: target, httpStatus: response.status };
+        return {
+          requestMade: true,
+          hop: { kind: "redirect", location: target, httpStatus: response.status },
+        };
       }
 
       const body = readBody ? await readCappedBody(response) : null;
       const failure = classifyStatus(response.status, body);
       if (failure) {
         failures += 1;
-        return {
+        return { requestMade: true, hop: {
           kind: "result",
           result: {
             status: "failed",
@@ -573,12 +702,12 @@ export function createSourceHttpClient(
             attempts: 1,
             message: `GET ${url} -> ${response.status}`,
           },
-        };
+        } };
       }
 
       if (readBody && (!body || body.trim().length === 0)) {
         failures += 1;
-        return {
+        return { requestMade: true, hop: {
           kind: "result",
           result: {
             status: "failed",
@@ -588,10 +717,10 @@ export function createSourceHttpClient(
             attempts: 1,
             message: `GET ${url} -> ${response.status} with an empty body`,
           },
-        };
+        } };
       }
 
-      return {
+      return { requestMade: true, hop: {
         kind: "result",
         result: {
           status: "ok",
@@ -602,10 +731,10 @@ export function createSourceHttpClient(
           lastModified: response.headers.get("last-modified"),
           httpStatus: response.status,
         },
-      };
+      } };
     } catch (error) {
       failures += 1;
-      return {
+      return { requestMade: true, hop: {
         kind: "result",
         result: {
           status: "failed",
@@ -615,7 +744,7 @@ export function createSourceHttpClient(
           attempts: 1,
           message: error instanceof Error ? error.message : String(error),
         },
-      };
+      } };
     } finally {
       clearTimeout(timer);
     }
@@ -640,53 +769,75 @@ export function createSourceHttpClient(
     init: RequestInit,
     readBody: boolean,
     mode: "fetch" | "resolve",
-  ): Promise<SourceFetchResult> {
+  ): Promise<ChainResult> {
     let url = startUrl;
+    let requestsMade = 0;
+    let hopInit = init;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const blocked = guard(url) ?? (await guardResolved(url));
-      if (blocked) return blocked;
+      const blocked = guard(url);
+      if (blocked) return { result: blocked, requestsMade };
+      const resolved = await resolvePublicTarget(url);
+      if (resolved.blocked) return { result: resolved.blocked, requestsMade };
 
-      const outcome = await once(url, init, readBody);
-      if (outcome.kind === "result") return outcome.result;
+      const outcome = await once(url, hopInit, readBody, resolved.addresses);
+      if (outcome.requestMade) requestsMade += 1;
+      if (outcome.hop.kind === "result") {
+        return { result: outcome.hop.result, requestsMade };
+      }
 
-      const target = outcome.location;
+      const target = outcome.hop.location;
       const withinReach = isUrlAllowed(descriptor, target);
 
       if (!withinReach) {
         if (mode === "resolve") {
           // The destination of the chain — reported, not requested.
           if (!isPublicHostLiteral(new URL(target).hostname)) {
-            return policyFailure(
-              target,
-              "blocked_by_policy",
-              `${startUrl} redirects to a non-public destination (${target}) — refusing to report it as an official URL`,
-            );
+            return {
+              result: policyFailure(
+                target,
+                "blocked_by_policy",
+                `${startUrl} redirects to a non-public destination (${target}) — refusing to report it as an official URL`,
+              ),
+              requestsMade,
+            };
           }
-          return {
+          return { requestsMade, result: {
             status: "ok",
             url: startUrl,
             finalUrl: target,
             body: "",
             etag: null,
             lastModified: null,
-            httpStatus: outcome.httpStatus,
-          };
+            httpStatus: outcome.hop.httpStatus,
+          } };
         }
-        return policyFailure(
-          target,
-          "blocked_by_policy",
-          `${url} redirected to ${target}, outside the declared reach of source "${descriptor.id}"`,
-        );
+        return {
+          result: policyFailure(
+            target,
+            "blocked_by_policy",
+            `${url} redirected to ${target}, outside the declared reach of source "${descriptor.id}"`,
+          ),
+          requestsMade,
+        };
       }
 
       url = target; // in-reach hop: re-guarded at the top of the next iteration
+      // Validators belong to one exact URL representation. Never leak an ETag
+      // or Last-Modified value to another redirect hop/origin.
+      const redirectHeaders = new Headers(init.headers);
+      redirectHeaders.delete("if-none-match");
+      redirectHeaders.delete("if-modified-since");
+      hopInit = { ...init, headers: redirectHeaders };
     }
 
-    return policyFailure(
-      url,
-      "too_many_redirects",
-      `${startUrl} exceeded ${MAX_REDIRECTS} redirects`,
-    );
+    return {
+      result: policyFailure(
+        url,
+        "too_many_redirects",
+        `${startUrl} exceeded ${MAX_REDIRECTS} redirects`,
+      ),
+      requestsMade,
+    };
   }
 
   async function withRetries(
@@ -695,25 +846,29 @@ export function createSourceHttpClient(
     readBody: boolean,
     mode: "fetch" | "resolve",
   ): Promise<SourceFetchResult> {
-    let attempt = 0;
-    let last: SourceFetchResult = await followChain(url, init, readBody, mode);
+    let retry = 0;
+    let chain = await followChain(url, init, readBody, mode);
+    let last = chain.result;
+    let networkAttempts = chain.requestsMade;
     while (
       last.status === "failed" &&
       isRetryable(last.failure) &&
-      attempt < descriptor.maxRetries
+      retry < descriptor.maxRetries
     ) {
       // Budget BEFORE the counter. Incrementing first meant that when the
       // initial request consumed the last slot, the reported `attempts` claimed
       // two requests where only one was made — audit telemetry has to match the
       // network activity it is auditing, or it is worse than none.
       if (requests >= descriptor.requestBudgetPerRun) break;
-      attempt += 1;
+      retry += 1;
       // Exponential backoff on top of the crawl delay: a struggling source gets
       // less traffic from us, not the same traffic repeated.
-      await sleep(descriptor.crawlDelayMs * 2 ** attempt);
-      last = await followChain(url, init, readBody, mode);
+      await sleep(descriptor.crawlDelayMs * 2 ** retry);
+      chain = await followChain(url, init, readBody, mode);
+      last = chain.result;
+      networkAttempts += chain.requestsMade;
     }
-    if (last.status === "failed") return { ...last, attempts: attempt + 1 };
+    if (last.status === "failed") return { ...last, attempts: networkAttempts };
     return last;
   }
 
@@ -751,12 +906,12 @@ export function createSourceHttpClient(
 
       const result = await withRetries(url, { headers }, true, "fetch");
 
-      if (
-        descriptor.supportsConditionalRequests
-        && options.fetchState
-        && getOptions?.persistFetchState !== false
-      ) {
-        if (result.status === "ok") {
+      if (descriptor.supportsConditionalRequests && options.fetchState) {
+        if (
+          result.status === "ok"
+          && result.finalUrl === url
+          && getOptions?.persistFetchState === true
+        ) {
           await options.fetchState
             .save(url, {
               etag: result.etag,
@@ -778,6 +933,21 @@ export function createSourceHttpClient(
         }
       }
       return result;
+    },
+
+    async commitFetchState(url, result) {
+      if (
+        !descriptor.supportsConditionalRequests
+        || !options.fetchState
+        || result.status !== "ok"
+        || result.finalUrl !== url
+      ) return;
+      await options.fetchState.save(url, {
+        etag: result.etag,
+        lastModified: result.lastModified,
+        httpStatus: result.httpStatus,
+        notModified: false,
+      }).catch(() => undefined);
     },
 
     async resolve(url) {

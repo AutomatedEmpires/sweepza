@@ -14,6 +14,7 @@ import {
   FG_POST_HTML,
 } from "@/lib/ingestion/fixtures/scenarios";
 import { getSourceDescriptor } from "@/lib/ingestion/source";
+import { createMemoryDiscoveryWorkQueue } from "@/lib/ingestion/work-queue";
 
 const descriptor = getSourceDescriptor("freebie_guy")!;
 
@@ -67,6 +68,11 @@ describe("parseFreebieGuyArchive", () => {
       publishedOn: "2026-07-15",
     });
   });
+
+  it("does not leak quoted > attributes into a post title", () => {
+    const html = '<article><h2 class="entry-title"><a href="https://thefreebieguy.com/sweepstakes/x" title="1 > 0">Clean Post</a></h2></article>';
+    expect(parseFreebieGuyArchive(html)[0]?.title).toBe("Clean Post");
+  });
 });
 
 describe("parseFreebieGuyOfficialUrl", () => {
@@ -95,9 +101,15 @@ describe("parseFreebieGuyOfficialUrl", () => {
 });
 
 describe("freebieGuyAdapter.discover", () => {
+  const context = (http: ReturnType<typeof createFixtureHttpClient>, limit = 10) => ({
+    http,
+    limit,
+    workQueue: createMemoryDiscoveryWorkQueue(),
+  });
+
   it("filters to sweepstakes, skips the closed one, and yields the live lead", async () => {
     const http = createFixtureHttpClient(descriptor, PAGES);
-    const leads = await freebieGuyAdapter.discover({ http, limit: 10 });
+    const leads = await freebieGuyAdapter.discover(context(http));
 
     // Archive has coffee (live), a freebie (filtered), and a grill (closed).
     expect(leads).toHaveLength(1);
@@ -114,7 +126,7 @@ describe("freebieGuyAdapter.discover", () => {
       "https://thefreebieguy.com/category/sweepstakes": { networkError: "ECONNRESET" },
     });
 
-    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toThrow(
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toThrow(
       SourceFetchError,
     );
   });
@@ -131,7 +143,7 @@ describe("freebieGuyAdapter.discover", () => {
     }
     const http = createFixtureHttpClient(descriptor, pages);
 
-    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toMatchObject({
       name: "SourceFetchError",
       failure: "server_error",
     });
@@ -147,7 +159,7 @@ describe("freebieGuyAdapter.discover", () => {
     for (const p of posts) pages[p.url] = { status: 404 };
     const http = createFixtureHttpClient(descriptor, pages);
 
-    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).resolves.toEqual([]);
+    await expect(freebieGuyAdapter.discover(context(http))).resolves.toEqual([]);
   });
 
   it("carries the failure class so the breaker can record WHY", async () => {
@@ -155,7 +167,7 @@ describe("freebieGuyAdapter.discover", () => {
       "https://thefreebieguy.com/category/sweepstakes": { status: 503 },
     });
 
-    await expect(freebieGuyAdapter.discover({ http, limit: 10 })).rejects.toMatchObject({
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toMatchObject({
       name: "SourceFetchError",
       failure: "server_error",
     });
@@ -164,7 +176,7 @@ describe("freebieGuyAdapter.discover", () => {
   it("never leaves thefreebieguy.com during discovery", async () => {
     const log: string[] = [];
     const http = createFixtureHttpClient(descriptor, PAGES, { log });
-    await freebieGuyAdapter.discover({ http, limit: 10 });
+    await freebieGuyAdapter.discover(context(http));
     for (const url of log) {
       expect(new URL(url).hostname).toBe("thefreebieguy.com");
     }

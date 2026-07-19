@@ -105,8 +105,9 @@ export function createFixtureFetch(
       return new Response(null, { status: page.status ?? 302, headers });
     }
 
-    return new Response(page.body ?? "", {
-      status: page.status ?? 200,
+    const status = page.status ?? 200;
+    return new Response(status === 204 || status === 205 || status === 304 ? null : (page.body ?? ""), {
+      status,
       headers,
     });
   }) as typeof fetch;

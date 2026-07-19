@@ -15,7 +15,11 @@ const mocks = vi.hoisted(() => ({
   startIngestionRun: vi.fn(),
   touchLastSeen: vi.fn(),
   getSourceRecord: vi.fn(),
-  recordRunOutcome: vi.fn(),
+  acquireSourceRunLease: vi.fn(),
+  finishSourceRunLease: vi.fn(),
+  releaseSourceRunLease: vi.fn(),
+  completeWork: vi.fn(),
+  deferWork: vi.fn(),
   getFetchState: vi.fn(),
   saveFetchState: vi.fn(),
 }));
@@ -75,9 +79,20 @@ vi.mock("@/lib/ingestion/source", async (importActual) => {
 
 vi.mock("@/lib/db/source-registry", () => ({
   getSourceRecord: mocks.getSourceRecord,
-  recordRunOutcome: mocks.recordRunOutcome,
+  acquireSourceRunLease: mocks.acquireSourceRunLease,
+  finishSourceRunLease: mocks.finishSourceRunLease,
+  releaseSourceRunLease: mocks.releaseSourceRunLease,
   getFetchState: mocks.getFetchState,
   saveFetchState: mocks.saveFetchState,
+}));
+
+vi.mock("@/lib/db/discovery-work", () => ({
+  discoveryWorkQueue: () => ({
+    enqueue: vi.fn(),
+    take: vi.fn(),
+    complete: mocks.completeWork,
+    defer: mocks.deferWork,
+  }),
 }));
 
 vi.mock("@/lib/ingestion/extract", () => ({
@@ -103,12 +118,13 @@ const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 // distinction is the point: only a real HTTP failure from the source may feed
 // its circuit breaker — a 304 is not a failure, and our own extractor coming up
 // empty is not the sponsor's fault.
-const ok = (r: RawExtraction) => ({
+const ok = (r: RawExtraction, finalUrl = "https://brand.com/official-rules") => ({
   status: "ok" as const,
   extraction: {
     raw: r,
     pageText: "page text",
     contentHash: "hash",
+    finalUrl,
     fetchState: { etag: 'W/"accepted"', lastModified: null, httpStatus: 200 },
   },
 });
@@ -151,11 +167,20 @@ beforeEach(() => {
     killSwitch: false,
     circuitOpenedAt: null,
   }));
-  mocks.recordRunOutcome.mockResolvedValue(undefined);
+  mocks.acquireSourceRunLease.mockImplementation(async (id: string) => ({
+    ok: true,
+    token: `lease-${id}`,
+    startedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  }));
+  mocks.finishSourceRunLease.mockResolvedValue(undefined);
+  mocks.releaseSourceRunLease.mockResolvedValue(undefined);
+  mocks.completeWork.mockResolvedValue(undefined);
+  mocks.deferWork.mockResolvedValue(undefined);
   mocks.getFetchState.mockResolvedValue(null);
   mocks.saveFetchState.mockResolvedValue(undefined);
   mocks.discover.mockResolvedValue([
-    { officialUrl: "https://brand.com/official-rules" },
+    { officialUrl: "https://brand.com/official-rules", discoveryWorkKey: "work-1" },
   ]);
   mocks.extractOfficialPage.mockResolvedValue(ok(raw()));
   mocks.findExistingListingId.mockResolvedValue(null);
@@ -175,21 +200,47 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
   // recorded ok:true — resetting consecutive_failures on exactly the outages it
   // was built to catch.
 
+  it("does not acquire a source lease when run-log creation fails first", async () => {
+    mocks.startIngestionRun.mockRejectedValueOnce(new Error("run log unavailable"));
+
+    await expect(runIngestion()).rejects.toThrow("run log unavailable");
+
+    expect(mocks.acquireSourceRunLease).not.toHaveBeenCalled();
+    expect(mocks.releaseSourceRunLease).not.toHaveBeenCalled();
+  });
+
+  it("closes the audit run when lease acquisition throws", async () => {
+    mocks.acquireSourceRunLease.mockRejectedValueOnce(new Error("lease RPC transport failed"));
+
+    const summaries = await runIngestion();
+
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(
+      "run-1",
+      {},
+      "error",
+      "lease RPC transport failed",
+      expect.objectContaining({ requestsMade: 0 }),
+    );
+    expect(summaries[0]).toMatchObject({ source: "sweeps_advantage", status: "error" });
+  });
+
   it("records a FAILURE when every official fetch fails", async () => {
     mocks.discover.mockResolvedValue([
-      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/a", discoveryWorkKey: "work-1" },
       { officialUrl: "https://brand.com/b" },
     ]);
     mocks.extractOfficialPage.mockResolvedValue(httpFailed()); // the source is down
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "official_direct",
+      "lease-official_direct",
       expect.objectContaining({ ok: false }),
     );
     expect(summaries[0]).toMatchObject({ status: "error", fetched: 2, failed: 2, created: 0 });
@@ -202,13 +253,15 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "ok", discovered: 0 });
-    expect(mocks.recordRunOutcome).not.toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).not.toHaveBeenCalledWith(
       "official_direct",
+      "lease-official_direct",
       expect.anything(),
     );
   });
@@ -224,16 +277,17 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
   });
 
-  it("counts a partial failure as a success — one dead sponsor page is not an outage", async () => {
+  it("completes a dead sponsor page as a durable non-outage", async () => {
     mocks.discover.mockResolvedValue([
-      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/a", discoveryWorkKey: "work-1" },
       { officialUrl: "https://brand.com/b" },
     ]);
     mocks.extractOfficialPage
@@ -242,10 +296,13 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.deferWork).not.toHaveBeenCalledWith("work-1");
   });
 
   it("does NOT blame the source for a 304 — not-modified is not a failure", async () => {
@@ -259,8 +316,9 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "ok", skipped: 2, created: 0 });
@@ -274,8 +332,9 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
@@ -286,15 +345,35 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
-    expect(mocks.recordRunOutcome).not.toHaveBeenCalledWith(
+    expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "official_direct",
-      expect.anything(),
+      "lease-official_direct",
+      expect.objectContaining({ ok: true }),
     );
   });
+
+  it.each(["access_denied", "too_many_redirects", "empty_body", "bot_challenge"])(
+    "does not let page-specific %s outcomes trip the shared official circuit",
+    async (failure) => {
+      mocks.extractOfficialPage.mockResolvedValue(httpFailed(failure));
+
+      const summaries = await runIngestion();
+
+      expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+        "official_direct",
+        "lease-official_direct",
+        expect.objectContaining({ ok: true }),
+      );
+      expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
+      expect(summaries[0]).toMatchObject({ status: "ok", failed: 1 });
+    },
+  );
 
   it("still records an official outage when failed requests are followed by budget exhaustion", async () => {
     mocks.discover.mockResolvedValue([
@@ -307,12 +386,14 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "official_direct",
+      "lease-official_direct",
       expect.objectContaining({ ok: false }),
     );
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
   });
@@ -324,8 +405,9 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: false }),
     );
     expect(summaries[0]).toMatchObject({ status: "error" });
@@ -350,11 +432,13 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     const summaries = await runIngestion();
 
-    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "sweeps_advantage",
+      "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "error" });
+    expect(mocks.completeWork).not.toHaveBeenCalled();
   });
 });
 
@@ -405,6 +489,7 @@ describe("runIngestion publishable gate", () => {
   it("creates a draft for a candidate that passes every hard check", async () => {
     const summaries = await runIngestion();
     expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(1);
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
     expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
     expect(summaries).toEqual([
       expect.objectContaining({
@@ -423,6 +508,32 @@ describe("runIngestion publishable gate", () => {
       null,
       expect.objectContaining({ gateDecision: "allowed" }),
     );
+  });
+
+  it("does not persist a final-hop validator under a redirecting request URL", async () => {
+    mocks.extractOfficialPage.mockResolvedValue(
+      ok(raw(), "https://sponsor-cdn.example.com/final-rules"),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(1);
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.saveFetchState).not.toHaveBeenCalled();
+    expect(summaries[0]).toMatchObject({ status: "ok", created: 1 });
+  });
+
+  it("treats www and trailing-slash changes as redirects for validator safety", async () => {
+    // Listing identity normalization intentionally equates these URLs. HTTP
+    // validator identity must not: the final server emitted the ETag.
+    mocks.extractOfficialPage.mockResolvedValue(
+      ok(raw(), "https://www.brand.com/official-rules/"),
+    );
+
+    await runIngestion();
+
+    expect(mocks.saveFetchState).not.toHaveBeenCalled();
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
   });
 
   it("counts a concurrent database claimant as skipped, never as a second creation", async () => {
@@ -445,7 +556,10 @@ describe("runIngestion publishable gate", () => {
 
     const summaries = await runIngestion();
     expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
-    expect(mocks.saveFetchState, "a held candidate must be fetched again next run").not.toHaveBeenCalled();
+    expect(
+      mocks.saveFetchState,
+      "a completed hold may safely use its validator until the page changes",
+    ).toHaveBeenCalledTimes(1);
     expect(summaries).toEqual([
       expect.objectContaining({ status: "ok", created: 0, failed: 1 }),
     ]);

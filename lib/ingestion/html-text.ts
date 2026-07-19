@@ -47,6 +47,82 @@ export function decodeHtmlEntities(value: string): string {
   });
 }
 
+/** Remove markup with quoted-attribute awareness; this is not an HTML parser. */
+export function stripHtmlTagsQuoteAware(value: string): string {
+  let output = "";
+  let index = 0;
+
+  while (index < value.length) {
+    if (value[index] !== "<") {
+      output += value[index];
+      index += 1;
+      continue;
+    }
+
+    let quote: '"' | "'" | null = null;
+    let end = index + 1;
+    for (; end < value.length; end += 1) {
+      const character = value[end];
+      if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        break;
+      }
+    }
+
+    if (end >= value.length) {
+      output += value[index];
+      index += 1;
+      continue;
+    }
+
+    const tag = value.slice(index + 1, end);
+    const openingBlock = tag.match(/^\s*(script|style|head|noscript)\b/i)?.[1];
+    if (openingBlock) {
+      const closing = new RegExp(`</${openingBlock}\\s*>`, "ig");
+      closing.lastIndex = end + 1;
+      const match = closing.exec(value);
+      index = match ? closing.lastIndex : end + 1;
+      output += " ";
+      continue;
+    }
+
+    output += " ";
+    index = end + 1;
+  }
+
+  return output;
+}
+
+/** Protect quoted `>` so structural regexes see only the real tag boundary. */
+export function protectQuotedTagDelimiters(value: string): string {
+  let output = "";
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+  for (const character of value) {
+    if (!inTag) {
+      output += character;
+      if (character === "<") inTag = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) quote = null;
+      output += character === ">" ? "&gt;" : character;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      output += character;
+      continue;
+    }
+    output += character;
+    if (character === ">") inTag = false;
+  }
+  return output;
+}
+
 /**
  * Strip tags and decode entities to readable text. Tags are removed first
  * (repeatedly, so reconstructed `<...>` sequences cannot survive), then entities
@@ -54,15 +130,11 @@ export function decodeHtmlEntities(value: string): string {
  * re-parsed as HTML.
  */
 export function stripHtmlToText(value: string): string {
-  const withoutBlocks = value.replace(
-    /<(script|style)\b[^>]*>[\s\S]*?<\/\1[^>]*>/gi,
-    " ",
-  );
   let previous: string;
-  let stripped = withoutBlocks;
+  let stripped = value;
   do {
     previous = stripped;
-    stripped = stripped.replace(/<[^>]*>/g, " ");
+    stripped = stripHtmlTagsQuoteAware(stripped);
   } while (stripped !== previous);
 
   return decodeHtmlEntities(stripped).replace(/\s+/g, " ").trim();
