@@ -6,10 +6,24 @@ import { getPublicListings } from "@/lib/db/listings";
 import { withPublicFallback } from "@/lib/db/resilient";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
-import { SITE_URL } from "@/lib/site";
+import { APP_NAME, SITE_URL } from "@/lib/site";
 import { getCachedPublicListings } from "@/lib/db/listings-cache";
 
-export const metadata = { title: "Discover" };
+const DISCOVER_DESCRIPTION =
+  "Browse live, free-to-enter sweepstakes — filter by prize category, deadline, and entry frequency, then enter on the host's own site.";
+
+export const metadata = {
+  title: "Discover",
+  description: DISCOVER_DESCRIPTION,
+  alternates: { canonical: "/discover" },
+  openGraph: {
+    title: "Discover sweepstakes",
+    description: DISCOVER_DESCRIPTION,
+    url: "/discover",
+    type: "website",
+    siteName: APP_NAME,
+  },
+};
 export const dynamic = "force-dynamic";
 
 // Discover — the single discovery system. Search is a dimension of it

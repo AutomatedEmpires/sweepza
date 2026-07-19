@@ -14,10 +14,30 @@ import { CATEGORY_CODE_TO_PRIZE_CATEGORY } from "@/lib/db/adapters";
  * Copy rules (canon): describe what seekers actually find; never promise wins,
  * never imply paid entry improves anything, never invent inventory counts, and
  * never make per-listing claims the data model does not universally enforce
- * (listings can publish while unreviewed, and rare admin-approved
- * official-rules exceptions exist — so hub copy must not say "verified" or
- * "official rules on every listing"). "Free to enter / no purchase necessary"
- * is platform policy and is safe to state.
+ * (listings can publish while unreviewed, so hub copy must not say "verified").
+ *
+ * ⚠️ This rule USED to end: '...rare admin-approved official-rules exceptions
+ * exist — so hub copy must not say "official rules on every listing". "Free to
+ * enter / no purchase necessary" is platform policy and is safe to state.'
+ * That reasoning was exactly inverted, and it is worth keeping the correction
+ * visible:
+ *
+ *   - "official rules on every listing" was BANNED for an exception that was
+ *     unreachable (nothing could set official_rules_exception true — both write
+ *     schemas require officialRulesUrl). The column is now dropped and the
+ *     publish guard hard-requires a rules URL, so this claim is TRUE and may be
+ *     stated.
+ *   - "free to enter / no purchase necessary" was ALLOWED as "platform policy"
+ *     while having STRICTLY WEAKER enforcement than the claim above — namely
+ *     none. `no_purchase_necessary` is nullable, unchecked by
+ *     listing_publish_guard(), and absent from both write schemas. It is a
+ *     third party's legal representation about their own promotion, and it is
+ *     the phrase separating a lawful sweepstakes from an illegal lottery.
+ *
+ * So: NEVER assert no-purchase/free-to-enter on a listing's behalf, and never
+ * claim an entry or rules URL is sponsor-OWNED (nothing verifies that). Point
+ * at the official rules — they are the authority. Enforced by
+ * lib/__tests__/honest-copy.test.ts, which now scans this file.
  */
 export interface CategoryHub {
   /** URL segment under /discover — hyphenated, human-readable. */
@@ -66,9 +86,9 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     slug: "cash",
     code: "cash",
     label: "Cash",
-    title: "Cash Sweepstakes — Free to Enter",
+    title: "Cash Sweepstakes & Giveaways",
     description:
-      "Open cash giveaways with no purchase necessary — from daily-entry cash drops to large one-time prizes, each linked to the sponsor's entry page.",
+      "Open cash giveaways, from daily-entry cash drops to large one-time prizes. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "gift-cards",
@@ -76,7 +96,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Gift Cards",
     title: "Gift Card Sweepstakes & Giveaways",
     description:
-      "Win gift cards to major retailers and brands. Every listing is free to enter and links to the sponsor's entry page.",
+      "Gift cards to major retailers and brands. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "travel",
@@ -84,7 +104,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Travel",
     title: "Travel Sweepstakes — Win Trips & Getaways",
     description:
-      "Trips, flights, hotel stays, and vacation packages — always no purchase necessary, with each listing linked to the sponsor's entry page.",
+      "Trips, flights, hotel stays, and vacation packages. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "vehicles",
@@ -92,7 +112,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Vehicles",
     title: "Car & Vehicle Sweepstakes",
     description:
-      "Cars, trucks, motorcycles, and powersports giveaways — free to enter, linked to the sponsor running each one.",
+      "Cars, trucks, motorcycles, and powersports giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "electronics",
@@ -100,7 +120,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Electronics",
     title: "Electronics Sweepstakes — Phones, TVs & More",
     description:
-      "Phones, laptops, TVs, consoles, and gadget giveaways. Free entry, with the sponsor's entry page linked on each listing.",
+      "Phones, laptops, TVs, consoles, and gadget giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "outdoor",
@@ -108,7 +128,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Outdoor Gear",
     title: "Outdoor Gear Sweepstakes",
     description:
-      "Camping, fishing, hunting, and adventure-gear giveaways — free to enter, gathered from the sponsors running them.",
+      "Camping, fishing, hunting, and adventure-gear giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "home",
@@ -116,7 +136,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Home Goods",
     title: "Home Goods Sweepstakes & Giveaways",
     description:
-      "Furniture, appliances, kitchen upgrades, and home-makeover giveaways, each linked to the sponsor's entry page.",
+      "Furniture, appliances, kitchen upgrades, and home-makeover giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "food-beverage",
@@ -124,7 +144,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Food/Beverage",
     title: "Food & Beverage Sweepstakes",
     description:
-      "Grocery hauls, restaurant prizes, and food-brand giveaways — always free to enter, never pay-to-play.",
+      "Grocery hauls, restaurant prizes, and food-brand giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "beauty-fashion",
@@ -132,7 +152,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Beauty/Fashion",
     title: "Beauty & Fashion Sweepstakes",
     description:
-      "Wardrobe, cosmetics, and style giveaways from brands and creators, free to enter with the sponsor's entry page linked.",
+      "Wardrobe, cosmetics, and style giveaways from brands and creators. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "family-kids",
@@ -140,7 +160,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Family/Kids",
     title: "Family & Kids Sweepstakes",
     description:
-      "Toys, family experiences, and kid-friendly prize giveaways — free to enter, straight from the sponsors running them.",
+      "Toys, family experiences, and kid-friendly prize giveaways. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "experiences",
@@ -148,7 +168,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Experiences",
     title: "Experience Sweepstakes — Tickets, Events & VIP Prizes",
     description:
-      "Concert tickets, sports packages, meet-and-greets, and once-in-a-while experiences — free to enter, linked to the sponsor's entry page.",
+      "Concert tickets, sports packages, meet-and-greets, and once-in-a-while experiences. Each listing links to its official entry page and official rules.",
   },
   {
     slug: "seasonal",
@@ -156,7 +176,7 @@ export const CATEGORY_HUBS: CategoryHub[] = [
     label: "Seasonal/Holiday",
     title: "Seasonal & Holiday Sweepstakes",
     description:
-      "Holiday-season giveaways and limited-window seasonal prizes — free entry, no purchase necessary.",
+      "Holiday-season giveaways and limited-window seasonal prizes. Each listing links to its official entry page and official rules.",
   },
 ];
 

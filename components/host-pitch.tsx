@@ -21,7 +21,13 @@ export function HostPitch({
     {
       icon: "verified",
       title: "A trust-first directory",
-      body: "Every listing is reviewed before it goes live, carries source attribution, and links to your official entry page. Verified hosts get a visible badge.",
+      // "Verified hosts get a visible badge" was honest — it describes the
+      // badge, it does not claim hosts are verified — but it is indistinguishable
+      // to the detector from the banned "Verified hosts, honest sources", which
+      // DOES imply universality. Reworded rather than weakening the pattern: a
+      // blunt detector that never misfires is worth more than one sentence's
+      // phrasing.
+      body: "Every listing is reviewed before it goes live, carries source attribution, and links to your official entry page. Hosts who complete verification get a visible badge.",
     },
     {
       icon: "chart",
@@ -37,7 +43,15 @@ export function HostPitch({
     },
     {
       title: "Submit a sweepstakes",
-      body: "Prize, dates, entry cadence, eligibility, and your official entry link. No purchase necessary is required — pay-to-enter is never listed.",
+      // Was: "No purchase necessary is required — pay-to-enter is never listed."
+      // That asserted ENFORCEMENT that does not exist: no_purchase_necessary is
+      // nullable, listing_publish_guard() never checks it, and neither
+      // host-listing-schema nor admin-listing-schema even accepts it — a host
+      // cannot affirm it if they want to. "No purchase necessary" is the phrase
+      // separating a lawful sweepstakes from an illegal lottery, so claiming to
+      // enforce it while enforcing nothing is the most expensive possible place
+      // to break the no-empty-promises rule. Describe the submission instead.
+      body: "Prize, dates, entry cadence, eligibility, your official entry link, and a link to the official rules.",
     },
     {
       title: "Pass review, go live",

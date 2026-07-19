@@ -510,8 +510,18 @@ export function ListingDetail({
             </Link>
           )}
 
+          {/*
+            Was: "No purchase necessary · See official rules" — printed on EVERY
+            listing, sourced from nothing. `no_purchase_necessary` is nullable,
+            unenforced by listing_publish_guard(), and absent from both write
+            schemas, so this asserted the one fact that separates a lawful
+            sweepstakes from an illegal lottery on behalf of a third party we
+            never asked. The official rules ARE the authority (and every
+            published listing now carries a rules URL — the guard requires it),
+            so point at them rather than summarizing them.
+          */}
           <p className="mt-8 text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
-            No purchase necessary · See official rules
+            Eligibility, odds, and entry terms are set by the official rules
           </p>
         </div>
 

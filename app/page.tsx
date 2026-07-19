@@ -108,8 +108,11 @@ function TrustBand() {
 function FooterBlock() {
   return (
     <div className="flex flex-col gap-2 px-5 pb-2 lg:px-0">
+      {/* Was: "No purchase necessary · See official rules" — asserted a sponsor's
+          legal representation about their own promotion. Nothing backs it:
+          `no_purchase_necessary` is nullable and unchecked. Point at the rules instead. */}
       <p className="text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
-        No purchase necessary · See official rules
+        Eligibility, odds, and entry terms are set by the official rules
       </p>
       <nav
         aria-label="Footer"
@@ -247,8 +250,10 @@ export default async function TodayPage() {
           >
             Start my routine
           </Link>
+          {/* Was: "Free for seekers · no purchase necessary" — the second half spoke
+              for the sponsor. Sweepza's own fee is Sweepza's to state; the sponsor's isn't. */}
           <span className="text-xs font-medium text-graphite">
-            Free for seekers · no purchase necessary
+            Free for seekers — Sweepza never charges you to enter
           </span>
         </div>
       </header>

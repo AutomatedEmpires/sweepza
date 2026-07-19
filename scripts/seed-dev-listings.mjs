@@ -149,7 +149,6 @@ async function main() {
       image_alt_text: item.prize,
       entry_url: `https://entries.example.com/${item.slug}`,
       official_rules_url: `https://entries.example.com/${item.slug}/rules`,
-      official_rules_exception: false,
       start_date: dateOnly(agoDays(item.start)),
       end_date: dateOnly(inDays(item.end)),
       entry_frequency: item.freq,

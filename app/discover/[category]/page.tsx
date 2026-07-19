@@ -108,8 +108,10 @@ export default async function CategoryHubPage({
       </nav>
 
       <header className="mb-6 px-1">
+        {/* Was: "Free to enter · No purchase necessary" — asserted, for every listing in
+            the category, a no-purchase fact only the sponsor can represent and nothing verifies. */}
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ember">
-          Free to enter · No purchase necessary
+          Free for seekers — entry terms set by each sponsor
         </p>
         <h1 className="mt-1.5 font-display text-[32px] leading-[1.05] text-ink lg:text-[40px]">
           {hub.label} sweepstakes
