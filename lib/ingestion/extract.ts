@@ -53,6 +53,11 @@ export interface FetchedPage {
   text: string;
   /** Cheap hash of the readable text — "changed since last run?" check. */
   contentHash: string;
+  fetchState: {
+    etag: string | null;
+    lastModified: string | null;
+    httpStatus: number;
+  };
 }
 
 export type FetchPageResult =
@@ -73,7 +78,10 @@ export async function fetchOfficialPage(
   http: SourceHttpClient,
   conditional?: ConditionalState,
 ): Promise<FetchPageResult> {
-  const result = await http.get(url, { conditional });
+  // Loading a previously accepted validator is safe; saving the new validator
+  // is not. The orchestrator commits it only after the extracted candidate is
+  // durably created (or conclusively identified as an existing duplicate).
+  const result = await http.get(url, { conditional, persistFetchState: false });
 
   if (result.status === "not_modified") return { status: "not_modified" };
   if (result.status === "failed") {
@@ -88,7 +96,18 @@ export async function fetchOfficialPage(
       message: `${url} yielded ${text.length} characters of readable text`,
     };
   }
-  return { status: "ok", page: { text, contentHash: stableHash(text) } };
+  return {
+    status: "ok",
+    page: {
+      text,
+      contentHash: stableHash(text),
+      fetchState: {
+        etag: result.etag,
+        lastModified: result.lastModified,
+        httpStatus: result.httpStatus,
+      },
+    },
+  };
 }
 
 // Tool schema mirrors RawExtraction. Tool use (not free-form JSON) keeps the
@@ -137,6 +156,7 @@ export interface Extraction {
   raw: RawExtraction;
   pageText: string;
   contentHash: string;
+  fetchState: FetchedPage["fetchState"];
 }
 
 export interface ExtractOptions {
@@ -223,6 +243,7 @@ export async function extractOfficialPage(
       raw: toolUse.input as RawExtraction,
       pageText: page.text,
       contentHash: page.contentHash,
+      fetchState: page.fetchState,
     },
   };
 }

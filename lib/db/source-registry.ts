@@ -245,40 +245,14 @@ export async function recordRunOutcome(
   outcome: { ok: boolean; failureClass?: string | null; failureThreshold: number },
 ): Promise<void> {
   const supabase = createServiceRoleClient();
-  const now = new Date().toISOString();
-
-  if (outcome.ok) {
-    const { error } = await supabase
-      .from("source_registry")
-      .update({
-        last_run_at: now,
-        last_success_at: now,
-        consecutive_failures: 0,
-        circuit_opened_at: null,
-        last_failure_class: null,
-      })
-      .eq("id", sourceId);
-    if (error) throw new Error(`recordRunOutcome failed: ${error.message}`);
-    return;
-  }
-
-  const current = await getSourceRecord(sourceId);
-  const failures = (current?.consecutiveFailures ?? 0) + 1;
-  const tripped = failures >= outcome.failureThreshold;
-
-  const { error } = await supabase
-    .from("source_registry")
-    .update({
-      last_run_at: now,
-      last_failure_at: now,
-      last_failure_class: outcome.failureClass ?? null,
-      consecutive_failures: failures,
-      // Keep the original trip time if the breaker is already open — the age of
-      // the outage is what an operator needs, not the age of the latest retry.
-      circuit_opened_at: tripped ? (current?.circuitOpenedAt ?? now) : null,
-    })
-    .eq("id", sourceId);
+  const { data, error } = await supabase.rpc("record_source_run_outcome", {
+    p_source_id: sourceId,
+    p_ok: outcome.ok,
+    p_failure_class: outcome.failureClass ?? null,
+    p_failure_threshold: outcome.failureThreshold,
+  });
   if (error) throw new Error(`recordRunOutcome failed: ${error.message}`);
+  if (data !== true) throw new Error(`recordRunOutcome failed: unknown source "${sourceId}"`);
 }
 
 export interface FetchStateRecord {

@@ -89,7 +89,18 @@ export interface SourceHttpClient {
    * problem — those come back as a classified `failed` result, because a
    * thrown exception loses the classification the caller needs.
    */
-  get(url: string, options?: { conditional?: ConditionalState }): Promise<SourceFetchResult>;
+  get(
+    url: string,
+    options?: {
+      conditional?: ConditionalState;
+      /**
+       * Defaults to true. Official-page ingestion defers this until the
+       * extracted candidate has reached a durable terminal state; otherwise a
+       * failed extraction can save an ETag and strand the page behind 304s.
+       */
+      persistFetchState?: boolean;
+    },
+  ): Promise<SourceFetchResult>;
   /** Resolve a redirect chain to its destination without reading the body. */
   resolve(url: string): Promise<SourceFetchResult>;
   stats(): HttpClientStats;
@@ -740,7 +751,11 @@ export function createSourceHttpClient(
 
       const result = await withRetries(url, { headers }, true, "fetch");
 
-      if (descriptor.supportsConditionalRequests && options.fetchState) {
+      if (
+        descriptor.supportsConditionalRequests
+        && options.fetchState
+        && getOptions?.persistFetchState !== false
+      ) {
         if (result.status === "ok") {
           await options.fetchState
             .save(url, {

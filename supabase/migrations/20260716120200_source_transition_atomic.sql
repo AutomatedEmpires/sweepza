@@ -17,18 +17,18 @@
 
 create or replace function public.transition_source_compliance(
   p_source_id text,
-  p_from      text,
-  p_to        text,
+  p_from      public.source_compliance_state,
+  p_to        public.source_compliance_state,
   p_actor     text,
   p_reason    text,
   p_approving boolean
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
-  v_current text;
+  v_current public.source_compliance_state;
 begin
   -- FOR UPDATE: serialize concurrent transitions of the same source.
   select compliance_state into v_current
@@ -66,12 +66,12 @@ begin
 end;
 $$;
 
-comment on function public.transition_source_compliance is
+comment on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text, boolean) is
   'Atomic compliance transition: locks the source row, compare-and-sets on the caller-validated from_state, and writes the audit event + state change in one transaction. Legality is owned by lib/ingestion/compliance.ts.';
 
 -- Service role only. This function moves the approval ladder; nothing reachable
 -- by an anon or authenticated session may call it.
-revoke all on function public.transition_source_compliance(text, text, text, text, text, boolean) from public;
-revoke all on function public.transition_source_compliance(text, text, text, text, text, boolean) from anon;
-revoke all on function public.transition_source_compliance(text, text, text, text, text, boolean) from authenticated;
-grant execute on function public.transition_source_compliance(text, text, text, text, text, boolean) to service_role;
+revoke all on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text, boolean) from public;
+revoke all on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text, boolean) from anon;
+revoke all on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text, boolean) from authenticated;
+grant execute on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text, boolean) to service_role;

@@ -7,17 +7,19 @@ import { sweepstakesTodayAdapter } from "@/lib/ingestion/adapters/sweepstakes-to
 import { extractOfficialPage } from "@/lib/ingestion/extract";
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { evaluateSourceGate, describeGateDecision } from "@/lib/ingestion/gate";
-import { createSourceHttpClient, type FetchStatePort } from "@/lib/ingestion/http";
+import {
+  createSourceHttpClient,
+  type FetchFailureClass,
+  type FetchStatePort,
+} from "@/lib/ingestion/http";
 import { mapExtraction } from "@/lib/ingestion/mapper";
-import { snapshotOfficialRules } from "@/lib/ingestion/snapshot";
 import { SOURCE_REGISTRY, getSourceDescriptor, type SourceAdapter } from "@/lib/ingestion/source";
 import { verifyCandidate } from "@/lib/ingestion/verify";
 import {
-  createIngestedListing,
+  createIngestedListingWithProvenance,
   findExistingListingId,
   findIngestionByUrlKey,
   finishIngestionRun,
-  recordProvenance,
   startIngestionRun,
   touchLastSeen,
   type IngestionRunCounts,
@@ -31,8 +33,8 @@ import {
 
 // The pipeline assembly: for each source, ASK THE GATE → discover leads →
 // resolve official URL → skip if already known (idempotent) → extract at the
-// source → map to canonical → dedupe → create a DRAFT (review-only) listing +
-// snapshot + provenance. Everything an agent finds waits for a human; nothing
+// source → map to canonical → dedupe → atomically create a DRAFT (review-only)
+// listing + provenance. Everything an agent finds waits for a human; nothing
 // auto-publishes.
 //
 // The gate is checked per source, inside the loop, immediately before any
@@ -93,11 +95,31 @@ function officialPageDescriptor() {
   return descriptor;
 }
 
+/** Policy/budget refusals are our control plane, not source availability. */
+function isSourceAvailabilityFailure(failure: FetchFailureClass): boolean {
+  return failure !== "blocked_by_policy" && failure !== "budget_exhausted";
+}
+
 export async function runIngestion(
   options: { limit?: number } = {},
 ): Promise<IngestionSourceSummary[]> {
   const limit = options.limit ?? 25;
   const summaries: IngestionSourceSummary[] = [];
+
+  // official_direct is one source for the whole invocation. Gate it once and,
+  // if allowed, share one client so its run budget and cadence are real global
+  // limits rather than resetting independently for every discovery adapter.
+  const official = officialPageDescriptor();
+  const officialRecord = await getSourceRecord(official.id).catch(() => null);
+  const officialDecision = evaluateSourceGate({
+    descriptor: official,
+    record: officialRecord,
+    ingestionEnabled: env.INGESTION_ENABLED,
+  });
+  const officialFetchState = fetchStatePort(official.id);
+  let officialHttp: ReturnType<typeof createSourceHttpClient> | null = null;
+  let officialHealthyResponses = 0;
+  let officialAvailabilityFailures = 0;
 
   for (const descriptor of SOURCE_REGISTRY) {
     const adapter = ADAPTERS[descriptor.id];
@@ -127,14 +149,6 @@ export async function runIngestion(
     // Creating its client off the back of the discoverer's approval let an
     // unapproved source execute the moment any discoverer was approved, which
     // is exactly the fail-closed per-source guarantee this module claims above.
-    const official = officialPageDescriptor();
-    const officialRecord = await getSourceRecord(official.id).catch(() => null);
-    const officialDecision = evaluateSourceGate({
-      descriptor: official,
-      record: officialRecord,
-      ingestionEnabled: env.INGESTION_ENABLED,
-    });
-
     if (!officialDecision.allowed) {
       // No official fetch means no verifiable fact, and an unverified listing is
       // the one thing this pipeline must never create. Skip the whole source.
@@ -145,6 +159,10 @@ export async function runIngestion(
       continue;
     }
 
+    officialHttp ??= createSourceHttpClient(official, {
+      fetchState: officialFetchState,
+    });
+
     const runId = await startIngestionRun(descriptor.id);
     const counts: Required<IngestionRunCounts> = {
       discovered: 0, fetched: 0, created: 0, updated: 0, skipped: 0, failed: 0,
@@ -153,13 +171,19 @@ export async function runIngestion(
     const http = createSourceHttpClient(descriptor, {
       fetchState: fetchStatePort(descriptor.id),
     });
-    const officialHttp = createSourceHttpClient(official, {
-      fetchState: fetchStatePort(official.id),
-    });
-    const officialStats = () => officialHttp.stats();
+    const officialStatsBefore = officialHttp.stats();
+    const officialRunStats = () => {
+      const current = officialHttp!.stats();
+      return {
+        requests: current.requests - officialStatsBefore.requests,
+        notModified: current.notModified - officialStatsBefore.notModified,
+      };
+    };
 
+    let discoverySucceeded = false;
     try {
       const leads = await adapter.discover({ http, limit });
+      discoverySucceeded = true;
       counts.discovered = leads.length;
 
       const seenThisRun = new Set<string>();
@@ -168,7 +192,8 @@ export async function runIngestion(
       // different facts: an official page we could not fetch (an outage signal)
       // and a candidate we fetched fine and then rejected (a policy outcome).
       // Only the former may trip the circuit breaker.
-      let fetchFailures = 0;
+      let healthyOfficialResponses = 0;
+      let officialAvailabilityFailuresThisSource = 0;
       for (const lead of leads) {
         const urlKey = normalizeUrl(lead.officialUrl);
         if (!urlKey || seenThisRun.has(urlKey)) {
@@ -198,18 +223,28 @@ export async function runIngestion(
         counts.fetched += 1;
 
         if (result.status === "not_modified") {
+          healthyOfficialResponses += 1;
+          officialHealthyResponses += 1;
           counts.skipped += 1;
           continue;
         }
         if (result.status === "failed") {
           counts.failed += 1;
-          fetchFailures += 1; // the source answered badly — this is its fault
+          if (isSourceAvailabilityFailure(result.failure)) {
+            officialAvailabilityFailuresThisSource += 1;
+            officialAvailabilityFailures += 1;
+          }
           continue;
         }
         if (result.status === "unextractable") {
+          healthyOfficialResponses += 1;
+          officialHealthyResponses += 1;
           counts.failed += 1; // ours: recorded, but never fed to the breaker
           continue;
         }
+
+        healthyOfficialResponses += 1;
+        officialHealthyResponses += 1;
 
         const { candidate } = mapExtraction(result.extraction.raw);
 
@@ -230,24 +265,30 @@ export async function runIngestion(
         // Cross-source dedupe: same sweep already known under another link.
         const duplicateOf = await findExistingListingId(candidate.dedup);
         if (duplicateOf) {
+          await officialFetchState.save(lead.officialUrl, {
+            ...result.extraction.fetchState,
+            notModified: false,
+          });
           counts.skipped += 1;
           continue;
         }
 
-        const listingId = await createIngestedListing(candidate);
-        const snapshotRef = await snapshotOfficialRules(lead.officialUrl, result.extraction.pageText);
-        await recordProvenance(listingId, {
+        const claim = await createIngestedListingWithProvenance(candidate, {
           officialUrlKey: candidate.dedup.urlKey,
           contentFingerprint: candidate.dedup.contentKey,
           discoverySource: descriptor.id,
           officialSourceUrl: urlKey,
-          rawSnapshotRef: snapshotRef,
           extractionConfidence: verification.confidence,
           extractionFactors: verification.factors,
           extractionSummary: verification.summary,
           contentHash: result.extraction.contentHash,
         });
-        counts.created += 1;
+        await officialFetchState.save(lead.officialUrl, {
+          ...result.extraction.fetchState,
+          notModified: false,
+        });
+        if (claim.created) counts.created += 1;
+        else counts.skipped += 1;
       }
 
       // Both sides of the merge are wanted: main (#78) reports which candidates
@@ -260,10 +301,11 @@ export async function runIngestion(
       // into null, so neither reached `catch`. Zero leads with zero failures is
       // still a genuine quiet day; held candidates are a policy outcome and are
       // excluded, because the source answered us perfectly well.
-      const outage = counts.fetched > 0 && fetchFailures === counts.fetched;
-      const outageNote = `every official fetch failed (${fetchFailures}/${counts.fetched})`;
+      const outage = officialAvailabilityFailuresThisSource > 0 && healthyOfficialResponses === 0;
+      const outageNote = `every observable official response failed (${officialAvailabilityFailuresThisSource} failures)`;
 
       const stats = http.stats();
+      const officialStats = officialRunStats();
       const notes = [
         outage ? outageNote : null,
         held.length > 0 ? `held: ${held.join("; ")}` : null,
@@ -276,13 +318,14 @@ export async function runIngestion(
         notes.length > 0 ? notes.slice(0, 2000) : null,
         {
           gateDecision: "allowed",
-          requestsMade: stats.requests + officialStats().requests,
-          notModified: stats.notModified + officialStats().notModified,
+          requestsMade: stats.requests + officialStats.requests,
+          notModified: stats.notModified + officialStats.notModified,
         },
       );
       await recordRunOutcome(descriptor.id, {
-        ok: !outage,
-        ...(outage ? { failureClass: outageNote } : {}),
+        // Per-lead sponsor failures belong to official_direct. Reaching this
+        // success path proves the discovery source's own hub/index was healthy.
+        ok: true,
         failureThreshold: descriptor.failureThreshold,
       });
       summaries.push({
@@ -297,18 +340,34 @@ export async function runIngestion(
       // network activity — the audit was wrong exactly when it mattered most.
       await finishIngestionRun(runId, counts, "error", message, {
         gateDecision: "allowed",
-        requestsMade: http.stats().requests + officialStats().requests,
-        notModified: http.stats().notModified + officialStats().notModified,
-      });
-      // Feed the circuit breaker: enough consecutive failures and the gate
-      // itself will refuse this source until a human resolves it.
+        requestsMade: http.stats().requests + officialRunStats().requests,
+        notModified: http.stats().notModified + officialRunStats().notModified,
+      }).catch(() => {});
+      // Only the adapter's discovery request owns this source breaker. Once it
+      // returned, mapper/LLM/database failures are internal pipeline failures
+      // and must not disable a healthy external discovery source.
       await recordRunOutcome(descriptor.id, {
-        ok: false,
-        failureClass: message.slice(0, 120),
+        ok: discoverySucceeded,
+        ...(discoverySucceeded ? {} : { failureClass: message.slice(0, 120) }),
         failureThreshold: descriptor.failureThreshold,
       }).catch(() => {});
       summaries.push({ source: descriptor.id, status: "error", ...counts });
     }
+  }
+
+  // Gate state, cadence, and circuit-breaker state all belong to the same
+  // official_direct record. Only advance it when this invocation actually
+  // attempted official fetches; a quiet discovery day must not consume the
+  // official source's refresh interval.
+  if (officialHealthyResponses > 0 || officialAvailabilityFailures > 0) {
+    const outage = officialAvailabilityFailures > 0 && officialHealthyResponses === 0;
+    await recordRunOutcome(official.id, {
+      ok: !outage,
+      ...(outage
+        ? { failureClass: `every observable official response failed (${officialAvailabilityFailures} failures)` }
+        : {}),
+      failureThreshold: official.failureThreshold,
+    });
   }
 
   return summaries;

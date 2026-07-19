@@ -619,6 +619,24 @@ describe("budget and concurrency are enforced, not just declared", () => {
 });
 
 describe("conditional GET is wired, not decorative", () => {
+  it("can defer saving a fresh validator until the caller commits it", async () => {
+    const save = vi.fn(async () => {});
+    const client = createSourceHttpClient(descriptor({ supportsConditionalRequests: true }), {
+      fetchImpl: (async () => new Response("<html>fresh</html>", {
+        status: 200,
+        headers: { etag: 'W/"candidate"' },
+      })) as never,
+      fetchState: { load: async () => null, save },
+    });
+
+    const result = await client.get("https://example.com/hub", {
+      persistFetchState: false,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(save, "an unaccepted candidate must not strand itself behind a 304").not.toHaveBeenCalled();
+  });
+
   it("sends a stored validator and saves the one it gets back", async () => {
     const store = new Map<string, { etag: string | null; lastModified: string | null }>();
     let sentIfNoneMatch: string | null = null;

@@ -81,6 +81,7 @@ describe("fetchOfficialPage", () => {
     if (result.status === "ok") {
       expect(result.page.text).toContain("Win a Trip");
       expect(result.page.contentHash).toMatch(/^[0-9a-f]{8}$/);
+      expect(result.page.fetchState.httpStatus).toBe(200);
     }
   });
 

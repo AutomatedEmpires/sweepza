@@ -8,16 +8,16 @@ import { SourceFetchError } from "@/lib/ingestion/source";
 const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
   extractOfficialPage: vi.fn(),
-  snapshotOfficialRules: vi.fn(),
-  createIngestedListing: vi.fn(),
+  createIngestedListingWithProvenance: vi.fn(),
   findExistingListingId: vi.fn(),
   findIngestionByUrlKey: vi.fn(),
   finishIngestionRun: vi.fn(),
-  recordProvenance: vi.fn(),
   startIngestionRun: vi.fn(),
   touchLastSeen: vi.fn(),
   getSourceRecord: vi.fn(),
   recordRunOutcome: vi.fn(),
+  getFetchState: vi.fn(),
+  saveFetchState: vi.fn(),
 }));
 
 // A source that satisfies every gate condition, so these tests exercise the
@@ -76,22 +76,19 @@ vi.mock("@/lib/ingestion/source", async (importActual) => {
 vi.mock("@/lib/db/source-registry", () => ({
   getSourceRecord: mocks.getSourceRecord,
   recordRunOutcome: mocks.recordRunOutcome,
+  getFetchState: mocks.getFetchState,
+  saveFetchState: mocks.saveFetchState,
 }));
 
 vi.mock("@/lib/ingestion/extract", () => ({
   extractOfficialPage: mocks.extractOfficialPage,
 }));
 
-vi.mock("@/lib/ingestion/snapshot", () => ({
-  snapshotOfficialRules: mocks.snapshotOfficialRules,
-}));
-
 vi.mock("@/lib/db/ingestion", () => ({
-  createIngestedListing: mocks.createIngestedListing,
+  createIngestedListingWithProvenance: mocks.createIngestedListingWithProvenance,
   findExistingListingId: mocks.findExistingListingId,
   findIngestionByUrlKey: mocks.findIngestionByUrlKey,
   finishIngestionRun: mocks.finishIngestionRun,
-  recordProvenance: mocks.recordProvenance,
   startIngestionRun: mocks.startIngestionRun,
   touchLastSeen: mocks.touchLastSeen,
 }));
@@ -108,7 +105,12 @@ const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 // empty is not the sponsor's fault.
 const ok = (r: RawExtraction) => ({
   status: "ok" as const,
-  extraction: { raw: r, pageText: "page text", contentHash: "hash" },
+  extraction: {
+    raw: r,
+    pageText: "page text",
+    contentHash: "hash",
+    fetchState: { etag: 'W/"accepted"', lastModified: null, httpStatus: 200 },
+  },
 });
 const httpFailed = (failure = "server_error") => ({
   status: "failed" as const,
@@ -150,17 +152,20 @@ beforeEach(() => {
     circuitOpenedAt: null,
   }));
   mocks.recordRunOutcome.mockResolvedValue(undefined);
+  mocks.getFetchState.mockResolvedValue(null);
+  mocks.saveFetchState.mockResolvedValue(undefined);
   mocks.discover.mockResolvedValue([
     { officialUrl: "https://brand.com/official-rules" },
   ]);
   mocks.extractOfficialPage.mockResolvedValue(ok(raw()));
-  mocks.snapshotOfficialRules.mockResolvedValue("snapshot-ref");
   mocks.findExistingListingId.mockResolvedValue(null);
   mocks.findIngestionByUrlKey.mockResolvedValue(null);
   mocks.startIngestionRun.mockResolvedValue("run-1");
-  mocks.createIngestedListing.mockResolvedValue("listing-1");
+  mocks.createIngestedListingWithProvenance.mockResolvedValue({
+    listingId: "listing-1",
+    created: true,
+  });
   mocks.finishIngestionRun.mockResolvedValue(undefined);
-  mocks.recordProvenance.mockResolvedValue(undefined);
 });
 
 describe("runIngestion — a down source must reach the circuit breaker", () => {
@@ -181,11 +186,15 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
     expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
       "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "official_direct",
       expect.objectContaining({ ok: false }),
     );
     expect(summaries[0]).toMatchObject({ status: "error", fetched: 2, failed: 2, created: 0 });
     const notes = mocks.finishIngestionRun.mock.calls[0][3] as string;
-    expect(notes).toContain("every official fetch failed (2/2)");
+    expect(notes).toContain("every observable official response failed (2 failures)");
   });
 
   it("still calls a quiet day a SUCCESS — zero leads is not an outage", async () => {
@@ -198,6 +207,10 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       expect.objectContaining({ ok: true }),
     );
     expect(summaries[0]).toMatchObject({ status: "ok", discovered: 0 });
+    expect(mocks.recordRunOutcome).not.toHaveBeenCalledWith(
+      "official_direct",
+      expect.anything(),
+    );
   });
 
   it("does not call a HELD candidate an outage", async () => {
@@ -268,6 +281,42 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
     expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
   });
 
+  it("does NOT blame the source when our shared request budget is exhausted", async () => {
+    mocks.extractOfficialPage.mockResolvedValue(httpFailed("budget_exhausted"));
+
+    await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(mocks.recordRunOutcome).not.toHaveBeenCalledWith(
+      "official_direct",
+      expect.anything(),
+    );
+  });
+
+  it("still records an official outage when failed requests are followed by budget exhaustion", async () => {
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/b" },
+    ]);
+    mocks.extractOfficialPage
+      .mockResolvedValueOnce(httpFailed("server_error"))
+      .mockResolvedValueOnce(httpFailed("budget_exhausted"));
+
+    await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "official_direct",
+      expect.objectContaining({ ok: false }),
+    );
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+  });
+
   it("feeds the breaker when the adapter reports the source itself is down", async () => {
     mocks.discover.mockRejectedValue(
       new SourceFetchError("https://example.com/hub", "server_error", "500"),
@@ -295,6 +344,18 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       notModified: expect.any(Number),
     });
   });
+
+  it("does not open the discovery breaker for an internal database failure", async () => {
+    mocks.createIngestedListingWithProvenance.mockRejectedValue(new Error("database unavailable"));
+
+    const summaries = await runIngestion();
+
+    expect(mocks.recordRunOutcome).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "error" });
+  });
 });
 
 describe("runIngestion — official_direct is gated on its own", () => {
@@ -313,7 +374,7 @@ describe("runIngestion — official_direct is gated on its own", () => {
 
     expect(mocks.discover, "must not even discover").not.toHaveBeenCalled();
     expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
-    expect(mocks.createIngestedListing).not.toHaveBeenCalled();
+    expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
     expect(summaries).toEqual([
       expect.objectContaining({ source: "sweeps_advantage", status: "skipped" }),
     ]);
@@ -343,8 +404,8 @@ describe("runIngestion — official_direct is gated on its own", () => {
 describe("runIngestion publishable gate", () => {
   it("creates a draft for a candidate that passes every hard check", async () => {
     const summaries = await runIngestion();
-    expect(mocks.createIngestedListing).toHaveBeenCalledTimes(1);
-    expect(mocks.recordProvenance).toHaveBeenCalledTimes(1);
+    expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(1);
+    expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
     expect(summaries).toEqual([
       expect.objectContaining({
         source: "sweeps_advantage",
@@ -364,6 +425,18 @@ describe("runIngestion publishable gate", () => {
     );
   });
 
+  it("counts a concurrent database claimant as skipped, never as a second creation", async () => {
+    mocks.createIngestedListingWithProvenance.mockResolvedValue({
+      listingId: "listing-won-by-other-run",
+      created: false,
+    });
+
+    const summaries = await runIngestion();
+
+    expect(summaries[0]).toMatchObject({ created: 0, skipped: 1 });
+    expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
+  });
+
   it("holds a candidate that fails a hard check — no draft row, reasons in run notes", async () => {
     // Missing no-purchase signal AND missing rules URL: both are hard gates.
     mocks.extractOfficialPage.mockResolvedValue(
@@ -371,8 +444,8 @@ describe("runIngestion publishable gate", () => {
     );
 
     const summaries = await runIngestion();
-    expect(mocks.createIngestedListing).not.toHaveBeenCalled();
-    expect(mocks.recordProvenance).not.toHaveBeenCalled();
+    expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
+    expect(mocks.saveFetchState, "a held candidate must be fetched again next run").not.toHaveBeenCalled();
     expect(summaries).toEqual([
       expect.objectContaining({ status: "ok", created: 0, failed: 1 }),
     ]);
@@ -387,7 +460,7 @@ describe("runIngestion publishable gate", () => {
     mocks.extractOfficialPage.mockResolvedValue(ok(raw({ endDate: "2020-01-01" })));
 
     await runIngestion();
-    expect(mocks.createIngestedListing).not.toHaveBeenCalled();
+    expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
     const notes = mocks.finishIngestionRun.mock.calls[0][3];
     expect(notes).toContain("end_date_in_future");
   });
@@ -398,7 +471,7 @@ describe("runIngestion publishable gate", () => {
     mocks.extractOfficialPage.mockResolvedValue(ok(raw({ title: "", shortDescription: "" })));
 
     const summaries = await runIngestion();
-    expect(mocks.createIngestedListing).not.toHaveBeenCalled();
+    expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
     // Held before dedupe — no catalog lookup for a candidate we won't create.
     expect(mocks.findExistingListingId).not.toHaveBeenCalled();
     expect(summaries).toEqual([
