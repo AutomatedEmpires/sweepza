@@ -358,6 +358,9 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/terms/page.tsx", { legalCanon: true }),
   routeSurface("app/discover/page.tsx"),
   routeSurface("app/discover/[category]/page.tsx"),
+  // The per-hub social card: an ImageResponse whose words leave the site with
+  // every shared category link, exactly like app/opengraph-image.tsx.
+  routeSurface("app/discover/[category]/opengraph-image.tsx"),
   routeSurface("app/discover/swipe/page.tsx"),
   routeSurface("app/listings/page.tsx"),
   routeSurface("app/search/page.tsx"),
@@ -432,6 +435,14 @@ const OTHER_SURFACES: Surface[] = [
     name: "llms.txt",
     sources: ["public/llms.txt"],
     texts: [source("public/llms.txt")],
+  },
+  {
+    // The shared trust chips both OG cards render — claim copy that travels
+    // off-site with every shared link. The cards themselves are scanned as
+    // app routes, but the words now LIVE here, so this module is a surface.
+    name: "OG card trust chips (lib/og-theme.tsx)",
+    sources: ["lib/og-theme.tsx"],
+    texts: [source("lib/og-theme.tsx")],
   },
   {
     // Copy lives inline in the component rather than a data module, which is
