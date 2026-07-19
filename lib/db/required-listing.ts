@@ -5,11 +5,10 @@ import type { Listing } from "@/lib/types/listing";
 
 /**
  * Resolve a public listing by slug or throw notFound(). The detail route
- * calls this from BOTH generateMetadata and the page body: the metadata
- * phase settles before the streaming response commits, so failing there
- * keeps a dead slug a real HTTP 404 — a page-body-only notFound() would
- * stream inside an already-committed 200 because of the root loading
- * boundary. The lookup is cached, so the second call costs no extra fetch.
+ * calls this from BOTH generateMetadata and the page body. Middleware owns
+ * the hard-404 preflight because loading boundaries may commit a streamed
+ * 200; this remains the rendering-layer defense for client transitions and
+ * races. The lookup is cached, so the second call costs no extra fetch.
  */
 export async function requirePublicListingBySlug(
   slug: string,
