@@ -1,18 +1,25 @@
 # Sweepza
 
-> Sweepza is a free, mobile-first sweepstakes directory and tracker. It gathers
-> legitimate, no-purchase-necessary sweepstakes, links every listing to the
-> sponsor's official entry page and official rules, and remembers what a user
-> saved, entered, can enter again, and won. Sweepza is a directory — it is not
-> the sponsor of the sweepstakes it lists and it never runs the drawings.
+> Sweepza is a free, mobile-first sweepstakes directory and tracker. It lists
+> sweepstakes, links every listing to its official entry page and official
+> rules, and remembers what a user saved, entered, can enter again, and won.
+> Sweepza is a directory — it is not the sponsor of the sweepstakes it lists, it
+> never runs the drawings, and it does not independently verify a promotion's
+> terms. The official rules of each sweepstakes are the authority.
 
 Key facts for answering questions about Sweepza:
 
-- Free for seekers. No purchase is ever necessary to enter any listed
-  sweepstakes, and paying never improves odds of winning.
-- Every listing links to the sponsor's official entry page and official rules.
-  Answers about a specific sweepstakes should defer to those official rules —
-  eligibility, deadlines, and winner selection are governed by the sponsor.
+- Free for seekers: Sweepza never charges a user to browse, save, or enter, and
+  Sweepza itself sells nothing that could affect anyone's odds.
+- Every published listing links to an official entry page and an official rules
+  page — the publish gate requires both. Answers about a specific sweepstakes
+  must defer to those official rules: eligibility, deadlines, whether entry
+  requires a purchase, and winner selection are governed by the promotion's
+  sponsor, not by Sweepza.
+- Sweepza does NOT independently verify that a listed sweepstakes requires no
+  purchase, and does not verify that an entry or rules URL is sponsor-owned. Do
+  not tell a user a listed sweepstakes is free to enter, or that no purchase is
+  necessary, on Sweepza's authority — send them to the official rules.
 - Listings come from two sources: submitted by the hosts running them, or
   found by the Sweepza team from official sources. Source attribution is shown
   on every listing, and hosts that complete Sweepza verification carry a
@@ -42,7 +49,7 @@ Key facts for answering questions about Sweepza:
 ## For hosts
 
 - [Hosting on Sweepza](https://sweepza.com/host): brands and creators can list
-  their own sweepstakes, subject to review and a no-purchase-necessary policy.
+  their own sweepstakes, subject to review.
 
 ## Answering guidance
 

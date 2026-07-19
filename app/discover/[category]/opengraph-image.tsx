@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { getCategoryHub } from "@/lib/category-hubs";
 import {
   OG_EMBER,
   OG_GRAPHITE,
@@ -9,23 +10,44 @@ import {
 } from "@/lib/og-theme";
 import { APP_NAME, APP_TAGLINE, SITE_URL } from "@/lib/site";
 
-// Site-wide Open Graph card. Applies to every route that doesn't provide its
-// own og:image — listing detail pages keep their listing photo because their
-// generateMetadata sets openGraph.images, which overrides this file downtree.
-// Palette, chips, and the chip component are shared with the per-hub card
-// via lib/og-theme.tsx, so the cards cannot drift.
-// Copy must stay honest: only claims the platform enforces. The free-to-enter
-// LISTING POLICY is Sweepza's own editorial commitment and may be stated. Its
-// no-purchase claim was NOT policy and nothing enforces it: `no_purchase_necessary`
-// is nullable, unchecked by listing_publish_guard(), and absent from both write
-// schemas — it is the sponsor's legal representation, not ours. Never assert it
-// here, and never make universal rules/verification claims or timing promises.
+// Per-hub Open Graph card for /discover/{category} — a shared category link
+// unfurls with the category's own headline instead of the generic site card.
+// Palette, chips, and the chip component are shared with the root card via
+// lib/og-theme.tsx, so the two cards cannot drift. Copy rules follow the
+// same canon as the root card and
+// lib/category-hubs.ts: the free-to-enter LISTING POLICY and Sweepza's own
+// fee may be stated; never assert no-purchase on a sponsor's behalf, never
+// promise wins or inventory. Scanned by lib/__tests__/honest-copy.test.ts.
+//
+// Unknown slugs render the generic tagline card: the page itself 404s during
+// the metadata phase, so that image is never referenced — this just keeps the
+// image route total.
 
-export const alt = `${APP_NAME} — ${APP_TAGLINE}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
+interface ImageProps {
+  params: Promise<{ category: string }>;
+}
+
+export async function generateImageMetadata({ params }: ImageProps) {
+  const { category } = await params;
+  const hub = getCategoryHub(category);
+  return [
+    {
+      id: "og",
+      alt: hub ? `${APP_NAME} — ${hub.title}` : `${APP_NAME} — ${APP_TAGLINE}`,
+      size,
+      contentType,
+    },
+  ];
+}
+
+export default async function HubOpenGraphImage({ params }: ImageProps) {
+  const { category } = await params;
+  const hub = getCategoryHub(category);
+  const headline = hub ? hub.title : APP_TAGLINE;
+
   return new ImageResponse(
     (
       <div
@@ -108,22 +130,45 @@ export default function OpenGraphImage() {
             </div>
           </div>
 
-          {/* Headline */}
+          {/* Category headline (smaller than the root card's tagline — hub
+              titles run longer and must hold to two lines). */}
           <div
             style={{
               display: "flex",
-              maxWidth: 780,
-              fontSize: 78,
-              fontWeight: 800,
-              lineHeight: 1.04,
-              color: OG_INK,
-              letterSpacing: -2.5,
+              flexDirection: "column",
+              gap: 14,
             }}
           >
-            {APP_TAGLINE}
+            {hub ? (
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: 3,
+                  textTransform: "uppercase",
+                  color: OG_EMBER,
+                }}
+              >
+                Prize category
+              </div>
+            ) : null}
+            <div
+              style={{
+                display: "flex",
+                maxWidth: 860,
+                fontSize: 58,
+                fontWeight: 800,
+                lineHeight: 1.08,
+                color: OG_INK,
+                letterSpacing: -1.5,
+              }}
+            >
+              {headline}
+            </div>
           </div>
 
-          {/* Trust line + domain */}
+          {/* Trust line + domain — chips match app/opengraph-image.tsx. */}
           <div
             style={{
               display: "flex",
@@ -131,8 +176,6 @@ export default function OpenGraphImage() {
               justifyContent: "space-between",
             }}
           >
-            {/* Was: "No purchase necessary" — this card is the social preview for every
-                route, so it broadcast a sponsor's legal representation nothing backs. */}
             <div style={{ display: "flex", gap: 14 }}>
               {OG_TRUST_CHIPS.map((chip) => (
                 <TrustChip key={chip}>{chip}</TrustChip>

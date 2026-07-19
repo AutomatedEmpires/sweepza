@@ -215,8 +215,10 @@ export default async function ProfilePage() {
 
       {authUser && clerkConfigured && <ProfileSignOut />}
 
+      {/* Was: "Free for seekers · No purchase necessary" — the second half asserted the
+          sponsor's legal representation. Sweepza can only speak to its own fee. */}
       <p className="text-center text-[10px] uppercase tracking-[0.15em] text-graphite">
-        Free for seekers · No purchase necessary
+        Free for seekers — Sweepza never charges you
       </p>
     </section>
   );
