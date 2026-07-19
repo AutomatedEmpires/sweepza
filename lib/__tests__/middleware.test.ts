@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { NextFetchEvent } from "next/server";
 import {
   CONTENT_SECURITY_POLICY,
@@ -39,7 +39,10 @@ async function loadMiddleware(env: {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  clerk.impl.mockReset();
 });
 
 function cspHeaders(response: Response) {
@@ -192,5 +195,132 @@ describe("middleware CSP flag branch", () => {
       EVENT,
     );
     expect(preview.headers.get("Strict-Transport-Security")).toBeNull();
+  });
+
+  it("rewrites a confirmed missing sweep before streaming can commit a 200", async () => {
+    const probe = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", probe);
+    const middleware = await loadMiddleware({
+      enforce: false,
+      appUrl: "https://sweepza.com",
+    });
+    const response = await middleware(
+      new NextRequest("https://sweepza.com/sweeps/gone-sweep"),
+      EVENT,
+    );
+
+    expect(probe).toHaveBeenCalledWith(
+      new URL("https://sweepza.com/api/listings/gone-sweep"),
+      expect.objectContaining({ method: "HEAD", cache: "no-store" }),
+    );
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://sweepza.com/dead-listing",
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get("x-middleware-next")).toBeNull();
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expect(response.headers.get("Strict-Transport-Security")).toBe(
+      STRICT_TRANSPORT_SECURITY,
+    );
+  });
+
+  it("continues normally when the listing exists", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    );
+    const middleware = await loadMiddleware({ enforce: false });
+    const response = await middleware(
+      new NextRequest("https://sweepza.test/sweeps/live-sweep"),
+      EVENT,
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cspHeaders(response).reportOnly).toBe(CONTENT_SECURITY_POLICY);
+  });
+
+  it("does not expose the dead-listing render target as a direct 200 route", async () => {
+    const middleware = await loadMiddleware({ enforce: false });
+    const response = await middleware(
+      new NextRequest("https://sweepza.test/dead-listing"),
+      EVENT,
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://sweepza.test/_sweepza/dead-listing",
+    );
+  });
+
+  it("preserves Clerk context and the enforcing nonce on a missing-sweep rewrite", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 404 })),
+    );
+    clerk.impl.mockImplementation(async (request) => {
+      const clerkHeaders = new Headers(request.headers);
+      clerkHeaders.set("x-test-clerk-context", "signed-in");
+      // Clerk 7's decorateRequest() represents pass-through as a rewrite to
+      // the original URL, not x-middleware-next.
+      return NextResponse.rewrite(request.nextUrl, {
+        request: { headers: clerkHeaders },
+      });
+    });
+    const middleware = await loadMiddleware({
+      enforce: true,
+      clerkConfigured: true,
+    });
+    const request = new NextRequest(
+      "https://sweepza.test/sweeps/signed-in-missing-sweep",
+    );
+    const response = await middleware(request, EVENT);
+
+    expect(clerk.impl).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(404);
+    const nonce = request.headers.get("x-nonce");
+    expect(nonce).toBeTruthy();
+    expect(response.headers.get("Content-Security-Policy")).toContain(
+      `'nonce-${nonce}'`,
+    );
+    expect(response.headers.get("x-middleware-request-x-nonce")).toBe(nonce);
+    expect(
+      response.headers.get("x-middleware-request-x-test-clerk-context"),
+    ).toBe("signed-in");
+  });
+
+  it("fails open after a bounded availability-probe timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+      ),
+    );
+    const middleware = await loadMiddleware({ enforce: false });
+    const pending = middleware(
+      new NextRequest("https://sweepza.test/sweeps/slow-probe"),
+      EVENT,
+    );
+    await vi.advanceTimersByTimeAsync(2_500);
+    const response = await pending;
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cspHeaders(response).reportOnly).toBe(CONTENT_SECURITY_POLICY);
+  });
+
+  it("fails open when the availability probe errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const middleware = await loadMiddleware({ enforce: false });
+    const response = await middleware(
+      new NextRequest("https://sweepza.test/sweeps/maybe-live"),
+      EVENT,
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cspHeaders(response).reportOnly).toBe(CONTENT_SECURITY_POLICY);
   });
 });

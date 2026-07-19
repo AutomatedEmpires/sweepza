@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Pins the real-404 behavior for dead listing links: the detail route
-// resolves its listing through requirePublicListingBySlug in BOTH
-// generateMetadata and the page body. The metadata phase settles before the
-// streaming response commits, so throwing notFound() there is what keeps a
-// missing slug an HTTP 404 — a page-body-only notFound() would stream inside
-// an already-committed 200 because of the root loading boundary.
+// Pins the rendering-layer notFound behavior for dead listing links. The
+// middleware suite covers the pre-stream hard-404 probe; this helper remains
+// defense in depth for client transitions and availability races.
 const mocks = vi.hoisted(() => ({
   getCachedListingBySlug: vi.fn(),
 }));
