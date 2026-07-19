@@ -3,17 +3,36 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getPublishedWinnerPosts } from "@/lib/db/winners";
+import { withPublicFallback } from "@/lib/db/resilient";
+import { APP_NAME } from "@/lib/site";
+
+const WINNERS_DESCRIPTION =
+  "Real Sweepza members sharing the prizes they've won.";
 
 export const metadata = {
   title: "Winners",
-  description: "Real Sweepza members sharing the prizes they've won.",
+  description: WINNERS_DESCRIPTION,
+  alternates: { canonical: "/winners" },
+  openGraph: {
+    title: "Winner Wall",
+    description: WINNERS_DESCRIPTION,
+    url: "/winners",
+    type: "website",
+    siteName: APP_NAME,
+  },
 };
 export const dynamic = "force-dynamic";
 
 export default async function WinnersPage() {
   const authUser = await ensureCurrentAppUser();
   const clerkConfigured = isClerkConfigured();
-  const { posts } = await getPublishedWinnerPosts({ limit: 20 });
+  // The wall's designed empty state ("no wins shared yet") doubles as the
+  // degraded state when the data layer is unreachable.
+  const { posts } = await withPublicFallback(
+    getPublishedWinnerPosts({ limit: 20 }),
+    { posts: [], nextCursor: null },
+    "winner_wall",
+  );
 
   return (
     <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">

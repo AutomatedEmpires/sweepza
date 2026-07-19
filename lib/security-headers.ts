@@ -1,11 +1,16 @@
-// Security headers shared by middleware. Kept as plain constants so they're
-// edge-safe (no Node APIs) and unit-testable.
+// Security headers shared by middleware. Kept edge-safe (no Node APIs) and
+// unit-testable.
 //
-// CSP ships REPORT-ONLY first: it never blocks, it only surfaces what an
-// enforcing policy would break. script-src deliberately omits 'unsafe-inline'
-// so the report phase reveals every inline script we'd need to nonce before
-// flipping to an enforcing Content-Security-Policy. Widen origins here as
-// providers change; the enforce step (nonce-based) is a tracked follow-up.
+// Two CSP modes, selected by the CSP_ENFORCE env flag (see middleware.ts):
+//  - default: REPORT-ONLY — never blocks, only surfaces what an enforcing
+//    policy would break. script-src deliberately omits 'unsafe-inline' so the
+//    report phase reveals every inline script that needs a nonce.
+//  - CSP_ENFORCE=true: an ENFORCING policy whose script-src carries the
+//    per-request nonce plus 'strict-dynamic' — nonce'd scripts (Next's own
+//    bootstrap plus our theme script) may load their children (chunks, Clerk,
+//    Stripe, PostHog loaders), while the host allowlist remains as the
+//    fallback for browsers without 'strict-dynamic'.
+// Activation steps + rollback live in docs/runbooks/csp-enforcement.md.
 
 const CSP_DIRECTIVES: Record<string, string[]> = {
   "default-src": ["'self'"],
@@ -55,10 +60,77 @@ const CSP_DIRECTIVES: Record<string, string[]> = {
   "frame-ancestors": ["'none'"],
 };
 
-export const CONTENT_SECURITY_POLICY = Object.entries(CSP_DIRECTIVES)
-  .map(([directive, values]) => `${directive} ${values.join(" ")}`)
-  .join("; ");
+/**
+ * Serialize the policy, optionally binding a per-request script nonce.
+ * Without a nonce this is the report-only target policy; with one it is the
+ * enforcing policy (nonce + 'strict-dynamic' prepended to script-src).
+ */
+export function buildContentSecurityPolicy(nonce?: string): string {
+  return Object.entries(CSP_DIRECTIVES)
+    .map(([directive, values]) => {
+      if (directive === "script-src" && nonce) {
+        return `${directive} ${["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...values.filter((v) => v !== "'self'")].join(" ")}`;
+      }
+      return `${directive} ${values.join(" ")}`;
+    })
+    .join("; ");
+}
+
+export const CONTENT_SECURITY_POLICY = buildContentSecurityPolicy();
 
 // 2 years, cover subdomains. `preload` (list submission) is a deliberate later
 // step — omitted until every subdomain is confirmed HTTPS.
 export const STRICT_TRANSPORT_SECURITY = "max-age=63072000; includeSubDomains";
+
+/** Edge-safe per-request script nonce: 128 bits of randomness, base64. */
+export function createNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw);
+}
+
+/**
+ * Stamp the outgoing security headers on any Response-like value. Mutates
+ * headers in place so middleware never discards/replaces whatever
+ * clerkMiddleware() returned (e.g. a redirect Response) — Clerk's
+ * NextMiddlewareResult can be a NextResponse or a plain Response, and all
+ * Response-like values expose a mutable `.headers` we can set on directly
+ * without touching status/body/redirect target.
+ *
+ * Exactly one CSP header is ever emitted: enforcing (nonce given) XOR
+ * report-only (no nonce).
+ */
+export function withSecurityHeaders<T extends Response>(
+  response: T,
+  hsts: boolean,
+  nonce: string | null,
+): T {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-DNS-Prefetch-Control", "off");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  if (nonce) {
+    // Enforcing mode: nonce-bound policy; report-only is superseded.
+    response.headers.set(
+      "Content-Security-Policy",
+      buildContentSecurityPolicy(nonce),
+    );
+    response.headers.delete("Content-Security-Policy-Report-Only");
+  } else {
+    // Report-only — observes violations without blocking. CSP_ENFORCE=true
+    // flips to the enforcing, nonce-based policy above.
+    response.headers.set(
+      "Content-Security-Policy-Report-Only",
+      CONTENT_SECURITY_POLICY,
+    );
+  }
+  if (hsts) {
+    response.headers.set("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
+  }
+  return response;
+}

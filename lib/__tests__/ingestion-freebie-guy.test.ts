@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SourceFetchError } from "@/lib/ingestion/source";
 import {
   freebieGuyAdapter,
   isClosedPost,
@@ -13,6 +14,7 @@ import {
   FG_POST_HTML,
 } from "@/lib/ingestion/fixtures/scenarios";
 import { getSourceDescriptor } from "@/lib/ingestion/source";
+import { createMemoryDiscoveryWorkQueue } from "@/lib/ingestion/work-queue";
 
 const descriptor = getSourceDescriptor("freebie_guy")!;
 
@@ -66,6 +68,11 @@ describe("parseFreebieGuyArchive", () => {
       publishedOn: "2026-07-15",
     });
   });
+
+  it("does not leak quoted > attributes into a post title", () => {
+    const html = '<article><h2 class="entry-title"><a href="https://thefreebieguy.com/sweepstakes/x" title="1 > 0">Clean Post</a></h2></article>';
+    expect(parseFreebieGuyArchive(html)[0]?.title).toBe("Clean Post");
+  });
 });
 
 describe("parseFreebieGuyOfficialUrl", () => {
@@ -94,9 +101,15 @@ describe("parseFreebieGuyOfficialUrl", () => {
 });
 
 describe("freebieGuyAdapter.discover", () => {
+  const context = (http: ReturnType<typeof createFixtureHttpClient>, limit = 10) => ({
+    http,
+    limit,
+    workQueue: createMemoryDiscoveryWorkQueue(),
+  });
+
   it("filters to sweepstakes, skips the closed one, and yields the live lead", async () => {
     const http = createFixtureHttpClient(descriptor, PAGES);
-    const leads = await freebieGuyAdapter.discover({ http, limit: 10 });
+    const leads = await freebieGuyAdapter.discover(context(http));
 
     // Archive has coffee (live), a freebie (filtered), and a grill (closed).
     expect(leads).toHaveLength(1);
@@ -104,17 +117,66 @@ describe("freebieGuyAdapter.discover", () => {
     expect(leads[0].sourceUrl).toBe("https://thefreebieguy.com/sweepstakes/win-a-year-of-coffee");
   });
 
-  it("returns nothing when the archive is unavailable", async () => {
+  it("RAISES when the archive is unavailable — a down source is not a quiet day", async () => {
+    // Was: `toEqual([])`. That assertion WAS the bug. Returning [] made a dead
+    // source indistinguishable from "no new sweeps", so the orchestrator
+    // recorded ok, reset consecutive_failures, and the circuit breaker could
+    // never open for the outage it exists to contain.
     const http = createFixtureHttpClient(descriptor, {
       "https://thefreebieguy.com/category/sweepstakes": { networkError: "ECONNRESET" },
     });
-    expect(await freebieGuyAdapter.discover({ http, limit: 10 })).toEqual([]);
+
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toThrow(
+      SourceFetchError,
+    );
+  });
+
+  it("RAISES when every detail request fails transiently", async () => {
+    // The archive answering does not prove the site is healthy. If every detail
+    // then times out, returning [] reports a quiet day during an outage — the
+    // same defect as the archive fetch, one level in.
+    const pages: Record<string, { body?: string; status?: number; networkError?: string }> = {
+      "https://thefreebieguy.com/category/sweepstakes": { body: FG_ARCHIVE_HTML },
+    };
+    for (const url of parseFreebieGuyArchive(FG_ARCHIVE_HTML).map((p) => p.url)) {
+      pages[url] = { status: 503 }; // retryable
+    }
+    const http = createFixtureHttpClient(descriptor, pages);
+
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
+  });
+
+  it("does NOT raise for isolated 404s — a removed post is a fact, not an outage", async () => {
+    // A 404 is the source answering clearly about that post. Only transient
+    // failures across the board mean the source itself is down.
+    const posts = parseFreebieGuyArchive(FG_ARCHIVE_HTML);
+    const pages: Record<string, { body?: string; status?: number }> = {
+      "https://thefreebieguy.com/category/sweepstakes": { body: FG_ARCHIVE_HTML },
+    };
+    for (const p of posts) pages[p.url] = { status: 404 };
+    const http = createFixtureHttpClient(descriptor, pages);
+
+    await expect(freebieGuyAdapter.discover(context(http))).resolves.toEqual([]);
+  });
+
+  it("carries the failure class so the breaker can record WHY", async () => {
+    const http = createFixtureHttpClient(descriptor, {
+      "https://thefreebieguy.com/category/sweepstakes": { status: 503 },
+    });
+
+    await expect(freebieGuyAdapter.discover(context(http))).rejects.toMatchObject({
+      name: "SourceFetchError",
+      failure: "server_error",
+    });
   });
 
   it("never leaves thefreebieguy.com during discovery", async () => {
     const log: string[] = [];
     const http = createFixtureHttpClient(descriptor, PAGES, { log });
-    await freebieGuyAdapter.discover({ http, limit: 10 });
+    await freebieGuyAdapter.discover(context(http));
     for (const url of log) {
       expect(new URL(url).hostname).toBe("thefreebieguy.com");
     }

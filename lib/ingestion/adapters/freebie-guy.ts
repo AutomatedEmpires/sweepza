@@ -1,6 +1,17 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import { stripHtmlToText } from "@/lib/ingestion/html-text";
-import type { AdapterContext, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
+import {
+  decodeHtmlEntities,
+  protectQuotedTagDelimiters,
+  stripHtmlToText,
+} from "@/lib/ingestion/html-text";
+import { isRetryable, type FetchFailureClass } from "@/lib/ingestion/http";
+import {
+  SourceFetchError,
+  type AdapterContext,
+  type DiscoveryWorkItem,
+  type DiscoveredLead,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 
 // Tier-1 discovery adapter for The Freebie Guy (build priority #2).
 //
@@ -65,7 +76,7 @@ export function isClosedPost(html: string): boolean {
 /** Parse the category archive into candidate posts. */
 export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
   const posts: FreebieGuyPost[] = [];
-  const blocks = html.split(/<article\b/i).slice(1);
+  const blocks = protectQuotedTagDelimiters(html).split(/<article\b/i).slice(1);
 
   for (const block of blocks) {
     const linkMatch = block.match(
@@ -73,7 +84,9 @@ export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
     );
     if (!linkMatch) continue;
 
-    const url = normalizeUrl(linkMatch[1]);
+    // hrefs are HTML-encoded — `&amp;` is the normal serialization of `&`, and
+    // normalizing it raw renames query parameters (`&amp;b=2` → `amp;b`).
+    const url = normalizeUrl(decodeHtmlEntities(linkMatch[1]));
     const title = stripHtmlToText(linkMatch[2]);
     if (!url || !title) continue;
 
@@ -94,11 +107,12 @@ export function parseFreebieGuyArchive(html: string): FreebieGuyPost[] {
  * entry destination; links back to the blog itself are navigation, not leads.
  */
 export function parseFreebieGuyOfficialUrl(html: string): string | null {
-  const content = html.match(/class="entry-content"[^>]*>([\s\S]*?)<\/article>/i)?.[1] ?? html;
+  const safeHtml = protectQuotedTagDelimiters(html);
+  const content = safeHtml.match(/class="entry-content"[^>]*>([\s\S]*?)<\/article>/i)?.[1] ?? safeHtml;
   const hrefs = [...content.matchAll(/href="([^"]+)"/gi)].map((m) => m[1]);
 
   for (const href of hrefs) {
-    const normalized = normalizeUrl(href);
+    const normalized = normalizeUrl(decodeHtmlEntities(href));
     if (!normalized) continue;
     // Skip links back to the blog itself; compare by parsed host, not string
     // prefix, so a lookalike domain can't masquerade as internal (or vice versa).
@@ -110,28 +124,106 @@ export function parseFreebieGuyOfficialUrl(html: string): string | null {
 
 export const freebieGuyAdapter: SourceAdapter = {
   id: "freebie_guy",
-  async discover({ http, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+  async discover({ http, workQueue, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    // Source-level fetch: a classified failure here is an outage, not a quiet
+    // day, and must reach the circuit breaker rather than becoming [].
     const archive = await http.get(`${HOST}${ARCHIVE_PATH}`);
-    if (archive.status !== "ok") return [];
+    if (archive.status !== "ok" && archive.status !== "not_modified") {
+      throw new SourceFetchError(archive.url, archive.failure, archive.message);
+    }
 
-    const posts = parseFreebieGuyArchive(archive.body).filter(looksLikeSweepstakes);
+    if (archive.status === "ok") {
+      const parsedPosts = parseFreebieGuyArchive(archive.body);
+      if (parsedPosts.length === 0) {
+        throw new SourceFetchError(
+          archive.url,
+          "empty_body",
+          "the sweepstakes archive returned no parseable posts",
+        );
+      }
+      const posts = parsedPosts.filter(looksLikeSweepstakes);
+      await workQueue.enqueue(posts.map((post): DiscoveryWorkItem => ({
+        key: post.url,
+        payload: { ...post },
+      })));
+      // The archive is acknowledged only after every child is durable.
+      await http.commitFetchState(`${HOST}${ARCHIVE_PATH}`, archive);
+    }
     const leads: DiscoveredLead[] = [];
 
-    for (const post of posts.slice(0, limit)) {
+    // The archive answering does not prove the site is healthy. If every detail
+    // request then fails transiently, returning [] would report a quiet day
+    // while the source is down — the same defect as the archive fetch, one level
+    // in. Isolated 404s stay isolated: a single removed post is a fact about
+    // that post, not about the source.
+    let attempted = 0;
+    let answered = 0;
+    let transientFailures = 0;
+    let lastFailure: { url: string; failure: FetchFailureClass; message: string } | null = null;
+
+    for (const item of await workQueue.take(limit)) {
+      const post = item.payload as unknown as FreebieGuyPost;
+      if (!post.url || !post.title) {
+        await workQueue.complete(item.key);
+        continue;
+      }
+      attempted += 1;
       const detail = await http.get(post.url);
-      if (detail.status !== "ok") continue;
+
+      if (detail.status === "not_modified") {
+        answered += 1; // the source responded; nothing changed
+        await workQueue.complete(item.key);
+        continue;
+      }
+      if (detail.status !== "ok") {
+        if (isRetryable(detail.failure)) {
+          transientFailures += 1;
+          lastFailure = { url: detail.url, failure: detail.failure, message: detail.message };
+        } else if (detail.failure === "not_found") {
+          answered += 1; // a 404/410 is a real answer about that post
+          await workQueue.complete(item.key);
+        } else {
+          await workQueue.defer(item.key);
+        }
+        continue;
+      }
+      answered += 1;
+
       // A closed giveaway is a correct discovery outcome, not a failure: skip it
       // quietly rather than sending an already-over sweepstakes to review.
-      if (isClosedPost(detail.body)) continue;
+      if (isClosedPost(detail.body)) {
+        await http.commitFetchState(post.url, detail);
+        await workQueue.complete(item.key);
+        continue;
+      }
 
       const officialUrl = parseFreebieGuyOfficialUrl(detail.body);
-      if (!officialUrl) continue;
+      if (officialUrl) {
+        leads.push({
+          officialUrl,
+          sourceUrl: post.url,
+          hint: { title: post.title },
+          discoveryWorkKey: item.key,
+        });
+        // Completion belongs to the orchestrator after the lead reaches a
+        // durable terminal outcome. Until then a failed official fetch/LLM/DB
+        // operation must leave this item retryable.
+        continue;
+      }
+      // No sponsor link may be a page still being populated. Do not save its
+      // validator or complete its work item; a later run must fetch it again.
+      await workQueue.defer(item.key);
+    }
 
-      leads.push({
-        officialUrl,
-        sourceUrl: post.url,
-        hint: { title: post.title },
-      });
+    // Every detail we tried failed transiently and nothing answered: that is an
+    // outage, and it must reach the circuit breaker rather than look like "no
+    // new sweeps".
+    if (attempted > 0 && answered === 0 && transientFailures === attempted && lastFailure) {
+      throw new SourceFetchError(
+        lastFailure.url,
+        lastFailure.failure,
+        `all ${attempted} detail request(s) failed transiently — ${lastFailure.message}`,
+      );
     }
 
     return leads;

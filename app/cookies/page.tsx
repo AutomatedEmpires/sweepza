@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { APP_NAME } from "@/lib/site";
+
+const COOKIES_DESCRIPTION =
+  "How Sweepza uses browser storage — essential sign-in and device state, privacy-friendly first-party analytics, no advertising cookies, and we never sell your data.";
 
 export const metadata: Metadata = {
   title: "Cookie & Storage Policy",
-  description:
-    "How Sweepza uses browser storage — essential sign-in and device state, privacy-friendly first-party analytics, no advertising cookies, and we never sell your data.",
+  description: COOKIES_DESCRIPTION,
   alternates: { canonical: "/cookies" },
+  openGraph: {
+    title: "Cookie & Storage Policy",
+    description: COOKIES_DESCRIPTION,
+    url: "/cookies",
+    type: "website",
+    siteName: APP_NAME,
+  },
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

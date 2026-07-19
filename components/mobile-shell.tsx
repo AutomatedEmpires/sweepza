@@ -1,4 +1,5 @@
 import { BottomNav } from "@/components/bottom-nav";
+import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { SideRail } from "@/components/side-rail";
 
 // Responsive app shell. Below lg this is the original mobile column with a
@@ -13,6 +14,7 @@ export function MobileShell({
 }) {
   return (
     <div className="min-h-dvh bg-paper lg:flex">
+      <ServiceWorkerRegistration />
       {/* Keyboard/SR shortcut past the utility bar and rail on every page. */}
       <a
         href="#main-content"

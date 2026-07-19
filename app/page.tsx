@@ -6,11 +6,13 @@ import { GamificationStrip } from "@/components/gamification-strip";
 import { ensureCurrentAppUser } from "@/lib/auth";
 import { getCachedPublicListings } from "@/lib/db/listings-cache";
 import { getSeekerHistoryListingsByIds } from "@/lib/db/listings";
+import { withPublicFallback } from "@/lib/db/resilient";
 import { getSeekerGamification } from "@/lib/db/gamification";
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import { daysUntil, isExpired } from "@/lib/listing-badges";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from "@/lib/structured-data";
+import { TRUST_BAND_ITEMS } from "@/lib/trust-copy";
 import type { Listing } from "@/lib/types/listing";
 
 // Site-level structured data — Organization + WebSite (with a SearchAction for
@@ -87,14 +89,11 @@ function RailSection({
 }
 
 function TrustBand() {
-  const items: { icon: IconName; label: string }[] = [
-    { icon: "shield", label: "Free to enter — always" },
-    { icon: "rules", label: "Official rules on every listing" },
-    { icon: "verified", label: "Verified hosts, honest sources" },
-  ];
+  // Copy lives in lib/trust-copy.ts, held to enforced reality by
+  // lib/__tests__/honest-copy.test.ts — never overclaim here.
   return (
     <div className="mx-4 grid grid-cols-1 gap-3 rounded-card border border-line bg-surface p-4 shadow-e1 sm:grid-cols-3 lg:mx-0">
-      {items.map((it) => (
+      {TRUST_BAND_ITEMS.map((it) => (
         <div key={it.label} className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-pine/10 text-pine">
             <Icon name={it.icon} size={16} />
@@ -109,8 +108,11 @@ function TrustBand() {
 function FooterBlock() {
   return (
     <div className="flex flex-col gap-2 px-5 pb-2 lg:px-0">
+      {/* Was: "No purchase necessary · See official rules" — asserted a sponsor's
+          legal representation about their own promotion. Nothing backs it:
+          `no_purchase_necessary` is nullable and unchecked. Point at the rules instead. */}
       <p className="text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
-        No purchase necessary · See official rules
+        Eligibility, odds, and entry terms are set by the official rules
       </p>
       <nav
         aria-label="Footer"
@@ -130,7 +132,9 @@ export default async function TodayPage() {
   const now = new Date();
   const [authUser, listings] = await Promise.all([
     ensureCurrentAppUser(),
-    getCachedPublicListings(100),
+    // The front door must never trade its designed empty state for the error
+    // boundary; a feed failure renders the same page as an empty catalog.
+    withPublicFallback(getCachedPublicListings(100), [], "today_feed"),
   ]);
 
   // The public feed is intentionally bounded, but a seeker's routine is not.
@@ -246,8 +250,10 @@ export default async function TodayPage() {
           >
             Start my routine
           </Link>
+          {/* Was: "Free for seekers · no purchase necessary" — the second half spoke
+              for the sponsor. Sweepza's own fee is Sweepza's to state; the sponsor's isn't. */}
           <span className="text-xs font-medium text-graphite">
-            Free for seekers · no purchase necessary
+            Free for seekers — Sweepza never charges you to enter
           </span>
         </div>
       </header>

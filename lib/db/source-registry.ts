@@ -102,10 +102,21 @@ export type TransitionResult =
   | { ok: false; error: string };
 
 /**
- * Move a source along the compliance ladder, recording the decision. Refuses
- * illegal transitions (the state machine is the authority, not the caller) and
- * writes the audit event before the state change so a failed write can never
- * leave an unexplained approval.
+ * Move a source along the compliance ladder, recording the decision.
+ *
+ * The TypeScript state machine gives the operator an immediate explanation,
+ * while the database independently enforces the same legal edges as the final
+ * authority. The `transition_source_compliance` RPC locks the source row,
+ * compare-and-sets on the state we validated against, derives approval
+ * attribution, and writes the audit event + state change in one transaction.
+ *
+ * That split matters. This function used to insert the event and then update the
+ * row as two independent writes, with a comment claiming the ordering meant "a
+ * failed write can never leave an unexplained approval" — the exact opposite was
+ * true: a failed update left the append-only log permanently asserting a
+ * transition that never happened. An audit trail that lies is worse than none,
+ * because it is trusted. The unlocked read-then-write also let two concurrent
+ * transitions both validate the same from_state and write an illegal history.
  */
 export async function transitionSourceCompliance(
   input: TransitionInput,
@@ -127,34 +138,48 @@ export async function transitionSourceCompliance(
 
   const supabase = createServiceRoleClient();
 
-  const { error: eventError } = await supabase.from("source_approval_event").insert({
-    source_id: input.sourceId,
-    from_state: current.complianceState,
-    to_state: input.to,
-    actor,
-    reason: input.reason ?? null,
-  });
-  if (eventError) {
-    return { ok: false, error: `Could not record the decision: ${eventError.message}` };
+  const { data: outcome, error: rpcError } = await supabase.rpc(
+    "transition_source_compliance",
+    {
+      p_source_id: input.sourceId,
+      // The state legality was checked against — the CAS key. If the row moved
+      // underneath us, the RPC refuses instead of writing a false history.
+      p_from: current.complianceState,
+      p_to: input.to,
+      p_actor: actor,
+      p_reason: input.reason ?? null,
+    },
+  );
+
+  if (rpcError) {
+    return { ok: false, error: `Could not record the decision: ${rpcError.message}` };
   }
 
-  const approving = input.to === "approved_for_production";
-  const { data, error } = await supabase
-    .from("source_registry")
-    .update({
-      compliance_state: input.to,
-      // Approval attribution reflects the live production grant specifically —
-      // it is cleared on the way down so a paused source never displays as
-      // "approved by X" while it is not, in fact, approved.
-      approved_by: approving ? actor : null,
-      approved_at: approving ? new Date().toISOString() : null,
-    })
-    .eq("id", input.sourceId)
-    .select(COLUMNS)
-    .single<SourceRegistryRow>();
+  const result = outcome as { ok: boolean; error?: string; actual?: string } | null;
+  if (!result?.ok) {
+    if (result?.error === "stale_state") {
+      return {
+        ok: false,
+        error: `Source moved to ${result.actual} while this decision was being made. Re-read it and decide again.`,
+      };
+    }
+    if (result?.error === "unknown_source") {
+      return { ok: false, error: `Unknown source "${input.sourceId}".` };
+    }
+    if (result?.error === "illegal_transition") {
+      return { ok: false, error: `The database refused illegal transition ${current.complianceState} → ${input.to}.` };
+    }
+    if (result?.error === "actor_required") {
+      return { ok: false, error: "An actor is required to record an approval." };
+    }
+    return { ok: false, error: `Could not update the source: ${result?.error ?? "unknown"}` };
+  }
 
-  if (error) return { ok: false, error: `Could not update the source: ${error.message}` };
-  return { ok: true, record: toRecord(data) };
+  const record = await getSourceRecord(input.sourceId);
+  if (!record) {
+    return { ok: false, error: `Source "${input.sourceId}" vanished after the transition.` };
+  }
+  return { ok: true, record };
 }
 
 export interface ApprovalEvent {
@@ -214,50 +239,117 @@ export async function setSourceKillSwitch(
   if (error) throw new Error(`setSourceKillSwitch failed: ${error.message}`);
 }
 
+export type SourceRunLeaseResult =
+  | { ok: true; token: string; startedAt: string; expiresAt: string }
+  | { ok: false; error: string; detail?: string };
+
 /**
- * Record the outcome of a run for circuit-breaker accounting. A success resets
- * the counter and closes the breaker; a failure increments it and trips the
- * breaker once the source's threshold is reached.
+ * Atomically acquire the database-authoritative run slot. The pure gate still
+ * fails early and explains static policy, but this locked RPC is what prevents
+ * two serverless invocations from both passing a stale read and crawling.
  */
-export async function recordRunOutcome(
+export async function acquireSourceRunLease(
   sourceId: string,
+  refreshIntervalMinutes: number,
+): Promise<SourceRunLeaseResult> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("acquire_source_run_lease", {
+    p_source_id: sourceId,
+    p_refresh_interval_minutes: refreshIntervalMinutes,
+    p_lease_seconds: 600,
+  });
+  if (error) throw new Error(`acquireSourceRunLease failed: ${error.message}`);
+  const result = data as {
+    ok?: boolean;
+    token?: string;
+    started_at?: string;
+    expires_at?: string;
+    error?: string;
+    next_run_at?: string;
+  } | null;
+  if (result?.ok && result.token && result.started_at && result.expires_at) {
+    return {
+      ok: true,
+      token: result.token,
+      startedAt: result.started_at,
+      expiresAt: result.expires_at,
+    };
+  }
+  return {
+    ok: false,
+    error: result?.error ?? "invalid_result",
+    detail: result?.next_run_at ?? result?.expires_at,
+  };
+}
+
+/** Finish only the matching, unexpired lease and update breaker health. */
+export async function finishSourceRunLease(
+  sourceId: string,
+  token: string,
   outcome: { ok: boolean; failureClass?: string | null; failureThreshold: number },
 ): Promise<void> {
   const supabase = createServiceRoleClient();
-  const now = new Date().toISOString();
+  const { data, error } = await supabase.rpc("finish_source_run_lease", {
+    p_source_id: sourceId,
+    p_token: token,
+    p_ok: outcome.ok,
+    p_failure_class: outcome.failureClass ?? null,
+    p_failure_threshold: outcome.failureThreshold,
+  });
+  if (error) throw new Error(`finishSourceRunLease failed: ${error.message}`);
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (!result?.ok) {
+    throw new Error(`finishSourceRunLease failed: ${result?.error ?? "invalid_result"}`);
+  }
+}
 
-  if (outcome.ok) {
-    const { error } = await supabase
-      .from("source_registry")
-      .update({
-        last_run_at: now,
-        last_success_at: now,
-        consecutive_failures: 0,
-        circuit_opened_at: null,
-        last_failure_class: null,
-      })
-      .eq("id", sourceId);
-    if (error) throw new Error(`recordRunOutcome failed: ${error.message}`);
-    return;
+/** Abandon a pre-network lease without writing cadence or source health. */
+export async function releaseSourceRunLease(sourceId: string, token: string): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("release_source_run_lease", {
+    p_source_id: sourceId,
+    p_token: token,
+  });
+  if (error) throw new Error(`releaseSourceRunLease failed: ${error.message}`);
+  if (data !== true) throw new Error(`releaseSourceRunLease failed: stale lease for "${sourceId}"`);
+}
+
+export type ResetSourceCircuitResult =
+  | { ok: true; record: SourceRegistryRecord }
+  | { ok: false; error: string };
+
+/**
+ * Recover an opened circuit through a narrow, audited database authority path.
+ * Normal acquisition still blocks open circuits; only an explicit named
+ * operator action with a reason can clear one.
+ */
+export async function resetSourceCircuit(input: {
+  sourceId: string;
+  actor: string;
+  reason: string;
+}): Promise<ResetSourceCircuitResult> {
+  const actor = input.actor.trim();
+  const reason = input.reason.trim();
+  if (!actor) return { ok: false, error: "An actor is required to reset a circuit." };
+  if (!reason) return { ok: false, error: "A reason is required to reset a circuit." };
+
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("reset_source_circuit", {
+    p_source_id: input.sourceId,
+    p_actor: actor,
+    p_reason: reason,
+  });
+  if (error) return { ok: false, error: `Could not reset the circuit: ${error.message}` };
+
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (!result?.ok) {
+    const detail = result?.error ?? "invalid_result";
+    return { ok: false, error: `Could not reset the circuit: ${detail}` };
   }
 
-  const current = await getSourceRecord(sourceId);
-  const failures = (current?.consecutiveFailures ?? 0) + 1;
-  const tripped = failures >= outcome.failureThreshold;
-
-  const { error } = await supabase
-    .from("source_registry")
-    .update({
-      last_run_at: now,
-      last_failure_at: now,
-      last_failure_class: outcome.failureClass ?? null,
-      consecutive_failures: failures,
-      // Keep the original trip time if the breaker is already open — the age of
-      // the outage is what an operator needs, not the age of the latest retry.
-      circuit_opened_at: tripped ? (current?.circuitOpenedAt ?? now) : null,
-    })
-    .eq("id", sourceId);
-  if (error) throw new Error(`recordRunOutcome failed: ${error.message}`);
+  const record = await getSourceRecord(input.sourceId);
+  if (!record) return { ok: false, error: `Source "${input.sourceId}" vanished after reset.` };
+  return { ok: true, record };
 }
 
 export interface FetchStateRecord {
