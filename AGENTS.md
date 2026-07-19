@@ -29,7 +29,7 @@ Sweepza is one app in the AutomatedEmpires venture system; **Explore&Earn (E&E) 
 
 - **Machine:** Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code. Working path `/home/jackson/automatedempires/ventures/sweepza`. 16 GB RAM — **one agent at a time**; do not assume parallel heavy builds or long-running watchers.
 - **Runtime (pinned):** Node **24.16.0** (`.nvmrc`) · pnpm **10.12.4** (`packageManager`) · TypeScript end-to-end. Any version change requires a dated decision in the locked Notion canon.
-- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary · Observability = PostHog + Sentry · Icons = Phosphor (semantic registry in components/icon.tsx) · Email = Resend.
+- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary if Sweepza adopts media (current storage is `none`) · Observability = PostHog + Sentry · Icons = Phosphor (semantic registry in components/icon.tsx) · Email = Resend.
 - **CI & agent routing:** CI runs through the org reusable workflow (`.github/workflows/ci.yml` → `AutomatedEmpires/.github` reusable-ci). Agent routing (build-task router, PR agent router/dispatch) mirrors E&E. Notion decides product truth; this repo decides implementation truth.
 
 ## Source of truth
