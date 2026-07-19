@@ -112,10 +112,24 @@ create table listing_duplicate_candidate (
 create index listing_duplicate_candidate_open_idx
   on listing_duplicate_candidate (listing_id) where resolved = false;
 
--- Append-only guarantee for the change audit, matching source_approval_event.
+-- Append-only guarantee for the change audit. Use the trigger's actual table
+-- name so an attempted mutation produces actionable operator evidence.
+create function private.reject_append_only_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  raise exception '%.% is append-only', tg_table_schema, tg_table_name;
+end;
+$$;
+revoke execute on function private.reject_append_only_mutation()
+  from public, anon, authenticated, service_role;
+
 create trigger listing_change_event_no_update
   before update or delete on listing_change_event
-  for each row execute function private.source_approval_event_is_append_only();
+  for each row execute function private.reject_append_only_mutation();
 
 -- Internal operational data: admin/owner read only; writes via service role.
 alter table listing_change_event enable row level security;
