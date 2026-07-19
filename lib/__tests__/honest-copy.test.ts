@@ -437,6 +437,14 @@ const OTHER_SURFACES: Surface[] = [
     texts: [source("public/llms.txt")],
   },
   {
+    // The shared trust chips both OG cards render — claim copy that travels
+    // off-site with every shared link. The cards themselves are scanned as
+    // app routes, but the words now LIVE here, so this module is a surface.
+    name: "OG card trust chips (lib/og-theme.tsx)",
+    sources: ["lib/og-theme.tsx"],
+    texts: [source("lib/og-theme.tsx")],
+  },
+  {
     // Copy lives inline in the component rather than a data module, which is
     // exactly how its enforcement claim escaped this guard.
     name: "host pitch (/host)",

@@ -1,12 +1,20 @@
 import { ImageResponse } from "next/og";
 import { getCategoryHub } from "@/lib/category-hubs";
+import {
+  OG_EMBER,
+  OG_GRAPHITE,
+  OG_INK,
+  OG_PAPER,
+  OG_TRUST_CHIPS,
+  TrustChip,
+} from "@/lib/og-theme";
 import { APP_NAME, APP_TAGLINE, SITE_URL } from "@/lib/site";
 
 // Per-hub Open Graph card for /discover/{category} — a shared category link
 // unfurls with the category's own headline instead of the generic site card.
-// Layout and palette mirror app/opengraph-image.tsx (brand tokens pinned as
-// hex because satori can't read CSS variables); keep the two files visually
-// in sync. Copy rules follow the same canon as the root card and
+// Palette, chips, and the chip component are shared with the root card via
+// lib/og-theme.tsx, so the two cards cannot drift. Copy rules follow the
+// same canon as the root card and
 // lib/category-hubs.ts: the free-to-enter LISTING POLICY and Sweepza's own
 // fee may be stated; never assert no-purchase on a sponsor's behalf, never
 // promise wins or inventory. Scanned by lib/__tests__/honest-copy.test.ts.
@@ -35,32 +43,6 @@ export async function generateImageMetadata({ params }: ImageProps) {
   ];
 }
 
-const PAPER = "#F5F0E7"; // --sun-paper
-const INK = "#17130F"; // --sun-ink
-const GRAPHITE = "#6E655A"; // --sun-graphite
-const EMBER = "#C13E19"; // --sun-ember
-const PINE = "#3E6B52"; // --sun-pine
-
-function TrustChip({ children }: { children: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        border: `2px solid ${PINE}`,
-        borderRadius: 999,
-        padding: "10px 22px",
-        color: PINE,
-        fontSize: 23,
-        fontWeight: 600,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 export default async function HubOpenGraphImage({ params }: ImageProps) {
   const { category } = await params;
   const hub = getCategoryHub(category);
@@ -73,7 +55,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
           width: "100%",
           height: "100%",
           display: "flex",
-          background: PAPER,
+          background: OG_PAPER,
           position: "relative",
           fontFamily: "sans-serif",
         }}
@@ -87,7 +69,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
             width: 520,
             height: 520,
             borderRadius: 520,
-            background: EMBER,
+            background: OG_EMBER,
             display: "flex",
           }}
         />
@@ -99,7 +81,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
             width: 400,
             height: 400,
             borderRadius: 400,
-            border: `3px solid ${PAPER}`,
+            border: `3px solid ${OG_PAPER}`,
             display: "flex",
           }}
         />
@@ -124,8 +106,8 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
                 width: 58,
                 height: 58,
                 borderRadius: 16,
-                background: EMBER,
-                color: PAPER,
+                background: OG_EMBER,
+                color: OG_PAPER,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -140,7 +122,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
                 display: "flex",
                 fontSize: 42,
                 fontWeight: 800,
-                color: INK,
+                color: OG_INK,
                 letterSpacing: -1,
               }}
             >
@@ -165,7 +147,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
                   fontWeight: 700,
                   letterSpacing: 3,
                   textTransform: "uppercase",
-                  color: EMBER,
+                  color: OG_EMBER,
                 }}
               >
                 Prize category
@@ -178,7 +160,7 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
                 fontSize: 58,
                 fontWeight: 800,
                 lineHeight: 1.08,
-                color: INK,
+                color: OG_INK,
                 letterSpacing: -1.5,
               }}
             >
@@ -195,15 +177,16 @@ export default async function HubOpenGraphImage({ params }: ImageProps) {
             }}
           >
             <div style={{ display: "flex", gap: 14 }}>
-              <TrustChip>Free to enter — always</TrustChip>
-              <TrustChip>Free for seekers</TrustChip>
+              {OG_TRUST_CHIPS.map((chip) => (
+                <TrustChip key={chip}>{chip}</TrustChip>
+              ))}
             </div>
             <div
               style={{
                 display: "flex",
                 fontSize: 26,
                 fontWeight: 600,
-                color: GRAPHITE,
+                color: OG_GRAPHITE,
               }}
             >
               {SITE_URL.hostname}
