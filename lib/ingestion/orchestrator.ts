@@ -23,11 +23,8 @@ import {
 import { verifyCandidate } from "@/lib/ingestion/verify";
 import {
   createIngestedListingWithProvenance,
-  findExistingListingId,
-  findIngestionByUrlKey,
   finishIngestionRun,
   startIngestionRun,
-  touchLastSeen,
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
 import { discoveryWorkQueue } from "@/lib/db/discovery-work";
@@ -41,7 +38,7 @@ import {
 } from "@/lib/db/source-registry";
 
 // The pipeline assembly: for each source, ASK THE GATE → discover leads →
-// resolve official URL → skip if already known (idempotent) → extract at the
+// resolve official URL → extract at the
 // source → map to canonical → dedupe → atomically create a DRAFT (review-only)
 // listing + provenance. Everything an agent finds waits for a human; nothing
 // auto-publishes.
@@ -274,7 +271,6 @@ export async function runIngestion(
       });
       counts.discovered = leads.length;
 
-      const seenThisRun = new Set<string>();
       const held: string[] = [];
       // Tracked apart from counts.failed, which deliberately conflates two very
       // different facts: an official page we could not fetch (an outage signal)
@@ -287,25 +283,16 @@ export async function runIngestion(
           if (lead.discoveryWorkKey) await workQueue.complete(lead.discoveryWorkKey);
         };
         const urlKey = normalizeUrl(lead.officialUrl);
-        if (!urlKey || seenThisRun.has(urlKey)) {
-          await acknowledgeLead();
-          counts.skipped += 1;
-          continue;
-        }
-        seenThisRun.add(urlKey);
-
-        // Idempotency: already in the catalog → refresh last_seen, don't re-fetch.
-        const known = await findIngestionByUrlKey(urlKey);
-        if (known) {
-          await touchLastSeen(known.listingId);
+        if (!urlKey) {
           await acknowledgeLead();
           counts.skipped += 1;
           continue;
         }
 
         // Acquire the official-source lease lazily. A quiet discovery pass, or
-        // one containing only already-known URLs, must not consume the sponsor
-        // source's independent daily cadence.
+        // a pass containing only no leads, must not consume the sponsor source's
+        // independent daily cadence. URL alone is not an idempotency key here:
+        // sponsors reuse landing pages for later cycles and regional variants.
         const activeOfficialHttp = await ensureOfficialClient();
         if (!activeOfficialHttp) {
           if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
@@ -386,22 +373,13 @@ export async function runIngestion(
           continue;
         }
 
-        // Cross-source dedupe: same sweep already known under another link.
-        const duplicateOf = await findExistingListingId(candidate.dedup);
-        if (duplicateOf) {
-          await saveAcceptedOfficialFetchState(
-            lead.officialUrl,
-            result.extraction,
-            officialFetchState,
-          );
-          counts.skipped += 1;
-          await acknowledgeLead();
-          continue;
-        }
-
+        // The database owns identity atomically. Same URL+variant claims are
+        // idempotent; cross-URL content matches create a separate private draft
+        // plus an explainable suspected-duplicate pair for human resolution.
         const claim = await createIngestedListingWithProvenance(candidate, {
           officialUrlKey: candidate.dedup.urlKey,
           contentFingerprint: candidate.dedup.contentKey,
+          variantKey: candidate.dedup.variantKey,
           discoverySource: descriptor.id,
           officialSourceUrl: urlKey,
           extractionConfidence: verification.confidence,

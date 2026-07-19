@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   contentFingerprint,
   dedupKeys,
+  explainDuplicate,
   isLikelyDuplicate,
   normalizeText,
   normalizeUrl,
@@ -79,6 +80,9 @@ describe("contentFingerprint", () => {
     expect(contentFingerprint(base)).not.toBe(
       contentFingerprint({ ...base, endDate: "2026-09-01" }),
     );
+    expect(contentFingerprint({ ...base, eligibilityStates: ["CA"] })).toBe(
+      contentFingerprint({ ...base, eligibilityStates: ["NY"] }),
+    );
   });
 });
 
@@ -108,6 +112,91 @@ describe("isLikelyDuplicate", () => {
     expect(isLikelyDuplicate(a, b)).toBe(true);
   });
 
+  it("requires matching variants for cross-URL content identity", () => {
+    const us = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Cash",
+      endDate: "2026-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: ["CA"],
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    const regional = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Cash",
+      endDate: "2026-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: ["NY"],
+      officialRulesUrl: "https://campaign.example/official",
+    });
+    expect(us.contentKey).toBe(regional.contentKey);
+    expect(isLikelyDuplicate(us, regional)).toBe(false);
+  });
+
+  it("canonicalizes variant states exactly and preserves unknown versus explicit empty", () => {
+    expect(
+      dedupKeys({ endDate: "2026-08-01", eligibilityCountry: " US ", eligibilityStates: [" NY ", "ca", "CA", ""] }).variantKey,
+    ).toBe("2026-08-01|us|ca,ny");
+    expect(dedupKeys({ eligibilityStates: null }).variantKey).toBe("?|?|?");
+    expect(dedupKeys({ eligibilityStates: [] }).variantKey).toBe("?|?|none");
+  });
+
+  it("falls back to content identity when official URLs differ", () => {
+    const a = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Cash",
+      endDate: "2026-08-01",
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    const b = dedupKeys({
+      sponsorName: "brand",
+      prizeName: "cash",
+      endDate: "2026-08-01",
+      officialRulesUrl: "https://campaign.example/official",
+    });
+    expect(isLikelyDuplicate(a, b)).toBe(true);
+  });
+
+  it("does not collapse annual cycles that reuse one official URL", () => {
+    const current = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Trip",
+      endDate: "2026-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: [],
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    const next = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Trip",
+      endDate: "2027-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: [],
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    expect(isLikelyDuplicate(current, next)).toBe(false);
+  });
+
+  it("does not collapse state variants that reuse one official URL", () => {
+    const california = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Trip",
+      endDate: "2026-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: ["CA"],
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    const newYork = dedupKeys({
+      sponsorName: "Brand",
+      prizeName: "Trip",
+      endDate: "2026-08-01",
+      eligibilityCountry: "US",
+      eligibilityStates: ["NY"],
+      officialRulesUrl: "https://brand.example/rules",
+    });
+    expect(isLikelyDuplicate(california, newYork)).toBe(false);
+  });
+
   it("does not merge genuinely different sweeps", () => {
     const a = dedupKeys({
       prizeName: "Cash",
@@ -120,5 +209,130 @@ describe("isLikelyDuplicate", () => {
       officialRulesUrl: "https://b.com/rules",
     });
     expect(isLikelyDuplicate(a, b)).toBe(false);
+  });
+});
+
+describe("explainDuplicate — explainable, and safe with variants", () => {
+  it("calls a shared official URL conclusively identical", () => {
+    const result = explainDuplicate(
+      { officialRulesUrl: "https://brand.com/rules", sponsorName: "Brand", prizeName: "Trip" },
+      { officialRulesUrl: "https://www.brand.com/rules/?utm_source=x", sponsorName: "Brand", prizeName: "Win a Trip" },
+    );
+    expect(result.verdict).toBe("identical");
+    expect(result.strength).toBe(1);
+    expect(result.signals.find((s) => s.id === "same_official_url")?.matched).toBe(true);
+  });
+
+  it("routes same-URL unknown-to-known identity to review", () => {
+    const result = explainDuplicate(
+      { officialRulesUrl: "https://brand.com/rules", sponsorName: "Brand", prizeName: "Trip" },
+      {
+        officialRulesUrl: "https://brand.com/rules",
+        sponsorName: "Brand",
+        prizeName: "Trip",
+        endDate: "2026-08-01",
+        eligibilityCountry: "US",
+        eligibilityStates: ["CA"],
+      },
+    );
+    expect(result.verdict).toBe("suspected");
+    expect(result.reason).toMatch(/unknown/i);
+  });
+
+  it("suspects a duplicate when sponsor+prize agree and a discriminator agrees", () => {
+    const result = explainDuplicate(
+      { sponsorName: "Northwind", prizeName: "Kitchen Makeover", endDate: "2026-08-01", eligibilityCountry: "US" },
+      { sponsorName: "northwind", prizeName: "kitchen makeover", endDate: "2026-08-01", eligibilityCountry: "US" },
+    );
+    expect(result.verdict).toBe("suspected");
+    expect(result.reason).toMatch(/confirm before merging/i);
+  });
+
+  it("keeps a US and a Canada-only variant DISTINCT — same sponsor/prize, different region", () => {
+    const result = explainDuplicate(
+      { sponsorName: "Laurentide", prizeName: "Cabin Getaway", endDate: "2026-10-05", eligibilityCountry: "US" },
+      { sponsorName: "Laurentide", prizeName: "Cabin Getaway", endDate: "2026-10-05", eligibilityCountry: "CA" },
+    );
+    // Same sponsor, same prize, same end date — but different country. The
+    // country contradiction must NOT be overridden by the date agreement into a
+    // false merge; regional variants are distinct sweepstakes.
+    expect(result.signals.find((s) => s.id === "same_country")?.matched).toBe(false);
+    expect(result.verdict).toBe("distinct");
+  });
+
+  it("keeps this year's and last year's relaunch DISTINCT — same sponsor/prize, different date", () => {
+    const result = explainDuplicate(
+      { sponsorName: "Roasted Daily", prizeName: "Year of Coffee", endDate: "2025-08-31", eligibilityCountry: "US" },
+      { sponsorName: "Roasted Daily", prizeName: "Year of Coffee", endDate: "2026-08-31", eligibilityCountry: "US" },
+    );
+    expect(result.verdict).toBe("distinct");
+    expect(result.reason).toMatch(/regional or recurring variant/i);
+  });
+
+  it("keeps same-URL recurring and state variants distinct", () => {
+    const recurring = explainDuplicate(
+      {
+        officialRulesUrl: "https://brand.example/rules",
+        sponsorName: "Brand",
+        prizeName: "Trip",
+        endDate: "2026-08-01",
+        eligibilityCountry: "US",
+        eligibilityStates: ["CA"],
+      },
+      {
+        officialRulesUrl: "https://brand.example/rules",
+        sponsorName: "Brand",
+        prizeName: "Trip",
+        endDate: "2027-08-01",
+        eligibilityCountry: "US",
+        eligibilityStates: ["CA"],
+      },
+    );
+    expect(recurring.verdict).toBe("distinct");
+
+    const regional = explainDuplicate(
+      {
+        officialRulesUrl: "https://brand.example/rules",
+        sponsorName: "Brand",
+        prizeName: "Trip",
+        endDate: "2026-08-01",
+        eligibilityCountry: "US",
+        eligibilityStates: ["CA"],
+      },
+      {
+        officialRulesUrl: "https://brand.example/rules",
+        sponsorName: "Brand",
+        prizeName: "Trip",
+        endDate: "2026-08-01",
+        eligibilityCountry: "US",
+        eligibilityStates: ["NY"],
+      },
+    );
+    expect(regional.verdict).toBe("distinct");
+  });
+
+  it("returns distinct with low strength for unrelated sweeps", () => {
+    const result = explainDuplicate(
+      { sponsorName: "Brand A", prizeName: "Cash", endDate: "2026-08-01", eligibilityCountry: "US" },
+      { sponsorName: "Brand B", prizeName: "Truck", endDate: "2026-09-01", eligibilityCountry: "CA" },
+    );
+    expect(result.verdict).toBe("distinct");
+    expect(result.strength).toBe(0);
+  });
+
+  it("always lists every signal it weighed", () => {
+    const result = explainDuplicate(
+      { sponsorName: "X", prizeName: "Y" },
+      { sponsorName: "X", prizeName: "Y" },
+    );
+    expect(result.signals.map((s) => s.id).sort()).toEqual([
+      "same_country",
+      "same_end_date",
+      "same_entry_url",
+      "same_official_url",
+      "same_prize",
+      "same_sponsor",
+      "same_states",
+    ]);
   });
 });

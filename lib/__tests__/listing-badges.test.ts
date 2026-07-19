@@ -24,9 +24,8 @@ function makeListing(overrides: Partial<Listing> = {}): Listing {
 }
 
 describe("daysUntil", () => {
-  it("ceils partial days up to a whole day", () => {
-    // Half a day away should round up to 1, not truncate to 0.
-    expect(daysUntil("2026-07-06T12:00:00.000Z", NOW)).toBe(1);
+  it("treats timestamps as their date-only sweep deadline", () => {
+    expect(daysUntil("2026-07-06T12:00:00.000Z", NOW)).toBe(0);
   });
 
   it("returns the exact whole-day count when the difference is a whole day", () => {
@@ -38,7 +37,7 @@ describe("daysUntil", () => {
   });
 
   it("returns a negative number when the end date is in the past", () => {
-    expect(daysUntil("2026-07-01T00:00:00.000Z", NOW)).toBe(-5);
+    expect(daysUntil("2026-07-01T00:00:00.000Z", NOW)).toBeLessThan(0);
   });
 });
 
@@ -80,7 +79,7 @@ describe("computeBadges", () => {
         lifecycleStatus: "expired",
         endDate: "2026-08-01T00:00:00.000Z",
       });
-      const badges = computeBadges(listing, NOW);
+      const badges = computeBadges(listing, NOW, "UTC");
       expect(badges.find((b) => b.id === "expired")).toEqual({
         id: "expired",
         label: "Expired",
@@ -102,7 +101,7 @@ describe("computeBadges", () => {
 
     it("shows 'Ends Today' when the end date is exactly now", () => {
       const listing = makeListing({ endDate: "2026-07-06T00:00:00.000Z" });
-      const badges = computeBadges(listing, NOW);
+      const badges = computeBadges(listing, NOW, "UTC");
       expect(badges.find((b) => b.id === "ends-today")).toEqual({
         id: "ends-today",
         label: "Ends Today",

@@ -122,6 +122,7 @@ export interface Listing {
   eligibilityCountry?: string;
   eligibilityStates?: string[];
   ageRequirement?: number;
+  noPurchaseNecessary?: boolean;
 
   // Source & ownership
   sourceLabel: SourceLabel;
