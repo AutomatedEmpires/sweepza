@@ -26,6 +26,41 @@ alter table public.source_registry
 alter table public.source_approval_event
   add constraint source_approval_event_actor_present check (btrim(actor) <> '');
 
+create table public.source_circuit_reset_event (
+  id uuid primary key default gen_random_uuid(),
+  source_id text not null references public.source_registry(id) on delete cascade,
+  actor text not null check (btrim(actor) <> ''),
+  reason text not null check (btrim(reason) <> ''),
+  previous_circuit_opened_at timestamptz not null,
+  previous_consecutive_failures integer not null,
+  previous_last_failure_class text,
+  previous_last_run_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index source_circuit_reset_event_source_idx
+  on public.source_circuit_reset_event (source_id, created_at desc);
+
+create or replace function private.source_circuit_reset_event_is_append_only()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'source_circuit_reset_event is append-only (attempted %)', tg_op;
+end;
+$$;
+
+create trigger source_circuit_reset_event_no_update
+  before update or delete on public.source_circuit_reset_event
+  for each row execute function private.source_circuit_reset_event_is_append_only();
+
+alter table public.source_circuit_reset_event enable row level security;
+create policy source_circuit_reset_event_admin_read
+  on public.source_circuit_reset_event for select
+  using (private.is_admin() or private.is_owner());
+grant select on public.source_circuit_reset_event to authenticated, service_role;
+
 -- Superseded by token-bound finish_source_run_lease below. Leaving this RPC
 -- callable would preserve a bypass for stale, unleased outcome writes.
 drop function public.record_source_run_outcome(text, boolean, text, integer);
@@ -249,22 +284,83 @@ begin
 end;
 $$;
 
+create or replace function public.reset_source_circuit(
+  p_source_id text,
+  p_actor text,
+  p_reason text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_source public.source_registry%rowtype;
+  v_actor text := btrim(p_actor);
+  v_reason text := btrim(p_reason);
+begin
+  if p_actor is null or v_actor = '' then
+    return jsonb_build_object('ok', false, 'error', 'actor_required');
+  end if;
+  if p_reason is null or v_reason = '' then
+    return jsonb_build_object('ok', false, 'error', 'reason_required');
+  end if;
+
+  select * into v_source
+    from public.source_registry
+   where id = p_source_id
+     for update;
+
+  if not found then return jsonb_build_object('ok', false, 'error', 'unknown_source'); end if;
+  if v_source.circuit_opened_at is null then
+    return jsonb_build_object('ok', false, 'error', 'circuit_not_open');
+  end if;
+  if v_source.active_run_token is not null
+     and v_source.active_run_expires_at > clock_timestamp() then
+    return jsonb_build_object('ok', false, 'error', 'already_running');
+  end if;
+
+  insert into public.source_circuit_reset_event (
+    source_id, actor, reason, previous_circuit_opened_at,
+    previous_consecutive_failures, previous_last_failure_class, previous_last_run_at
+  ) values (
+    p_source_id, v_actor, v_reason, v_source.circuit_opened_at,
+    v_source.consecutive_failures, v_source.last_failure_class, v_source.last_run_at
+  );
+
+  update public.source_registry
+     set circuit_opened_at = null,
+         consecutive_failures = 0,
+         last_failure_class = null,
+         -- An explicit reset is an operator-authorized verification attempt.
+         -- Make exactly the next acquisition due instead of forcing operators
+         -- to wait the ordinary 12h/24h refresh window after recovery.
+         last_run_at = null
+   where id = p_source_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
 comment on function public.acquire_source_run_lease(text, integer, integer) is
   'Atomically enforces source approval, kill switch, circuit state, refresh cadence, and one active run.';
 comment on function public.finish_source_run_lease(text, uuid, boolean, text, integer) is
   'Finishes only the matching unexpired source run lease and atomically records breaker health.';
 comment on function public.release_source_run_lease(text, uuid) is
   'Abandons only the matching source lease before network execution, without consuming cadence or writing health.';
+comment on function public.reset_source_circuit(text, text, text) is
+  'Explicitly clears an open source circuit with a required actor, reason, and append-only audit event.';
 comment on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text) is
   'Atomically validates and records a legal source compliance transition; approval attribution is derived in the database.';
 
 revoke all on function public.acquire_source_run_lease(text, integer, integer) from public, anon, authenticated;
 revoke all on function public.finish_source_run_lease(text, uuid, boolean, text, integer) from public, anon, authenticated;
 revoke all on function public.release_source_run_lease(text, uuid) from public, anon, authenticated;
+revoke all on function public.reset_source_circuit(text, text, text) from public, anon, authenticated;
 revoke all on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text) from public, anon, authenticated;
 grant execute on function public.acquire_source_run_lease(text, integer, integer) to service_role;
 grant execute on function public.finish_source_run_lease(text, uuid, boolean, text, integer) to service_role;
 grant execute on function public.release_source_run_lease(text, uuid) to service_role;
+grant execute on function public.reset_source_circuit(text, text, text) to service_role;
 grant execute on function public.transition_source_compliance(text, public.source_compliance_state, public.source_compliance_state, text, text) to service_role;
 
 -- Operational writes use narrow RPCs. The service role may read records and
@@ -272,6 +368,7 @@ grant execute on function public.transition_source_compliance(text, public.sourc
 -- compliance/health/lease columns directly.
 revoke insert, update, delete on public.source_approval_event from service_role;
 grant select on public.source_approval_event to service_role;
+revoke insert, update, delete on public.source_circuit_reset_event from service_role;
 revoke insert, update, delete on public.source_registry from service_role;
 grant select on public.source_registry to service_role;
 grant update (kill_switch, notes) on public.source_registry to service_role;

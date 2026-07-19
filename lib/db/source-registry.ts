@@ -314,6 +314,44 @@ export async function releaseSourceRunLease(sourceId: string, token: string): Pr
   if (data !== true) throw new Error(`releaseSourceRunLease failed: stale lease for "${sourceId}"`);
 }
 
+export type ResetSourceCircuitResult =
+  | { ok: true; record: SourceRegistryRecord }
+  | { ok: false; error: string };
+
+/**
+ * Recover an opened circuit through a narrow, audited database authority path.
+ * Normal acquisition still blocks open circuits; only an explicit named
+ * operator action with a reason can clear one.
+ */
+export async function resetSourceCircuit(input: {
+  sourceId: string;
+  actor: string;
+  reason: string;
+}): Promise<ResetSourceCircuitResult> {
+  const actor = input.actor.trim();
+  const reason = input.reason.trim();
+  if (!actor) return { ok: false, error: "An actor is required to reset a circuit." };
+  if (!reason) return { ok: false, error: "A reason is required to reset a circuit." };
+
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("reset_source_circuit", {
+    p_source_id: input.sourceId,
+    p_actor: actor,
+    p_reason: reason,
+  });
+  if (error) return { ok: false, error: `Could not reset the circuit: ${error.message}` };
+
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (!result?.ok) {
+    const detail = result?.error ?? "invalid_result";
+    return { ok: false, error: `Could not reset the circuit: ${detail}` };
+  }
+
+  const record = await getSourceRecord(input.sourceId);
+  if (!record) return { ok: false, error: `Source "${input.sourceId}" vanished after reset.` };
+  return { ok: true, record };
+}
+
 export interface FetchStateRecord {
   etag: string | null;
   lastModified: string | null;
