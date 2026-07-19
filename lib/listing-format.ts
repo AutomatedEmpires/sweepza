@@ -1,4 +1,4 @@
-import { daysUntil, isExpired } from "@/lib/listing-badges";
+import { daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import type { Listing } from "@/lib/types/listing";
 
 // Shared presentational formatters for listing surfaces (card + detail).
@@ -24,9 +24,10 @@ export function formatEndDate(endDate: string): string {
 
 export function endDateLabel(listing: Listing): string {
   if (isExpired(listing)) return `Ended ${formatEndDate(listing.endDate)}`;
+  const expiry = listingExpiration(listing.endDate);
   const days = daysUntil(listing.endDate);
-  if (days <= 0) return "Ends today";
-  if (days === 1) return "Ends tomorrow";
+  if (expiry.state === "ends_today") return "Ends today";
+  if (days <= 3) return "Ends soon";
   if (days <= 14) return `Ends in ${days} days`;
   return `Ends ${formatEndDate(listing.endDate)}`;
 }

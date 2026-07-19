@@ -97,13 +97,16 @@ export interface FingerprintInput {
   prizeName?: string | null;
   endDate?: string | null;
   eligibilityCountry?: string | null;
+  eligibilityStates?: string[] | null;
   officialRulesUrl?: string | null;
   entryUrl?: string | null;
 }
 
 /**
  * Identity of a sweep independent of URL — sponsor + prize + end date +
- * country. Catches the same sweep surfaced under slightly different links.
+ * country. This legacy-compatible hash deliberately stays stable for rows
+ * already persisted before variant identity existed. `variantKey` carries the
+ * cycle/state scope, and both values are compared together.
  */
 export function contentFingerprint(input: FingerprintInput): string {
   return fnv1a(
@@ -119,14 +122,38 @@ export function contentFingerprint(input: FingerprintInput): string {
 export interface DedupKeys {
   /** Primary identity from the official/entry URL, or null when neither parses. */
   urlKey: string | null;
-  /** Fallback identity from listing content. */
+  /** Legacy-compatible content signal; only conclusive with human review. */
   contentKey: string;
+  /** Cycle/region discriminator so a reused URL cannot collapse a new variant. */
+  variantKey: string;
+}
+
+function normalizeStates(states: string[] | null | undefined): string[] {
+  return [...new Set((states ?? []).map(normalizeVariantPart).filter(Boolean))].sort();
+}
+
+// Variant parts are persisted from canonical country/state codes. Restrict the
+// canonicalizer to trim+lower so the migration can reproduce it exactly for
+// existing rows without a JavaScript-only Unicode normalization dependency.
+function normalizeVariantPart(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+/** Stable, readable discriminator for recurring and regional variants. */
+export function variantKey(input: FingerprintInput): string {
+  const date = input.endDate ? input.endDate.slice(0, 10) : "?";
+  const country = normalizeVariantPart(input.eligibilityCountry) || "?";
+  const states = input.eligibilityStates == null
+    ? "?"
+    : normalizeStates(input.eligibilityStates).join(",") || "none";
+  return `${date}|${country}|${states}`;
 }
 
 export function dedupKeys(input: FingerprintInput): DedupKeys {
   return {
     urlKey: officialUrlKey(input.officialRulesUrl, input.entryUrl),
     contentKey: contentFingerprint(input),
+    variantKey: variantKey(input),
   };
 }
 
@@ -137,8 +164,10 @@ export function dedupKeys(input: FingerprintInput): DedupKeys {
  * copy."
  */
 export function isLikelyDuplicate(a: DedupKeys, b: DedupKeys): boolean {
-  if (a.urlKey && b.urlKey) return a.urlKey === b.urlKey;
-  return a.contentKey === b.contentKey;
+  if (a.urlKey && b.urlKey && a.urlKey === b.urlKey) {
+    return a.variantKey === b.variantKey;
+  }
+  return a.contentKey === b.contentKey && a.variantKey === b.variantKey;
 }
 
 // Explainable duplicate detection. A silent "these are the same" is exactly what
@@ -146,8 +175,8 @@ export function isLikelyDuplicate(a: DedupKeys, b: DedupKeys): boolean {
 // not be collapsed without evidence, and a reviewer resolving a suspected
 // duplicate needs to see WHICH signals matched. This layer reports the matched
 // signals and a strength, and it deliberately treats matches on identity
-// (official URL) as conclusive while treating content-only matches as suspected
-// (a human confirms).
+// (official URL without variant contradictions) as conclusive while treating
+// content-only matches as suspected (a human confirms).
 
 export interface DuplicateSignal {
   id:
@@ -156,7 +185,8 @@ export interface DuplicateSignal {
     | "same_sponsor"
     | "same_prize"
     | "same_end_date"
-    | "same_country";
+    | "same_country"
+    | "same_states";
   matched: boolean;
   detail: string;
 }
@@ -173,8 +203,8 @@ export interface DuplicateExplanation {
 
 /**
  * Explain whether two candidates are the same sweep, with evidence. An
- * official-URL identity match is conclusive ("identical"). Otherwise the
- * content signals (sponsor + prize + end date + country) are weighed: a strong
+ * official-URL identity match is conclusive only when no known cycle/region
+ * discriminator conflicts. Otherwise the content signals are weighed: a strong
  * agreement is "suspected" (route to review), while weak agreement is
  * "distinct" — because a national and a Canada-only variant of the same
  * promotion, or this year's and last year's relaunch, legitimately share a
@@ -203,6 +233,14 @@ export function explainDuplicate(
   const sameCountry =
     normalizeText(a.eligibilityCountry) !== "" &&
     normalizeText(a.eligibilityCountry) === normalizeText(b.eligibilityCountry);
+  const aStates = normalizeStates(a.eligibilityStates);
+  const bStates = normalizeStates(b.eligibilityStates);
+  const statesComparable = a.eligibilityStates != null && b.eligibilityStates != null;
+  const sameStates = statesComparable && aStates.join(",") === bStates.join(",");
+
+  const datesConflict = Boolean(a.endDate && b.endDate) && !sameEndDate;
+  const countriesConflict = Boolean(a.eligibilityCountry && b.eligibilityCountry) && !sameCountry;
+  const statesConflict = statesComparable && !sameStates;
 
   const signals: DuplicateSignal[] = [
     { id: "same_official_url", matched: sameOfficialUrl, detail: aKeys.urlKey ?? "no official url" },
@@ -211,21 +249,38 @@ export function explainDuplicate(
     { id: "same_prize", matched: samePrize, detail: a.prizeName ?? "no prize" },
     { id: "same_end_date", matched: sameEndDate, detail: a.endDate ?? "no end date" },
     { id: "same_country", matched: sameCountry, detail: a.eligibilityCountry ?? "no country" },
+    { id: "same_states", matched: sameStates, detail: aStates.join(", ") || "no states" },
   ];
 
   if (sameOfficialUrl) {
+    if (aKeys.variantKey === bKeys.variantKey) {
+      return {
+        verdict: "identical",
+        strength: 1,
+        signals,
+        reason: "same normalized official URL and exact cycle/region variant",
+      };
+    }
+    if (datesConflict || countriesConflict || statesConflict) {
+      return {
+        verdict: "distinct",
+        strength: 1,
+        signals,
+        reason: "same URL but a conflicting cycle or region — kept distinct for review",
+      };
+    }
     return {
-      verdict: "identical",
-      strength: 1,
+      verdict: "suspected",
+      strength: 0.75,
       signals,
-      reason: "same normalized official URL — conclusively the same sweepstakes",
+      reason: "same normalized official URL but one cycle/region value is unknown — review before merging",
     };
   }
 
   // Weigh the content signals. End date and country are the discriminators that
   // separate regional/recurring variants, so they carry weight alongside the
   // sponsor/prize identity.
-  const contentSignals = [sameSponsor, samePrize, sameEndDate, sameCountry];
+  const contentSignals = [sameSponsor, samePrize, sameEndDate, sameCountry, sameStates];
   const matchedCount = contentSignals.filter(Boolean).length;
   const strength = Number((matchedCount / contentSignals.length).toFixed(2));
 
@@ -239,10 +294,12 @@ export function explainDuplicate(
   const bothCountriesAbsent =
     normalizeText(a.eligibilityCountry) === "" && normalizeText(b.eligibilityCountry) === "";
   const bothDatesAbsent = !a.endDate && !b.endDate;
+  const bothStatesAbsent = a.eligibilityStates == null && b.eligibilityStates == null;
   const dateOk = sameEndDate || bothDatesAbsent;
   const countryOk = sameCountry || bothCountriesAbsent;
+  const statesOk = sameStates || bothStatesAbsent;
 
-  if (coreMatch && dateOk && countryOk) {
+  if (coreMatch && dateOk && countryOk && statesOk) {
     return {
       verdict: "suspected",
       strength,

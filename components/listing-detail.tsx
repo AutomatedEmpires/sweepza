@@ -5,11 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { canOptimizeImage } from "@/lib/image";
+import { describeEligibility } from "@/lib/eligibility";
 import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingReportButton } from "@/components/listing-report-button";
 import { track } from "@/lib/analytics";
-import { SOURCE_LABEL_TEXT, daysUntil, isExpired } from "@/lib/listing-badges";
+import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { pickListingContext } from "@/lib/listing-context";
 import {
   ENTRY_FREQUENCY_LABEL,
@@ -31,9 +32,10 @@ const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
 
 function countdownLabel(listing: Listing, now: Date): string {
   if (isExpired(listing, now)) return "This sweepstakes has ended";
+  const expiry = listingExpiration(listing.endDate, now);
   const days = daysUntil(listing.endDate, now);
-  if (days <= 0) return "Ends today";
-  if (days === 1) return "Ends tomorrow";
+  if (expiry.state === "ends_today") return "Ends today";
+  if (days <= 3) return "Ends soon";
   if (days <= 21) return `${days} days left to enter`;
   return `Ends ${formatEndDate(listing.endDate)}`;
 }
@@ -162,10 +164,17 @@ export function ListingDetail({
   const days = daysUntil(listing.endDate, now);
   const urgentEnd = !expired && days <= 3;
 
-  const eligibility = [
-    listing.eligibilityCountry,
-    listing.ageRequirement ? `${listing.ageRequirement}+` : null,
-  ].filter(Boolean).join(" · ");
+  const eligibility = describeEligibility({
+    eligibilityCountry: listing.eligibilityCountry,
+    eligibilityStates: listing.eligibilityStates,
+    ageRequirement: listing.ageRequirement,
+    entryLimitNotes: listing.entryLimitNotes,
+  });
+  const publicEligibilityFacets = [
+    eligibility.facets[0],
+    eligibility.facets[1],
+    eligibility.facets[3],
+  ];
 
   // Ready-again integration for entered recurring sweeps.
   const readyAgainAt = entered
@@ -406,15 +415,21 @@ export function ListingDetail({
               </Fact>
             </div>
             <div className="divide-y divide-line">
-              {eligibility && (
-                <Fact icon="location" label="Eligibility">
-                  {eligibility}
+              {publicEligibilityFacets.map((facet) => (
+                <Fact
+                  key={facet.label}
+                  icon={facet.label === "Entry limits" ? "repeat" : facet.label === "Region" ? "location" : "gift"}
+                  label={facet.label}
+                >
+                  <span className={facet.certainty === "unknown" ? "text-graphite" : undefined}>
+                    {facet.value}
+                  </span>
                 </Fact>
-              )}
-              {listing.eligibilityStates && listing.eligibilityStates.length > 0 && (
-                <Fact icon="location" label="States">
-                  {listing.eligibilityStates.join(", ")}
-                </Fact>
+              ))}
+              {eligibility.hasUnknowns && (
+                <p className="py-3 text-xs text-graphite">
+                  Some eligibility terms were not stated in the source. Check the official rules before entering.
+                </p>
               )}
               <Fact icon="gift" label="Prize">
                 {listing.prizeName}

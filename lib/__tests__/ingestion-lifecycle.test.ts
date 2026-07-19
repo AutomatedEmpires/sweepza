@@ -15,14 +15,31 @@ describe("assessExpiration — timezone-honest", () => {
   it("keeps a sweep open through its stated last day, allowing for US timezones", () => {
     // Ends 2026-07-16; at noon UTC it is emphatically still open, and even a
     // west-coast 11:59pm has not passed. Must not read as expired.
-    const result = assessExpiration("2026-07-16", NOW);
+    const result = assessExpiration("2026-07-16", NOW, 3, "UTC");
     expect(result.state).toBe("ends_today");
   });
 
   it("does not expire a sweep at UTC midnight when the west coast is still on the prior day", () => {
     // 2026-07-17T02:00Z is 2026-07-16 7pm Pacific — a sweep ending 07-16 is open.
     const justPastUtcMidnight = new Date("2026-07-17T02:00:00Z");
-    expect(assessExpiration("2026-07-16", justPastUtcMidnight).state).toBe("ends_today");
+    expect(
+      assessExpiration("2026-07-16", justPastUtcMidnight, 3, "America/Los_Angeles").state,
+    ).toBe("ends_today");
+  });
+
+  it("uses the entrant timezone for labels instead of UTC", () => {
+    // 06:00Z on 07-16 is still 11pm on 07-15 in Los Angeles.
+    const latePacificPriorDay = new Date("2026-07-16T06:00:00Z");
+    expect(
+      assessExpiration("2026-07-16", latePacificPriorDay, 3, "America/Los_Angeles").state,
+    ).toBe("ending_soon");
+  });
+
+  it("does not claim 'ends today' without an explicit calendar timezone", () => {
+    expect(assessExpiration("2026-07-16", NOW).state).toBe("ending_soon");
+    expect(assessExpiration("2026-07-16", NOW, 3, "Not/A_Timezone").state).toBe(
+      "ending_soon",
+    );
   });
 
   it("expires a sweep once the generous end instant has truly passed", () => {
@@ -41,6 +58,16 @@ describe("assessExpiration — timezone-honest", () => {
     expect(assessExpiration(null, NOW).state).toBe("unknown");
     expect(assessExpiration("not-a-date", NOW).state).toBe("unknown");
     expect(assessExpiration("", NOW).state).toBe("unknown");
+    expect(assessExpiration("2026-02-29", NOW).state).toBe("unknown");
+    expect(assessExpiration("2026-02-30", NOW).state).toBe("unknown");
+    expect(assessExpiration("2026-04-31", NOW).state).toBe("unknown");
+  });
+
+  it("keeps a date-only sweep open through the UTC-12 civil boundary", () => {
+    const stillOpen = new Date("2026-07-17T11:59:59Z");
+    const finallyPast = new Date("2026-07-17T12:00:00Z");
+    expect(assessExpiration("2026-07-16", stillOpen).state).not.toBe("expired");
+    expect(assessExpiration("2026-07-16", finallyPast).state).toBe("expired");
   });
 
   it("endOfDayInstant is generous by the US-west grace window", () => {
@@ -94,6 +121,12 @@ describe("planReverification — risk-based, never one interval", () => {
   it("always explains its reasoning", () => {
     expect(planReverification(signals(), NOW).reasons.length).toBeGreaterThan(0);
   });
+
+  it("treats a non-finite confidence as low confidence", () => {
+    const plan = planReverification(signals({ confidence: Number.NaN }), NOW);
+    expect(plan.nextDueAt.getTime() - NOW.getTime()).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+    expect(plan.reasons).toContain("low extraction confidence → within 24h");
+  });
 });
 
 describe("assessChange — never silently overwrite a verified listing", () => {
@@ -106,6 +139,10 @@ describe("assessChange — never silently overwrite a verified listing", () => {
       prizeName: "Cash",
       entryFrequency: "daily",
       eligibilityCountry: "US",
+      eligibilityStates: "CA,NY",
+      ageRequirement: "18",
+      noPurchaseNecessary: "true",
+      entryLimitNotes: "One entry per day",
       ...overrides,
     };
   }
@@ -169,6 +206,17 @@ describe("assessChange — never silently overwrite a verified listing", () => {
     expect(result.overwriteAllowed).toBe(false);
   });
 
+  it("preserves lifecycle state when no comparable extraction was produced", () => {
+    const result = assessChange(facts(), null, {
+      listingVerified: true,
+      previousConfidence: 0.9,
+      newConfidence: 0,
+    });
+    expect(result.disposition).toBe("unchanged");
+    expect(result.overwriteAllowed).toBe(false);
+    expect(result.reasons).toContain("no comparable extraction — lifecycle state preserved");
+  });
+
   it("detects an on-page closure", () => {
     const result = assessChange(facts(), facts(), {
       listingVerified: false,
@@ -177,6 +225,31 @@ describe("assessChange — never silently overwrite a verified listing", () => {
       pageClosed: true,
     });
     expect(result.disposition).toBe("closed");
+  });
+
+  it("honors an explicit closure even when no comparable extraction exists", () => {
+    const result = assessChange(facts(), null, {
+      listingVerified: true,
+      previousConfidence: 0.8,
+      newConfidence: 0,
+      pageClosed: true,
+    });
+    expect(result.disposition).toBe("closed");
+  });
+
+  it.each([
+    ["eligibilityStates", "CA,NY", "TX"],
+    ["ageRequirement", "18", "21"],
+    ["noPurchaseNecessary", "true", "false"],
+    ["entryLimitNotes", "One entry per day", "One entry total"],
+  ] as const)("treats a %s change as material", (field, before, after) => {
+    const result = assessChange(
+      facts({ [field]: before }),
+      facts({ [field]: after }),
+      { listingVerified: true, previousConfidence: 0.9, newConfidence: 0.9 },
+    );
+    expect(result.disposition).toBe("changed_material");
+    expect(result.changes).toContainEqual(expect.objectContaining({ field, material: true }));
   });
 });
 
@@ -194,8 +267,8 @@ describe("dispositionForFailure — a blip is not a burial", () => {
   });
 
   it("confirms a 404 once before marking a link dead", () => {
-    expect(dispositionForFailure("not_found", 0).action).toBe("retry");
-    const dead = dispositionForFailure("not_found", 1);
+    expect(dispositionForFailure("not_found", 1).action).toBe("retry");
+    const dead = dispositionForFailure("not_found", 2);
     expect(dead.action).toBe("mark_dead");
     expect(dead.suppressPublicly).toBe(true);
   });
@@ -207,8 +280,8 @@ describe("dispositionForFailure — a blip is not a burial", () => {
   });
 
   it("never treats our own policy stops as a listing signal", () => {
-    expect(dispositionForFailure("blocked_by_policy", 9).action).toBe("ok");
-    expect(dispositionForFailure("budget_exhausted", 9).action).toBe("ok");
+    expect(dispositionForFailure("blocked_by_policy", 9).action).toBe("no_signal");
+    expect(dispositionForFailure("budget_exhausted", 9).action).toBe("no_signal");
   });
 
   it("sends access-denied and redirect loops to review", () => {

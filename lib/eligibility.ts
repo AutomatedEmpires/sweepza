@@ -40,7 +40,9 @@ const NOT_STATED = "Not stated";
 
 function region(input: EligibilityInput): EligibilityFacet {
   const country = input.eligibilityCountry?.trim();
-  const states = (input.eligibilityStates ?? []).filter((s) => s.trim().length > 0);
+  const states = (input.eligibilityStates ?? [])
+    .map((state) => state.trim())
+    .filter(Boolean);
 
   if (!country && states.length === 0) {
     return { label: "Region", value: NOT_STATED, certainty: "unknown" };
@@ -53,13 +55,25 @@ function region(input: EligibilityInput): EligibilityFacet {
     };
   }
   if (country) {
-    return { label: "Region", value: country, certainty: "known" };
+    return {
+      label: "Region",
+      value: `${country} — State/province restrictions not stated`,
+      certainty: "unknown",
+    };
   }
-  return { label: "Region", value: states.join(", "), certainty: "known" };
+  return {
+    label: "Region",
+    value: `Country not stated — ${states.join(", ")}`,
+    certainty: "unknown",
+  };
 }
 
 function age(input: EligibilityInput): EligibilityFacet {
-  if (input.ageRequirement == null || input.ageRequirement <= 0) {
+  if (
+    input.ageRequirement == null
+    || !Number.isFinite(input.ageRequirement)
+    || input.ageRequirement <= 0
+  ) {
     return { label: "Minimum age", value: NOT_STATED, certainty: "unknown" };
   }
   return { label: "Minimum age", value: `${input.ageRequirement}+`, certainty: "known" };

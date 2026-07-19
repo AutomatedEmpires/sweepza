@@ -21,15 +21,19 @@ export async function saveReverificationSchedule(
   verifiedAt: Date | null,
 ): Promise<void> {
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("listing_ingestion")
     .update({
       next_verify_due_at: plan.nextDueAt.toISOString(),
       verify_priority: plan.priority,
+      verify_reasons: plan.reasons,
       ...(verifiedAt ? { last_verified_at: verifiedAt.toISOString() } : {}),
     })
-    .eq("listing_id", listingId);
+    .eq("listing_id", listingId)
+    .select("listing_id")
+    .maybeSingle<{ listing_id: string }>();
   if (error) throw new Error(`saveReverificationSchedule failed: ${error.message}`);
+  if (!data) throw new Error(`saveReverificationSchedule failed: no ingestion row for "${listingId}"`);
 }
 
 /** Update dead-link tracking after a fetch attempt. */
@@ -41,16 +45,22 @@ export async function saveDeadLinkStatus(
     lastFailureClass: string | null;
   },
 ): Promise<void> {
+  if (!Number.isInteger(status.consecutiveFailures) || status.consecutiveFailures < 0) {
+    throw new Error("saveDeadLinkStatus failed: consecutiveFailures must be a nonnegative integer");
+  }
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("listing_ingestion")
     .update({
       dead_link_status: status.deadLinkStatus,
       consecutive_fetch_failures: status.consecutiveFailures,
       last_fetch_failure_class: status.lastFailureClass,
     })
-    .eq("listing_id", listingId);
+    .eq("listing_id", listingId)
+    .select("listing_id")
+    .maybeSingle<{ listing_id: string }>();
   if (error) throw new Error(`saveDeadLinkStatus failed: ${error.message}`);
+  if (!data) throw new Error(`saveDeadLinkStatus failed: no ingestion row for "${listingId}"`);
 }
 
 /**
@@ -66,7 +76,7 @@ interface ChangeEventRow {
   new_value: string | null;
   material: boolean;
   disposition: string;
-  overwrite_applied: boolean;
+  overwrite_allowed: boolean;
 }
 
 export async function recordChangeEvents(
@@ -85,7 +95,7 @@ export async function recordChangeEvents(
           new_value: change.to,
           material: change.material,
           disposition: assessment.disposition,
-          overwrite_applied: assessment.overwriteAllowed,
+          overwrite_allowed: assessment.overwriteAllowed,
         }))
       : [
           {
@@ -95,7 +105,7 @@ export async function recordChangeEvents(
             new_value: null,
             material: true,
             disposition: assessment.disposition,
-            overwrite_applied: false,
+            overwrite_allowed: false,
           },
         ];
 
@@ -116,6 +126,12 @@ export async function recordDuplicateCandidate(
   explanation: DuplicateExplanation,
 ): Promise<void> {
   if (explanation.verdict === "distinct") return;
+  if (listingId === otherListingId) {
+    throw new Error("recordDuplicateCandidate failed: a listing cannot duplicate itself");
+  }
+  if (!Number.isFinite(explanation.strength) || explanation.strength < 0 || explanation.strength > 1) {
+    throw new Error("recordDuplicateCandidate failed: strength must be between 0 and 1");
+  }
 
   const [a, b] = [listingId, otherListingId].sort();
   const supabase = createServiceRoleClient();
@@ -126,7 +142,7 @@ export async function recordDuplicateCandidate(
       verdict: explanation.verdict,
       strength: explanation.strength,
       signals: explanation.signals,
-      resolved: false,
+      last_seen_at: new Date().toISOString(),
     },
     { onConflict: "listing_id,other_listing_id" },
   );

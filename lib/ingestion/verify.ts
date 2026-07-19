@@ -1,4 +1,5 @@
 import type { NormalizedCandidate } from "@/lib/ingestion/mapper";
+import { assessExpiration } from "@/lib/ingestion/lifecycle";
 
 // Auto-verification — the structural, network-free gate between extraction and
 // the review queue. It answers two questions: is this candidate safe to
@@ -122,8 +123,10 @@ const CHECKS: Check[] = [
   },
   {
     id: "end_date_in_future", hard: true, weight: 0,
-    passed: (c, now) =>
-      Boolean(c.endDate) && new Date(`${c.endDate}T23:59:59Z`).getTime() >= now.getTime(),
+    passed: (c, now) => {
+      const state = assessExpiration(c.endDate, now).state;
+      return state !== "unknown" && state !== "expired";
+    },
     pass: "End date is in the future.",
     fail: "The end date is missing or already past.",
   },

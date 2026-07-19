@@ -1,4 +1,4 @@
-import { daysUntil, isExpired } from "@/lib/listing-badges";
+import { daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { isReadyAgain } from "@/lib/sweep-routine";
 import type { Listing, SeekerListingActivity, SeekerUiState } from "@/lib/types/listing";
 
@@ -35,6 +35,7 @@ export function pickListingContext(
 ): ListingContext {
   const { uiState, activity } = seeker;
   const days = daysUntil(listing.endDate, now);
+  const expiry = listingExpiration(listing.endDate, now);
   const expired = isExpired(listing, now);
 
   // 1. Personal outcome — permanent.
@@ -49,8 +50,8 @@ export function pickListingContext(
   if (expired) return { label: "Ended", tone: "expired" };
 
   // 4. Urgency outranks category.
-  if (days <= 0) return { label: "Ends today", tone: "urgent" };
-  if (days === 1) return { label: "Ends tomorrow", tone: "soon" };
+  if (expiry.state === "ends_today") return { label: "Ends today", tone: "urgent" };
+  if (days <= 1) return { label: "Ends soon", tone: "soon" };
   if (days <= ENDS_SOON_DAYS) return { label: `${days} days left`, tone: "soon" };
 
   // 5. In-play state.

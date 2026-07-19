@@ -11,11 +11,14 @@ describe("describeEligibility — unknown means unknown", () => {
     expect(region?.value).not.toMatch(/all|everyone|worldwide|any/i);
   });
 
-  it("states a known country", () => {
+  it("does not infer subnational eligibility from a country alone", () => {
     const region = describeEligibility({ eligibilityCountry: "US" }).facets.find(
       (f) => f.label === "Region",
     );
-    expect(region).toMatchObject({ value: "US", certainty: "known" });
+    expect(region).toMatchObject({
+      value: "US — State/province restrictions not stated",
+      certainty: "unknown",
+    });
   });
 
   it("combines country and states", () => {
@@ -27,8 +30,24 @@ describe("describeEligibility — unknown means unknown", () => {
     expect(region?.certainty).toBe("known");
   });
 
+  it("does not infer a country from states alone", () => {
+    const region = describeEligibility({ eligibilityStates: [" CA ", "NY"] }).facets.find(
+      (f) => f.label === "Region",
+    );
+    expect(region).toMatchObject({
+      value: "Country not stated — CA, NY",
+      certainty: "unknown",
+    });
+  });
+
   it("treats a missing or zero age as unknown, not as 'no age limit'", () => {
-    for (const input of [{}, { ageRequirement: 0 }, { ageRequirement: null }]) {
+    for (const input of [
+      {},
+      { ageRequirement: 0 },
+      { ageRequirement: null },
+      { ageRequirement: Number.NaN },
+      { ageRequirement: Number.POSITIVE_INFINITY },
+    ]) {
       const age = describeEligibility(input).facets.find((f) => f.label === "Minimum age");
       expect(age).toMatchObject({ value: "Not stated", certainty: "unknown" });
     }
@@ -58,14 +77,15 @@ describe("describeEligibility — unknown means unknown", () => {
 
   it("counts unknowns so the card can show an honesty note", () => {
     const summary = describeEligibility({ eligibilityCountry: "US", ageRequirement: 18 });
-    // purchase + entry limits still unknown.
+    // State/province restrictions + purchase + entry limits are still unknown.
     expect(summary.hasUnknowns).toBe(true);
-    expect(summary.unknownCount).toBe(2);
+    expect(summary.unknownCount).toBe(3);
   });
 
   it("has no unknowns when everything is stated", () => {
     const summary = describeEligibility({
       eligibilityCountry: "US",
+      eligibilityStates: ["CA", "NY"],
       ageRequirement: 18,
       noPurchaseNecessary: true,
       entryLimitNotes: "One entry per day",

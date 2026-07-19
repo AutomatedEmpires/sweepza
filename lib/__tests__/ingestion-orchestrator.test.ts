@@ -9,11 +9,8 @@ const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
   extractOfficialPage: vi.fn(),
   createIngestedListingWithProvenance: vi.fn(),
-  findExistingListingId: vi.fn(),
-  findIngestionByUrlKey: vi.fn(),
   finishIngestionRun: vi.fn(),
   startIngestionRun: vi.fn(),
-  touchLastSeen: vi.fn(),
   getSourceRecord: vi.fn(),
   acquireSourceRunLease: vi.fn(),
   finishSourceRunLease: vi.fn(),
@@ -101,11 +98,8 @@ vi.mock("@/lib/ingestion/extract", () => ({
 
 vi.mock("@/lib/db/ingestion", () => ({
   createIngestedListingWithProvenance: mocks.createIngestedListingWithProvenance,
-  findExistingListingId: mocks.findExistingListingId,
-  findIngestionByUrlKey: mocks.findIngestionByUrlKey,
   finishIngestionRun: mocks.finishIngestionRun,
   startIngestionRun: mocks.startIngestionRun,
-  touchLastSeen: mocks.touchLastSeen,
 }));
 
 import { runIngestion } from "@/lib/ingestion/orchestrator";
@@ -183,12 +177,11 @@ beforeEach(() => {
     { officialUrl: "https://brand.com/official-rules", discoveryWorkKey: "work-1" },
   ]);
   mocks.extractOfficialPage.mockResolvedValue(ok(raw()));
-  mocks.findExistingListingId.mockResolvedValue(null);
-  mocks.findIngestionByUrlKey.mockResolvedValue(null);
   mocks.startIngestionRun.mockResolvedValue("run-1");
   mocks.createIngestedListingWithProvenance.mockResolvedValue({
     listingId: "listing-1",
     created: true,
+    suspectedDuplicateIds: [],
   });
   mocks.finishIngestionRun.mockResolvedValue(undefined);
 });
@@ -586,13 +579,32 @@ describe("runIngestion publishable gate", () => {
 
     const summaries = await runIngestion();
     expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
-    // Held before dedupe — no catalog lookup for a candidate we won't create.
-    expect(mocks.findExistingListingId).not.toHaveBeenCalled();
     expect(summaries).toEqual([
       expect.objectContaining({ status: "ok", created: 0, failed: 1 }),
     ]);
     const notes = mocks.finishIngestionRun.mock.calls[0][3];
     expect(notes).toContain("has_title");
     expect(notes).toContain("has_short_description");
+  });
+
+  it("does not discard repeated official URLs before variant extraction", async () => {
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/official-rules", discoveryWorkKey: "work-1" },
+      { officialUrl: "https://www.brand.com/official-rules/", discoveryWorkKey: "work-2" },
+    ]);
+    mocks.extractOfficialPage
+      .mockResolvedValueOnce(ok(raw({ endDate: FUTURE })))
+      .mockResolvedValueOnce(ok(raw({ endDate: "2027-08-01" })));
+
+    await runIngestion();
+
+    expect(mocks.extractOfficialPage).toHaveBeenCalledTimes(2);
+    expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(2);
+    const variants = mocks.createIngestedListingWithProvenance.mock.calls.map(
+      (call) => call[1].variantKey,
+    );
+    expect(new Set(variants).size).toBe(2);
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-2");
   });
 });

@@ -10,7 +10,7 @@ import { Icon } from "@/components/icon";
 import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { canOptimizeImage } from "@/lib/image";
-import { SOURCE_LABEL_TEXT, daysUntil, isExpired } from "@/lib/listing-badges";
+import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { pickListingContext } from "@/lib/listing-context";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
@@ -28,9 +28,10 @@ export type CardTone = "standard" | "featured";
 
 function countdownLabel(listing: Listing, now: Date): string {
   if (isExpired(listing, now)) return "Ended";
+  const expiry = listingExpiration(listing.endDate, now);
   const days = daysUntil(listing.endDate, now);
-  if (days <= 0) return "Ends today";
-  if (days === 1) return "Ends tomorrow";
+  if (expiry.state === "ends_today") return "Ends today";
+  if (days <= 3) return "Ends soon";
   if (days <= 14) return `${days} days left`;
   return formatEndDate(listing.endDate);
 }

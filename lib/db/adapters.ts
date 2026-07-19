@@ -131,6 +131,7 @@ export function toListing(
     eligibilityCountry: opt(row.eligibility_country),
     eligibilityStates: opt(row.eligibility_states),
     ageRequirement: opt(row.age_requirement),
+    noPurchaseNecessary: opt(row.no_purchase_necessary),
 
     sourceLabel: row.public_source_label as SourceLabel,
     originalSponsorName: opt(row.sponsor_name),
