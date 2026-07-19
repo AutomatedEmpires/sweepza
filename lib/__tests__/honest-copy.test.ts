@@ -358,6 +358,9 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/terms/page.tsx", { legalCanon: true }),
   routeSurface("app/discover/page.tsx"),
   routeSurface("app/discover/[category]/page.tsx"),
+  // The per-hub social card: an ImageResponse whose words leave the site with
+  // every shared category link, exactly like app/opengraph-image.tsx.
+  routeSurface("app/discover/[category]/opengraph-image.tsx"),
   routeSurface("app/discover/swipe/page.tsx"),
   routeSurface("app/listings/page.tsx"),
   routeSurface("app/search/page.tsx"),
