@@ -5,7 +5,8 @@
 // counts). Safe to run repeatedly.
 //
 // Run:
-//   doppler run --project sweepza --config prd -- node scripts/verify-live-checkout.mjs
+//   doppler run --project sweepza --config prd -- node scripts/verify-live-checkout.mjs \
+//     --expected-account acct_...
 //
 // Reads from env (provided by Doppler): STRIPE_SECRET_KEY (live),
 // NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
@@ -17,13 +18,31 @@ import {
   BASELINE_INCLUDED_ACTIVE_LISTINGS,
   inspectSubscriptionEntitlement,
   isExpectedRecurringPrice,
-  isLiveStripeKey,
   toLocalSubscriptionStatus,
 } from "./verify-live-checkout-helpers.mjs";
+import {
+  SWEEPZA_SUPABASE_PROJECT_REF,
+  getApprovedStripeAccountId,
+  getStripeKeyMode,
+  hasRequiredWebhookEvents,
+  isExpectedSupabaseProjectUrl,
+  isOwnedSweepzaAccountWebhook,
+} from "./stripe-operator-safety.mjs";
+import { listAllStripePages } from "./provision-stripe-workflow.mjs";
 
 const SWEEPZA_WEBHOOK_URL = "https://sweepza.com/api/webhooks/stripe";
 
+const args = Object.fromEntries(
+  process.argv
+    .slice(2)
+    .map((arg, index, all) =>
+      arg.startsWith("--") ? [arg.slice(2), all[index + 1]] : [],
+    )
+    .filter((pair) => pair.length),
+);
+
 const stripeKey = process.env.STRIPE_SECRET_KEY;
+const expectedAccountId = args["expected-account"];
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const baselinePrice = process.env.STRIPE_PRICE_HOST_BASELINE;
@@ -44,14 +63,43 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
-if (!isLiveStripeKey(stripeKey)) {
+if (getStripeKeyMode(stripeKey) !== "live") {
   console.error(
     "FAIL  Stripe mode — a live Stripe key is required; no provider checks were run.",
   );
   process.exit(1);
 }
 
+const approvedLiveAccountId = getApprovedStripeAccountId("live");
+if (!approvedLiveAccountId) {
+  console.error(
+    "FAIL  Stripe account binding — no live account is approved in the checked-in Sweepza allowlist; no provider checks were run.",
+  );
+  process.exit(1);
+}
+
+if (expectedAccountId !== approvedLiveAccountId) {
+  console.error(
+    "FAIL  Stripe account binding — --expected-account must equal the checked-in approved live account; no provider checks were run.",
+  );
+  process.exit(1);
+}
+
+if (!isExpectedSupabaseProjectUrl(supabaseUrl, SWEEPZA_SUPABASE_PROJECT_REF)) {
+  console.error(
+    `FAIL  Supabase binding — expected exact project ${SWEEPZA_SUPABASE_PROJECT_REF}; no provider checks were run.`,
+  );
+  process.exit(1);
+}
+
 const stripe = new Stripe(stripeKey);
+const account = await stripe.accounts.retrieve();
+if (account.id !== approvedLiveAccountId) {
+  console.error(
+    `FAIL  Stripe account binding — authenticated ${account.id}, expected ${approvedLiveAccountId}; no further provider or database checks were run.`,
+  );
+  process.exit(1);
+}
 const sb = createClient(supabaseUrl, supabaseKey);
 
 const results = [];
@@ -63,7 +111,6 @@ const check = (name, ok, detail) => {
 console.log("\n=== Sweepza live-checkout verification (Stripe mode: LIVE) ===\n");
 
 // 1. Stripe account is charge-ready
-const account = await stripe.accounts.retrieve();
 check(
   "Stripe account KYC/charges ready",
   account.charges_enabled && account.details_submitted,
@@ -207,14 +254,28 @@ for (const s of sweepzaSubs) {
 }
 
 // 5. Webhook endpoint is registered + enabled
-const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
-const wh = endpoints.data.find((e) => e.url === SWEEPZA_WEBHOOK_URL);
+const endpoints = await listAllStripePages(
+  (startingAfter) =>
+    stripe.webhookEndpoints.list({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    }),
+  { label: "live webhook endpoint" },
+);
+const matchingWebhooks = endpoints.filter((e) => e.url === SWEEPZA_WEBHOOK_URL);
+const wh = matchingWebhooks.length === 1 ? matchingWebhooks[0] : null;
 check(
-  "Sweepza live webhook endpoint enabled",
-  Boolean(wh) && wh.status === "enabled" && wh.livemode === true,
+  "Sweepza live account webhook endpoint enabled and complete",
+  Boolean(wh) &&
+    wh.status === "enabled" &&
+    wh.livemode === true &&
+    isOwnedSweepzaAccountWebhook(wh) &&
+    hasRequiredWebhookEvents(wh),
   wh
-    ? `${wh.id} live=${wh.livemode} events=${wh.enabled_events.length}`
-    : "not registered",
+    ? `${wh.id} live=${wh.livemode} owned=${isOwnedSweepzaAccountWebhook(wh)} events_complete=${hasRequiredWebhookEvents(wh)}`
+    : matchingWebhooks.length > 1
+      ? `ambiguous endpoints=${matchingWebhooks.length}`
+      : "not registered",
 );
 
 // 6. Recent subscription events + pending-webhook backlog
