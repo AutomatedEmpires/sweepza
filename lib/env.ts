@@ -13,6 +13,12 @@ const schema = z.object({
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_PRICE_HOST_BASELINE: z.string().optional(),
   STRIPE_PRICE_ADDITIONAL_LISTING: z.string().optional(),
+  /**
+   * Master switch for all Stripe/live-money behavior. Only the literal string
+   * "true" permits customer creation, Checkout, portal sessions, or webhook
+   * mutation. Provider credentials alone never authorize payments.
+   */
+  PAYMENTS_ENABLED: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),

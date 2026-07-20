@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { isPaymentsEnabled } from "@/lib/billing/payment-gate";
+import { isBillingConfigured } from "@/lib/billing/plans";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const stripeConfigured = isBillingConfigured();
+  const paymentsEnabled = isPaymentsEnabled();
+
   return NextResponse.json({
-    ok: true,
+    ok: !paymentsEnabled || stripeConfigured,
     timestamp: new Date().toISOString(),
     integrations: {
       appUrl: Boolean(env.NEXT_PUBLIC_APP_URL),
@@ -22,10 +27,14 @@ export async function GET() {
         webhook: Boolean(env.CLERK_WEBHOOK_SECRET),
       },
       stripe: {
+        configured: stripeConfigured,
+        enabled: paymentsEnabled,
+        ready: stripeConfigured && paymentsEnabled,
         app: Boolean(
           env.STRIPE_SECRET_KEY && env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
         ),
         webhook: Boolean(env.STRIPE_WEBHOOK_SECRET),
+        prices: Boolean(env.STRIPE_PRICE_HOST_BASELINE),
       },
       posthog: Boolean(env.NEXT_PUBLIC_POSTHOG_KEY && env.NEXT_PUBLIC_POSTHOG_HOST),
       sentry: Boolean(

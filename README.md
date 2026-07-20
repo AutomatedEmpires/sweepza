@@ -34,7 +34,7 @@ production deploy needs all of them:
 | App | `NEXT_PUBLIC_APP_URL` | Canonical origin; Stripe redirects require it. |
 | Clerk | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | Webhook endpoint: `/api/webhooks/clerk`. |
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Service role stays server-only. |
-| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | Create two Products in the Stripe Dashboard — the baseline host plan (recurring) and the extra-listing add-on (recurring, per-unit) — and paste their **price IDs** here. Webhook endpoint: `/api/webhooks/stripe`, subscribed to `customer.subscription.created/updated/deleted`. Without price IDs, host checkout refuses to start (it throws a clear error; it will not sell a plan it can't fulfill). |
+| Payments | `PAYMENTS_ENABLED`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | No production provider is approved. Keep `PAYMENTS_ENABLED` unset. Credentials and prices are configuration only; the literal `"true"` is a separate founder-authorized gate for customer creation, Checkout, portal sessions, and webhook mutation. Never use another venture's Stripe account. |
 | Email | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Notification transport. |
 | Observability | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Auth token is build-time (source maps). Stripe webhook failures are reported to Sentry — watch that project during the first live checkout. |
 

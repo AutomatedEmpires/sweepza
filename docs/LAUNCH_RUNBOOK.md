@@ -1,8 +1,16 @@
 # Sweepza Launch Runbook
 
-Status as of 2026-07-07: **PRODUCTION DEPLOYED · LIVE BILLING CONFIGURED · REAL
-REVENUE PROOF PENDING · PRODUCTION IDENTITY PENDING · OBSERVABILITY/EMAIL
-PENDING.**
+Reconciled 2026-07-19: **NO-GO. `payments = null`. LIVE-MONEY WORK IS NOT
+AUTHORIZED.**
+
+> **HARD STOP.** The Stripe account, products, prices, webhook, and real-card
+> steps below are a historical snapshot, not current authority. The current
+> founder lock forbids sharing or cross-wiring any Stripe resource with Explore
+> & Earn. Do not create a customer, open Checkout, charge a card, mutate a
+> webhook, or set `PAYMENTS_ENABLED` from this document. Future execution needs
+> a Sweepza-owned provider, private Preview/sandbox proof, and a separate durable
+> founder approval naming the amount, identity, operator, window, and rollback.
+> `ops/sweepza/SWEEPZA_LAUNCH_GATE_PACKET.md` is the current decision packet.
 
 A `cs_live_` Checkout Session has been created and expired cleanly, which proves
 `production app → live Stripe account → live product → live price → live checkout
@@ -10,19 +18,18 @@ creation`. It does **not** prove `real card payment → successful payment → s
 live webhook → subscription row → entitlement → billing UI → cancellation`. That
 final loop is the last revenue proof (Gate 1 below).
 
-Every value here is verified against the live account, the production database,
-or the source. Secret values are omitted.
+The provider claims below were not re-verified in this reconciliation and may be
+stale. Secret values are omitted.
 
 ---
 
-## Stripe account architecture
+## Historical Stripe snapshot — invalid for activation
 
-**SHARED STRIPE ACCOUNT · SEPARATE PRODUCT CATALOG · SEPARATE WEBHOOK ·
-SEPARATE APPLICATION SECRETS.**
+**A SHARED STRIPE ACCOUNT IS NOT AN ACCEPTABLE SWEEPZA BOUNDARY.**
 
-- Account `acct_1SpxXpDtcwz0cxzo` (`jackson@automatedempires.com`, US, individual)
-  is the founder's single live account, **shared with Explore&Earn**. KYC is
-  complete: `charges_enabled`, `payouts_enabled`, `details_submitted` all true.
+- The historical snapshot named a live account shared with Explore & Earn.
+  Current policy forbids using it for Sweepza; no account in this section is an
+  approved production provider.
 - Product boundary is explicit via metadata. Sweepza's live products both carry
   `metadata.venture = "sweepza"` and a distinct `sweepza_key`:
   - `prod_UqNSWdENGUmKOP` "Sweepza Host Plan" (`sweepza_host_baseline`) →
@@ -42,7 +49,11 @@ SEPARATE APPLICATION SECRETS.**
 
 ---
 
-## Gate 1 — Real payment (the last revenue proof)
+## Gate 1 — Real payment (BLOCKED; future proof plan only)
+
+Do not execute the steps in this section while the launch packet is NO-GO or
+`payments = null`. Even with credentials present, `PAYMENTS_ENABLED` must remain
+unset until a separate founder-authorized live-money window.
 
 ### Founder action (reduced to four steps)
 

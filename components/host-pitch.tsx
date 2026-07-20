@@ -9,8 +9,10 @@ import { Icon, type IconName } from "@/components/icon";
 // Stripe + the billing canon).
 export function HostPitch({
   signInAvailable,
+  paymentsEnabled,
 }: {
   signInAvailable: boolean;
+  paymentsEnabled: boolean;
 }) {
   const valueProps: { icon: IconName; title: string; body: string }[] = [
     {
@@ -150,10 +152,11 @@ export function HostPitch({
       </section>
 
       <p className="px-1 text-xs leading-relaxed text-graphite">
-        Hosting is subscription-based with a capped number of active listings
-        per plan; billing details are shown before checkout. Every listing must
-        offer a free entry route, and the Sweepza team can hold or remove
-        listings that break the rules. Questions first? Read the{" "}
+        {paymentsEnabled
+          ? "Hosting plans use capped active-listing capacity, with billing details shown before checkout. "
+          : "Paid hosting plans are not enabled; eligible hosts currently use the single free listing allowance. "}
+        Every listing must offer a free entry route, and the Sweepza team can
+        hold or remove listings that break the rules. Questions first? Read the{" "}
         <Link href="/faq" className="font-medium text-ember underline">
           FAQ
         </Link>{" "}

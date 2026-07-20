@@ -103,10 +103,9 @@ live-money test. Current control-plane configuration is `payments = null`; no
 provider is approved for production.
 
 **Current technical reality.** Subscription Checkout and webhook code exist.
-There is no checked-in payment-enable flag: if a complete Stripe tuple and price
-IDs are installed, the authenticated `/host` flow can create customers and
-subscription Checkout sessions. Therefore production keys are activation, not
-mere configuration.
+The checked-in `PAYMENTS_ENABLED` gate defaults off and requires the literal
+`"true"` before customer creation, Checkout, portal sessions, or webhook state
+mutation. Provider credentials are configuration, not activation authority.
 
 The accepted historical Stripe snapshot records two residual customers and one
 `$0` draft invoice, with no subscriptions, charges, PaymentIntents, refunds, or
@@ -114,10 +113,10 @@ disputes. It does **not** record “recurring customers.” The connected machin
 Stripe surface belongs to Explore & Earn, so this assignment did not refresh or
 mutate the snapshot.
 
-**Required engineering control before any production key.** Add and test a
-checked-in, default-off payment gate that blocks customer creation, Checkout,
-portal sessions, and payment-webhook state mutation unless the explicitly named
-production control is enabled. Missing or malformed values must fail closed.
+**Checked-in control.** The default-off payment gate blocks customer creation,
+Checkout, portal sessions, and payment-webhook state mutation unless the
+explicitly named production control is enabled. Missing, malformed, and
+non-literal truthy values fail closed.
 
 **Safe sequence.**
 

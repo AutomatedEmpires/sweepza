@@ -86,6 +86,12 @@ doppler secrets set CLERK_WEBHOOK_SECRET='whsec_replace_me' --project sweepza --
 
 Create or switch to a Sweepza-owned Stripe account first. Do not use the Explore&Earn Stripe account.
 
+Production payments are not currently approved (`payments = null`). Provisioning
+keys is configuration only: keep `PAYMENTS_ENABLED` unset and outside every
+routine environment sync. The gate is changed separately, only after
+Preview/sandbox proof and an explicit founder authorization. Never add
+`PAYMENTS_ENABLED` to the bulk `sync-vercel-env-from-doppler.sh` key list.
+
 ```bash
 for cfg in dev dev_personal stg; do
   doppler secrets set STRIPE_SECRET_KEY='sk_test_replace_me' --project sweepza --config "$cfg"

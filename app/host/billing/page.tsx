@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
+import { isPaymentsEnabled } from "@/lib/billing/payment-gate";
 import { cn } from "@/lib/cn";
 import { getHostBillingSnapshot } from "@/lib/db/host-dashboard";
 import { createStripePortalSessionAction } from "./actions";
@@ -8,6 +9,7 @@ export const metadata = { title: "Host billing" };
 export const dynamic = "force-dynamic";
 
 export default async function HostBillingPage() {
+  const paymentsEnabled = isPaymentsEnabled();
   const billing = await getHostBillingSnapshot();
   const used = billing.activeListingCount;
   const total = Math.max(billing.includedActiveListings, 1);
@@ -19,7 +21,9 @@ export default async function HostBillingPage() {
         <div>
           <h1 className="font-display text-3xl text-ink">Billing</h1>
           <p className="mt-1 text-sm text-graphite">
-            Your plan funds Sweepza — seekers always enter free.
+            {paymentsEnabled
+              ? "Your plan funds Sweepza — seekers always enter free."
+              : "Paid plans are not enabled; existing records are shown read-only."}
           </p>
         </div>
         <Link
@@ -74,32 +78,46 @@ export default async function HostBillingPage() {
               style={{ width: `${usedPct}%` }}
             />
           </div>
-          {billing.isFull ? (
+          {paymentsEnabled && billing.isFull ? (
             <p className="mt-3 rounded-card border border-ember/25 bg-ember/5 p-3 text-sm leading-relaxed text-ink/75">
               All slots are in use. Add capacity for ${billing.addSlotPriceMonthly}/mo
               per extra listing, or pause a campaign to free a slot.
             </p>
-          ) : (
+          ) : paymentsEnabled ? (
             <p className="mt-3 text-xs text-graphite">
               Each slot keeps one campaign live in Discover, Today, and Search.
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-graphite">
+              The current free allowance is enforced without opening checkout
+              or a billing portal.
             </p>
           )}
         </div>
       </div>
 
       {/* Portal */}
-      <form action={createStripePortalSessionAction} className="mt-4">
-        <button
-          type="submit"
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
-        >
-          Manage billing in Stripe <Icon name="caretRight" size={15} />
-        </button>
-      </form>
-      <p className="mt-2 text-center text-[11px] text-graphite">
-        Payment methods, invoices, plan changes, and cancellation are handled in
-        the secure Stripe portal.
-      </p>
+      {paymentsEnabled ? (
+        <>
+          <form action={createStripePortalSessionAction} className="mt-4">
+            <button
+              type="submit"
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+            >
+              Manage billing in Stripe <Icon name="caretRight" size={15} />
+            </button>
+          </form>
+          <p className="mt-2 text-center text-[11px] text-graphite">
+            Payment methods, invoices, plan changes, and cancellation are
+            handled in the secure Stripe portal.
+          </p>
+        </>
+      ) : (
+        <p className="mt-4 rounded-card border border-line bg-surface p-4 text-sm leading-relaxed text-graphite shadow-e1">
+          Payments are not enabled. Plan history remains visible, but Sweepza
+          will not open a billing portal or initiate a payment operation.
+        </p>
+      )}
     </div>
   );
 }

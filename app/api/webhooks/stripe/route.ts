@@ -2,6 +2,10 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import type Stripe from "stripe";
+import {
+  isPaymentsEnabled,
+  PAYMENTS_DISABLED_REASON,
+} from "@/lib/billing/payment-gate";
 import { getHostByStripeCustomerId, upsertSubscriptionFromStripe } from "@/lib/db/subscriptions";
 import { env } from "@/lib/env";
 import { createStripeServerClient } from "@/lib/stripe/server";
@@ -26,6 +30,17 @@ function isSubscriptionEvent(
 }
 
 export async function POST(request: Request) {
+  if (!isPaymentsEnabled()) {
+    return NextResponse.json(
+      {
+        error: "Payments are disabled; retry after an authorized activation.",
+        disabled: true,
+        reason: PAYMENTS_DISABLED_REASON,
+      },
+      { status: 503 },
+    );
+  }
+
   const secret = getStripeWebhookSecret();
   if (!secret) {
     return NextResponse.json(
