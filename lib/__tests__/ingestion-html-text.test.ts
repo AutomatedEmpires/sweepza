@@ -32,6 +32,14 @@ describe("stripHtmlToText", () => {
     expect(stripHtmlToText("<h2><a href='x'>Win a  Grill</a></h2>")).toBe("Win a Grill");
   });
 
+  it("does not leak attributes containing a quoted greater-than sign", () => {
+    expect(stripHtmlToText('<p title="1 > 0">Win</p>')).toBe("Win");
+    expect(stripHtmlToText("<p title='1 > 0'>Win</p>")).toBe("Win");
+    expect(stripHtmlToText('<script data-test="1 > 0">window.bad=1</script><p>Keep</p>')).toBe(
+      "Keep",
+    );
+  });
+
   it("drops script/style blocks entirely", () => {
     expect(stripHtmlToText("<p>Keep</p><script>window.x=1</script><style>.a{}</style>")).toBe(
       "Keep",

@@ -1,4 +1,5 @@
 import type { EntryFrequency, Listing } from "@/lib/types/listing";
+import { assessExpiration, type ExpirationAssessment } from "@/lib/ingestion/lifecycle";
 
 // Badge computation and source-label text.
 // Source of truth: "Sweepza — Trust, Verification & Badge Naming [CANONICAL]".
@@ -15,14 +16,22 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ENDS_SOON_DAYS = 3;
 const NEW_DAYS = 7;
 
+export function listingExpiration(
+  endDate: string,
+  now: Date = new Date(),
+  calendarTimeZone?: string,
+): ExpirationAssessment {
+  return assessExpiration(endDate.slice(0, 10), now, ENDS_SOON_DAYS, calendarTimeZone);
+}
+
 export function daysUntil(endDate: string, now: Date = new Date()): number {
-  const end = new Date(endDate).getTime();
-  return Math.ceil((end - now.getTime()) / DAY_MS);
+  const assessment = listingExpiration(endDate, now);
+  return assessment.daysRemaining ?? Number.POSITIVE_INFINITY;
 }
 
 export function isExpired(listing: Listing, now: Date = new Date()): boolean {
   if (listing.lifecycleStatus === "expired") return true;
-  return daysUntil(listing.endDate, now) < 0;
+  return listingExpiration(listing.endDate, now).state === "expired";
 }
 
 const ENTRY_TYPE_LABELS: Partial<Record<EntryFrequency, string>> = {
@@ -39,14 +48,19 @@ const ENTRY_TYPE_LABELS: Partial<Record<EntryFrequency, string>> = {
  * Featured / Boosted -> Winner Reported -> New. Callers should slice to the top
  * few for mobile cards; overflow belongs on the detail page.
  */
-export function computeBadges(listing: Listing, now: Date = new Date()): ComputedBadge[] {
+export function computeBadges(
+  listing: Listing,
+  now: Date = new Date(),
+  calendarTimeZone?: string,
+): ComputedBadge[] {
   const badges: ComputedBadge[] = [];
-  const days = daysUntil(listing.endDate, now);
+  const expiry = listingExpiration(listing.endDate, now, calendarTimeZone);
+  const days = expiry.daysRemaining ?? Number.POSITIVE_INFINITY;
 
   // Urgency
   if (isExpired(listing, now)) {
     badges.push({ id: "expired", label: "Expired", tone: "urgent" });
-  } else if (days <= 0) {
+  } else if (expiry.state === "ends_today") {
     badges.push({ id: "ends-today", label: "Ends Today", tone: "urgent" });
   } else if (days <= ENDS_SOON_DAYS) {
     badges.push({ id: "ends-soon", label: "Ends Soon", tone: "urgent" });

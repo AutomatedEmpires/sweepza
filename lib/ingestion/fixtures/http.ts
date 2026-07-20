@@ -14,7 +14,11 @@ export interface FixturePage {
   body?: string;
   status?: number;
   headers?: Record<string, string>;
-  /** Simulates a redirect chain resolving elsewhere (response.url). */
+  /**
+   * This URL redirects here — modeled as a real 3xx + `Location`, which is what
+   * a server actually sends. (It used to fake `response.url`, which only worked
+   * while the client let fetch follow redirects for it.)
+   */
   finalUrl?: string;
   /** Reject the request at the transport layer, e.g. a DNS or socket error. */
   networkError?: string;
@@ -91,15 +95,21 @@ export function createFixtureFetch(
       }
     }
 
-    const response = new Response(page.body ?? "", {
-      status: page.status ?? 200,
+    // A redirect on the wire is a 3xx carrying Location. This used to fake
+    // `response.url` instead, which modeled fetch's redirect:"follow" rather
+    // than the server — so the fixture kept passing while the client silently
+    // chased Locations off-allowlist. The client now walks hops itself and
+    // re-guards each one, so the fixture has to speak the same protocol.
+    if (page.finalUrl) {
+      headers.set("location", page.finalUrl);
+      return new Response(null, { status: page.status ?? 302, headers });
+    }
+
+    const status = page.status ?? 200;
+    return new Response(status === 204 || status === 205 || status === 304 ? null : (page.body ?? ""), {
+      status,
       headers,
     });
-    // `Response.url` is read-only; fixtures need it to model redirect chains.
-    if (page.finalUrl) {
-      Object.defineProperty(response, "url", { value: page.finalUrl });
-    }
-    return response;
   }) as typeof fetch;
 }
 

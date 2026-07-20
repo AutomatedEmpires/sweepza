@@ -5,8 +5,8 @@ import type { PreviewInput } from "@/lib/reminder-preview";
 // Built-in samples so the admin operations console can demonstrate the dry-run
 // and reminder-preview logic against realistic inputs WITHOUT any database,
 // network, or LLM call. These are synthetic sweepstakes — not real listings —
-// chosen to exercise each disposition: a clean create, a held listing, a
-// cross-source duplicate, and a rejected extraction.
+// chosen to exercise each disposition: a clean private draft, a no-write hold,
+// a suspected duplicate pair, and a malformed no-write hold.
 
 /** A far-future end date so the samples never "expire" as time passes in CI. */
 const FUTURE_END = "2099-12-31";
@@ -50,15 +50,15 @@ export const SAMPLE_DRY_RUN_LEADS: DryRunLeadInput[] = [
   {
     // Same sweep as the first, surfaced under a different discovery link —
     // would be held as a suspected duplicate.
-    officialUrl: "https://northwind-appliances.example.com/cash-blast/official-rules?ref=blogb",
+    officialUrl: "https://promo-mirror.example.com/northwind-cash-blast/rules",
     extraction: {
       title: "Cash Blast — Enter Now",
       shortDescription: "The Northwind daily cash giveaway.",
       prizeName: "$500 Cash",
       prizeValue: "$500",
       prizeCategory: "cash",
-      entryUrl: "https://northwind-appliances.example.com/cash-blast/enter",
-      officialRulesUrl: "https://northwind-appliances.example.com/cash-blast/official-rules",
+      entryUrl: "https://promo-mirror.example.com/northwind-cash-blast/enter",
+      officialRulesUrl: "https://promo-mirror.example.com/northwind-cash-blast/rules",
       endDate: FUTURE_END,
       entryFrequency: "daily",
       eligibilityCountry: "US",
@@ -90,6 +90,8 @@ const past = "2026-07-10";
 export const SAMPLE_REMINDER_INPUTS: PreviewInput[] = [
   {
     userLabel: "Seeker A (active)",
+    emailEnabled: true,
+    hasEmailAddress: true,
     candidates: [
       {
         // Entered a daily sweep yesterday → ready again.
@@ -110,6 +112,8 @@ export const SAMPLE_REMINDER_INPUTS: PreviewInput[] = [
   },
   {
     userLabel: "Seeker B (suppressed)",
+    emailEnabled: true,
+    hasEmailAddress: true,
     candidates: [
       {
         // Already won → never nudged.

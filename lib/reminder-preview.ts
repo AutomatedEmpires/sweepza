@@ -1,19 +1,21 @@
-import { daysUntil } from "@/lib/listing-badges";
+import { listingExpiration } from "@/lib/listing-badges";
 import {
   planReminderForListing,
+  planSeekerReminders,
   reminderLogKey,
   type ReminderCandidate,
   type ReminderPrefs,
   ALL_REMINDERS_ON,
+  MAX_ITEMS_PER_REMINDER_DIGEST,
 } from "@/lib/seeker-reminders";
 import { nextEntryAt } from "@/lib/sweep-routine";
 import { seekerReminderDigestEmail, type SeekerReminderItem } from "@/lib/email/templates";
 
 // Reminder dry-run / preview — show exactly which nudges WOULD go out and, just
-// as importantly, which would NOT and why. The reminder cron is founder-gated
-// (no sends until Resend is provisioned), so this is how the reminder logic is
-// validated before a single email leaves the building: feed it sample seekers
-// and see the rendered digest plus a per-listing verdict.
+// as importantly, which would NOT and why. The scheduled route still requires
+// a configured Resend key, so this is how the logic is inspected without a
+// transport: feed it sample seekers and see the rendered digest plus a
+// per-listing verdict.
 //
 // Pure: no database, no Resend, no send. It renders the same digest template the
 // cron would, so what you preview is what a seeker would receive.
@@ -26,7 +28,10 @@ export type SuppressionReason =
   | "window_not_open"
   | "not_in_window"
   | "pref_off"
-  | "already_sent";
+  | "already_sent"
+  | "email_disabled"
+  | "missing_email"
+  | "digest_cap";
 
 export interface PreviewListingVerdict {
   listingId: string;
@@ -40,7 +45,12 @@ export interface PreviewListingVerdict {
 export interface SeekerReminderPreview {
   userLabel: string;
   /** The rendered digest, or null when the seeker would receive nothing. */
-  digest: { subject: string; itemCount: number; items: SeekerReminderItem[] } | null;
+  digest: {
+    subject: string;
+    itemCount: number;
+    items: SeekerReminderItem[];
+    todayUrl: string;
+  } | null;
   verdicts: PreviewListingVerdict[];
 }
 
@@ -48,6 +58,10 @@ export interface PreviewInput {
   userLabel: string;
   candidates: ReminderCandidate[];
   prefs?: ReminderPrefs;
+  /** Mirrors notification_pref.email_enabled; missing pref rows default on. */
+  emailEnabled?: boolean;
+  /** Whether the user bucket has a deliverable address; defaults true for fixtures. */
+  hasEmailAddress?: boolean;
   /** Log keys already sent (idempotency), matching reminderLogKey output. */
   alreadySent?: Set<string>;
 }
@@ -56,6 +70,8 @@ export interface PreviewOptions {
   baseUrl?: string;
   displayName?: string;
   now?: Date;
+  /** Required to classify calendar-only dates as "ends today" honestly. */
+  calendarTimeZone?: string;
 }
 
 /** Explain why a single tracked listing is or isn't getting a reminder. */
@@ -64,18 +80,35 @@ function verdictFor(
   prefs: ReminderPrefs,
   alreadySent: Set<string>,
   now: Date,
+  calendarTimeZone?: string,
 ): PreviewListingVerdict {
   const { listing, activity } = candidate;
   const base = { listingId: listing.id, title: listing.title };
 
   if (activity.wonAt) return { ...base, included: false, suppression: "won", detail: "seeker already won — never nudged" };
   if (activity.skippedAt) return { ...base, included: false, suppression: "skipped", detail: "seeker skipped this sweep — never nudged" };
-  if (daysUntil(listing.endDate, now) < 0) {
+  const expiry = listingExpiration(listing.endDate, now, calendarTimeZone);
+  if (expiry.state === "expired") {
     return { ...base, included: false, suppression: "expired", detail: "sweep has ended — no reminder" };
   }
 
-  const planned = planReminderForListing(candidate, prefs, now);
+  const plannedWithAllPrefs = planReminderForListing(
+    candidate,
+    ALL_REMINDERS_ON,
+    now,
+    calendarTimeZone,
+  );
+  const planned = planReminderForListing(candidate, prefs, now, calendarTimeZone);
   if (!planned) {
+    if (plannedWithAllPrefs) {
+      return {
+        ...base,
+        included: false,
+        reminderType: plannedWithAllPrefs.type,
+        suppression: "pref_off",
+        detail: `${plannedWithAllPrefs.type.replace("_", " ")} preference is off`,
+      };
+    }
     // Distinguish the common no-reminder reasons for a useful preview.
     const tracked = Boolean(activity.savedAt) || Boolean(activity.enteredAt);
     if (!tracked) {
@@ -124,37 +157,72 @@ export function previewSeekerReminders(
   const prefs = input.prefs ?? ALL_REMINDERS_ON;
   const alreadySent = input.alreadySent ?? new Set<string>();
 
-  const verdicts = input.candidates.map((c) => verdictFor(c, prefs, alreadySent, now));
+  const verdicts = input.candidates.map((c) =>
+    verdictFor(c, prefs, alreadySent, now, options.calendarTimeZone),
+  );
+
+  const suppressIncluded = (suppression: SuppressionReason, detail: string) => {
+    for (const verdict of verdicts) {
+      if (verdict.included) {
+        verdict.included = false;
+        verdict.suppression = suppression;
+        verdict.detail = detail;
+      }
+    }
+  };
+
+  if (input.emailEnabled === false) {
+    suppressIncluded("email_disabled", "email delivery is disabled for this seeker");
+  } else if (input.hasEmailAddress === false) {
+    suppressIncluded("missing_email", "the seeker has no email address");
+  }
+
+  const plannedInProductionOrder = planSeekerReminders(
+    input.candidates,
+    prefs,
+    now,
+    options.calendarTimeZone,
+  ).filter((planned) => {
+    const verdict = verdicts.find((item) => item.listingId === planned.listing.id);
+    return verdict?.included === true;
+  });
+
+  const toInclude = plannedInProductionOrder.slice(0, MAX_ITEMS_PER_REMINDER_DIGEST);
+  const includedIds = new Set(toInclude.map((planned) => planned.listing.id));
+  for (const verdict of verdicts) {
+    if (verdict.included && !includedIds.has(verdict.listingId)) {
+      verdict.included = false;
+      verdict.suppression = "digest_cap";
+      verdict.detail = `outside the ${MAX_ITEMS_PER_REMINDER_DIGEST}-item digest cap`;
+    }
+  }
 
   const included = verdicts.filter((v) => v.included);
   if (included.length === 0) {
     return { userLabel: input.userLabel, digest: null, verdicts };
   }
 
-  // Re-plan the included set to get ordered items with the exact framing.
-  const items: SeekerReminderItem[] = [];
-  for (const verdict of included) {
-    const candidate = input.candidates.find((c) => c.listing.id === verdict.listingId);
-    if (!candidate) continue;
-    const planned = planReminderForListing(candidate, prefs, now);
-    if (!planned) continue;
-    items.push({
-      kind: planned.type,
-      title: planned.listing.title,
-      listingUrl: `${baseUrl}/sweeps/${planned.listing.slug}`,
-      endsInDays: planned.endsInDays,
-    });
-  }
+  const items: SeekerReminderItem[] = toInclude.map((planned) => ({
+    kind: planned.type,
+    title: planned.listing.title,
+    listingUrl: `${baseUrl}/sweeps/${planned.listing.slug}`,
+    endsInDays: planned.endsInDays,
+  }));
 
   const email = seekerReminderDigestEmail({
     displayName: options.displayName ?? input.userLabel,
-    todayUrl: `${baseUrl}/my-sweeps`,
+    todayUrl: `${baseUrl}/`,
     items,
   });
 
   return {
     userLabel: input.userLabel,
-    digest: { subject: email.subject, itemCount: items.length, items },
+    digest: {
+      subject: email.subject,
+      itemCount: items.length,
+      items,
+      todayUrl: `${baseUrl}/`,
+    },
     verdicts,
   };
 }

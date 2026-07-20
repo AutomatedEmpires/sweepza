@@ -1,5 +1,5 @@
-import type { SourceComplianceState } from "@/lib/ingestion/compliance";
-import type { SourceHttpClient } from "@/lib/ingestion/http";
+import { isFixtureExecutable, type SourceComplianceState } from "@/lib/ingestion/compliance";
+import type { FetchFailureClass, SourceHttpClient } from "@/lib/ingestion/http";
 
 // Source-adapter seam. The orchestrator is source-agnostic: a discovery source
 // yields candidate official URLs (links only), and the pipeline fetches +
@@ -22,6 +22,8 @@ export interface DiscoveredLead {
    * prioritize/skip — never published. Every fact comes from the official page.
    */
   hint?: { title?: string; endDate?: string };
+  /** Durable discovery backlog item; completed only after downstream terminal work. */
+  discoveryWorkKey?: string;
 }
 
 /**
@@ -34,9 +36,47 @@ export interface DiscoveredLead {
  */
 export interface AdapterContext {
   http: SourceHttpClient;
+  /** Durable backlog so a conditional parent page cannot strand later items. */
+  workQueue: DiscoveryWorkQueue;
   /** Max leads to return this pass. */
   limit: number;
   signal?: AbortSignal;
+}
+
+export interface DiscoveryWorkItem {
+  key: string;
+  payload: Record<string, unknown>;
+}
+
+export interface DiscoveryWorkQueue {
+  enqueue(items: DiscoveryWorkItem[]): Promise<void>;
+  take(limit: number): Promise<DiscoveryWorkItem[]>;
+  complete(key: string): Promise<void>;
+  defer(key: string): Promise<void>;
+}
+
+/**
+ * A SOURCE-LEVEL fetch failed — the hub or index page the adapter needs before
+ * it can discover anything. Thrown, not returned, because it must not be
+ * confusable with "no new sweeps".
+ *
+ * That distinction is the whole point. An adapter that turned a 500 on the hub
+ * into `[]` made a down source indistinguishable from a quiet day: the
+ * orchestrator recorded `ok`, `recordRunOutcome` reset `consecutive_failures`,
+ * and the circuit breaker could never open for the outages it exists to
+ * contain. A PER-LEAD failure is different and still just drops that lead — one
+ * sponsor's page being down is not the source being down.
+ */
+export class SourceFetchError extends Error {
+  readonly failure: FetchFailureClass;
+  readonly url: string;
+
+  constructor(url: string, failure: FetchFailureClass, detail?: string) {
+    super(`source fetch failed (${failure}) for ${url}${detail ? `: ${detail}` : ""}`);
+    this.name = "SourceFetchError";
+    this.failure = failure;
+    this.url = url;
+  }
 }
 
 export interface SourceAdapter {
@@ -64,7 +104,11 @@ export interface SourceDescriptor {
   homepage: string;
 
   // ---- Reach: where this source may be fetched from at all -----------------
-  /** Hostnames the adapter may request (www./scheme-insensitive). Empty = none. */
+  /**
+   * Hostnames the adapter may request (www./scheme-insensitive). Empty is
+   * valid only for official_direct, whose reviewed per-destination policy is
+   * supplied with the lead; every discovery source requires a fixed allowlist.
+   */
   allowedHosts: string[];
   /** Path prefixes permitted on those hosts. Empty = any path on an allowed host. */
   allowedPathPrefixes: string[];
@@ -238,19 +282,63 @@ export function getSourceDescriptor(id: string): SourceDescriptor | undefined {
   return SOURCE_REGISTRY.find((source) => source.id === id);
 }
 
+/** Robots postures under which we may crawl at all. Fail-closed: an allowlist. */
+const CRAWLABLE_ROBOTS: readonly RobotsPosture[] = ["permissive", "permissive_with_delay"];
+
+export type DescriptorIneligibility =
+  | "kill_switch"
+  | "registry_not_production_approved"
+  | "tos_not_permitted"
+  | "robots_not_permitted";
+
 /**
- * The registry's own answer to "may this source run live?" — the static half of
- * the gate. The authoritative answer additionally requires the database
- * approval record and the INGESTION_ENABLED switch; see
+ * The registry-side half of "may this source run live?", in ONE place.
+ *
+ * This exists because the gate and `productionApprovedSources()` implemented
+ * DIFFERENT subsets of the same policy: the helper checked only the compliance
+ * state and kill switch, so a source whose ToS prohibits use — or whose robots
+ * posture is `restricted` — was reported as production-approved by the registry
+ * while the gate refused it. Two answers to one question is how a prohibited
+ * source ends up on an admin screen labelled "approved".
+ *
+ * Fail-closed throughout: each check is an allowlist, so a posture or state
+ * added later denies by default instead of inheriting permission. The
+ * authoritative answer still needs the DB record and INGESTION_ENABLED — see
  * `lib/ingestion/gate.ts`, which is what execution paths must call.
  */
-export function productionApprovedSources(): SourceDescriptor[] {
-  return SOURCE_REGISTRY.filter(
-    (source) => source.complianceState === "approved_for_production" && !source.killSwitch,
-  );
+export function descriptorIneligibility(
+  descriptor: SourceDescriptor,
+): DescriptorIneligibility | null {
+  if (descriptor.killSwitch) return "kill_switch";
+  if (descriptor.complianceState !== "approved_for_production") {
+    return "registry_not_production_approved";
+  }
+  if (descriptor.tosPosture !== "permits_use") return "tos_not_permitted";
+  if (!CRAWLABLE_ROBOTS.includes(descriptor.robotsPosture)) return "robots_not_permitted";
+  return null;
 }
 
-/** Sources whose adapters may run against recorded fixtures (CI, dry runs). */
+/**
+ * The registry's own answer to "may this source run live?" — the static half of
+ * the gate, delegating to the shared predicate so it cannot drift from it.
+ */
+export function productionApprovedSources(): SourceDescriptor[] {
+  return SOURCE_REGISTRY.filter((source) => descriptorIneligibility(source) === null);
+}
+
+/**
+ * Sources whose adapters may run against recorded fixtures (CI, dry runs).
+ *
+ * The kill switch alone is not the bar. Filtering on it only returned every
+ * source that wasn't switched off — including `draft`, `research_required`,
+ * `reviewed`, `paused`, `blocked`, and even `revoked` — which contradicted
+ * `isFixtureExecutable`, the module that actually defines the three rungs
+ * permitting simulation. It also swept in `official_direct`, which sits at
+ * `reviewed`. Both conditions are required, and the state test is the one that
+ * carries the policy.
+ */
 export function fixtureApprovedSources(): SourceDescriptor[] {
-  return SOURCE_REGISTRY.filter((source) => !source.killSwitch);
+  return SOURCE_REGISTRY.filter(
+    (source) => isFixtureExecutable(source.complianceState) && !source.killSwitch,
+  );
 }

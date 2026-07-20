@@ -58,8 +58,10 @@ export interface SourceHealthRow {
 
 export interface SourceHealthView {
   ingestionEnabled: boolean;
-  /** True when the registry tables are readable (migrations applied). */
+  /** True only when both operational tables are readable. */
   tablesPresent: boolean;
+  registryReadable: boolean;
+  runsReadable: boolean;
   rows: SourceHealthRow[];
 }
 
@@ -90,43 +92,51 @@ interface RunRow {
 }
 
 /**
- * Assemble the health view. The DB reads are best-effort: any error (including a
- * missing table before migrations are applied) yields an empty result and
- * `tablesPresent: false`, so the console still renders the code-level policy.
+ * Assemble the health view. Each DB read is best-effort and independent: a
+ * missing/unreadable table never erases valid data from the other query. The
+ * console still renders the fail-closed code policy when neither is readable.
  */
 export async function getSourceHealth(): Promise<SourceHealthView> {
   const ingestionEnabled = env.INGESTION_ENABLED === "true";
 
   let records: RegistryRow[] = [];
   let runs: RunRow[] = [];
-  let tablesPresent = true;
+  let registryReadable = false;
+  let runsReadable = false;
 
   try {
     const supabase = createServiceRoleClient();
-    const [{ data: recData, error: recErr }, { data: runData, error: runErr }] =
-      await Promise.all([
-        supabase
-          .from("source_registry")
-          .select(
-            "id, compliance_state, kill_switch, approved_by, approved_at, consecutive_failures, circuit_opened_at, last_run_at, last_success_at, last_failure_class",
-          ),
-        supabase
-          .from("ingestion_run")
-          .select(
-            "source, status, gate_decision, discovered, created, failed, requests_made, not_modified, started_at, finished_at",
-          )
-          .order("started_at", { ascending: false })
-          .limit(60),
-      ]);
-    if (recErr || runErr) {
-      tablesPresent = false;
-    } else {
-      records = (recData ?? []) as RegistryRow[];
-      runs = (runData ?? []) as RunRow[];
+    try {
+      const { data: recData, error: recErr } = await supabase
+        .from("source_registry")
+        .select(
+          "id, compliance_state, kill_switch, approved_by, approved_at, consecutive_failures, circuit_opened_at, last_run_at, last_success_at, last_failure_class",
+        );
+      if (!recErr) {
+        registryReadable = true;
+        records = (recData ?? []) as RegistryRow[];
+      }
+    } catch {
+      // Preserve run history when only the registry read fails.
+    }
+
+    try {
+      const { data: runData, error: runErr } = await supabase
+        .from("ingestion_run")
+        .select(
+          "source, status, gate_decision, discovered, created, failed, requests_made, not_modified, started_at, finished_at",
+        )
+        .order("started_at", { ascending: false })
+        .limit(60);
+      if (!runErr) {
+        runsReadable = true;
+        runs = (runData ?? []) as RunRow[];
+      }
+    } catch {
+      // Preserve registry approvals when only run history fails.
     }
   } catch {
     // Supabase not configured, or tables absent — render code-level policy only.
-    tablesPresent = false;
   }
 
   const recordById = new Map(records.map((r) => [r.id, r]));
@@ -159,6 +169,7 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
             complianceState: record.compliance_state,
             killSwitch: record.kill_switch,
             circuitOpenedAt: record.circuit_opened_at,
+            lastRunAt: record.last_run_at,
           }
         : null,
       ingestionEnabled: env.INGESTION_ENABLED,
@@ -187,7 +198,13 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
     };
   });
 
-  return { ingestionEnabled, tablesPresent, rows };
+  return {
+    ingestionEnabled,
+    tablesPresent: registryReadable && runsReadable,
+    registryReadable,
+    runsReadable,
+    rows,
+  };
 }
 
 export function getDescriptorForDisplay(id: string): SourceDescriptor | undefined {

@@ -13,21 +13,39 @@ import type { FetchFailureClass } from "@/lib/ingestion/http";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-// US sweepstakes overwhelmingly close at "11:59 PM" in a US timezone, and the
-// listing schema stores only a date. Treating the end date as UTC midnight would
-// expire a sweep up to ~8 hours before it actually closes on the west coast —
-// wrongly burying a still-open sweepstakes on its real last day. We treat the
-// end date as end-of-day with a grace window covering the continental US, so the
-// error is always on the side of keeping a sweep visible slightly too long
-// rather than cutting it off early.
-const US_WEST_GRACE_HOURS = 8;
+// A date without a stated timezone cannot yield an exact closing instant. Use
+// the latest civil timezone boundary (UTC-12) as a conservative visibility
+// deadline. This may retain a listing slightly longer, but it cannot bury a
+// Hawaii/Alaska/global sweep before its stated calendar day has ended.
+const DATE_ONLY_GRACE_HOURS = 12;
+
+/** Strict UTC midnight for a real YYYY-MM-DD calendar date, or NaN. */
+function dateMidnightUtc(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const instant = Date.UTC(year, month - 1, day);
+  const parsed = new Date(instant);
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) return NaN;
+  return instant;
+}
+
+/** Whether a value is exactly a real YYYY-MM-DD calendar date. */
+export function isValidDateOnly(value: string): boolean {
+  return !Number.isNaN(dateMidnightUtc(value));
+}
 
 /** The instant a date-only end value actually lapses, being generous by tz. */
-export function endOfDayInstant(endDate: string, graceHours = US_WEST_GRACE_HOURS): number {
-  // `${date}T23:59:59Z` is end-of-day UTC; + grace covers western US zones.
-  const base = new Date(`${endDate}T23:59:59Z`).getTime();
-  if (Number.isNaN(base)) return NaN;
-  return base + graceHours * HOUR_MS;
+export function endOfDayInstant(endDate: string, graceHours = DATE_ONLY_GRACE_HOURS): number {
+  const midnight = dateMidnightUtc(endDate);
+  if (Number.isNaN(midnight)) return NaN;
+  return midnight + DAY_MS - 1 + graceHours * HOUR_MS;
 }
 
 export type ExpirationState = "open" | "ending_soon" | "ends_today" | "expired" | "unknown";
@@ -38,9 +56,21 @@ export interface ExpirationAssessment {
   daysRemaining: number | null;
 }
 
-/** UTC-midnight epoch of a YYYY-MM-DD date, or NaN. */
-function dateMidnightUtc(value: string): number {
-  return new Date(`${value}T00:00:00Z`).getTime();
+/** Calendar date for an instant in an explicit IANA timezone, or null. */
+function dateInTimeZone(now: Date, timeZone: string | null | undefined): string | null {
+  if (!timeZone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -56,6 +86,7 @@ export function assessExpiration(
   endDate: string | null | undefined,
   now: Date = new Date(),
   endingSoonDays = 3,
+  calendarTimeZone?: string | null,
 ): ExpirationAssessment {
   if (!endDate) return { state: "unknown", daysRemaining: null };
   const endInstant = endOfDayInstant(endDate);
@@ -64,15 +95,30 @@ export function assessExpiration(
     return { state: "unknown", daysRemaining: null };
   }
 
-  // Calendar days between today and the end date (both at UTC midnight).
-  const todayMidnight = dateMidnightUtc(now.toISOString().slice(0, 10));
+  // Expired only once the generous instant has passed — the grace window keeps
+  // a date-only sweep open through the last plausible civil timezone.
+  if (endInstant < now.getTime()) {
+    const elapsedDays = Math.floor((endInstant - now.getTime()) / DAY_MS);
+    return { state: "expired", daysRemaining: elapsedDays };
+  }
+
+  const localDate = dateInTimeZone(now, calendarTimeZone);
+  if (!localDate) {
+    // Without an entrant/stated timezone, never claim "ends today". We can
+    // still safely express proximity to the conservative final instant.
+    const utcToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const daysRemaining = Math.max(0, Math.round((endMidnight - utcToday) / DAY_MS));
+    return {
+      state: daysRemaining <= endingSoonDays ? "ending_soon" : "open",
+      daysRemaining,
+    };
+  }
+
+  const todayMidnight = dateMidnightUtc(localDate);
   const daysRemaining = Math.round((endMidnight - todayMidnight) / DAY_MS);
 
-  // Expired only once the generous instant has passed — the grace window keeps
-  // a same-day sweep open into the following morning UTC.
-  if (endInstant < now.getTime()) return { state: "expired", daysRemaining };
-
-  if (daysRemaining <= 0) return { state: "ends_today", daysRemaining };
+  if (daysRemaining === 0) return { state: "ends_today", daysRemaining };
+  if (daysRemaining < 0) return { state: "ending_soon", daysRemaining: 0 };
   if (daysRemaining <= endingSoonDays) return { state: "ending_soon", daysRemaining };
   return { state: "open", daysRemaining };
 }
@@ -96,6 +142,8 @@ export interface ReverificationSignals {
   hasOpenReport: boolean;
   /** Already marked a dead link — verify aggressively to confirm/clear it. */
   deadLinkSuspected: boolean;
+  /** Entrant/stated IANA timezone for calendar labels; null keeps labels conservative. */
+  calendarTimeZone?: string | null;
 }
 
 export interface ReverificationPlan {
@@ -126,16 +174,19 @@ export function planReverification(
   let intervalHours = signals.sourceTier === "official" ? 24 * 7 : 24 * 3;
   reasons.push(`${signals.sourceTier} source base cadence ${intervalHours}h`);
 
-  if (signals.confidence < 0.5) {
+  const confidence = Number.isFinite(signals.confidence)
+    ? Math.max(0, Math.min(1, signals.confidence))
+    : 0;
+  if (confidence < 0.5) {
     intervalHours = Math.min(intervalHours, 24);
     reasons.push("low extraction confidence → within 24h");
-  } else if (signals.confidence < 0.75) {
+  } else if (confidence < 0.75) {
     intervalHours = Math.min(intervalHours, 48);
     reasons.push("moderate confidence → within 48h");
   }
 
   // Ending soon: track it closely so we catch a close or an extension.
-  const expiry = assessExpiration(signals.endDate, now);
+  const expiry = assessExpiration(signals.endDate, now, 3, signals.calendarTimeZone);
   if (expiry.state === "ending_soon" || expiry.state === "ends_today") {
     intervalHours = Math.min(intervalHours, 12);
     reasons.push("ending soon → within 12h");
@@ -186,6 +237,10 @@ export interface MaterialFacts {
   prizeName: string | null;
   entryFrequency: string | null;
   eligibilityCountry: string | null;
+  eligibilityStates: string | null;
+  ageRequirement: string | null;
+  noPurchaseNecessary: string | null;
+  entryLimitNotes: string | null;
 }
 
 export type ChangeDisposition =
@@ -223,6 +278,10 @@ const MATERIAL_FIELDS: ReadonlySet<keyof MaterialFacts> = new Set<keyof Material
   "endDate",
   "entryFrequency",
   "eligibilityCountry",
+  "eligibilityStates",
+  "ageRequirement",
+  "noPurchaseNecessary",
+  "entryLimitNotes",
 ]);
 
 function norm(value: string | null): string {
@@ -249,7 +308,7 @@ export function assessChange(
 ): ChangeAssessment {
   const reasons: string[] = [];
 
-  if (context.pageDisappeared || !next) {
+  if (context.pageDisappeared) {
     return {
       disposition: "disappeared",
       changes: [],
@@ -265,10 +324,19 @@ export function assessChange(
       reasons: ["official page indicates the sweepstakes has closed"],
     };
   }
+  if (!next) {
+    return {
+      disposition: "unchanged",
+      changes: [],
+      overwriteAllowed: false,
+      reasons: ["no comparable extraction — lifecycle state preserved"],
+    };
+  }
 
   const fields: (keyof MaterialFacts)[] = [
     "entryUrl", "officialRulesUrl", "endDate", "sponsorName", "prizeName",
-    "entryFrequency", "eligibilityCountry",
+    "entryFrequency", "eligibilityCountry", "eligibilityStates",
+    "ageRequirement", "noPurchaseNecessary", "entryLimitNotes",
   ];
 
   const changes: DetectedChange[] = [];
@@ -310,7 +378,7 @@ export function assessChange(
 // Dead-link disposition — distinguish a blip from a burial.
 // ---------------------------------------------------------------------------
 
-export type LinkAction = "ok" | "retry" | "backoff" | "review" | "mark_dead";
+export type LinkAction = "ok" | "no_signal" | "retry" | "backoff" | "review" | "mark_dead";
 
 export interface LinkDisposition {
   action: LinkAction;
@@ -351,11 +419,13 @@ export function dispositionForFailure(
         : { action: "retry", suppressPublicly: false, reason: "transient failure — will retry" };
 
     case "not_found":
-      return consecutiveFailures >= 1
+      // The persisted count includes the current failure. Require two observed
+      // 404/410 responses before suppression.
+      return consecutiveFailures >= 2
         ? {
             action: "mark_dead",
             suppressPublicly: true,
-            reason: "official page returns 404/410 on repeat — promotion removed",
+            reason: "official page returned 404/410 twice — promotion removed",
           }
         : {
             action: "retry",
@@ -390,7 +460,11 @@ export function dispositionForFailure(
     case "blocked_by_policy":
     case "budget_exhausted":
       // Our own limits, not the source's fault — never a listing signal.
-      return { action: "ok", suppressPublicly: false, reason: "stopped by our own crawl policy — no listing impact" };
+      return {
+        action: "no_signal",
+        suppressPublicly: false,
+        reason: "stopped by our own crawl policy — preserve lifecycle state",
+      };
 
     default:
       return { action: "review", suppressPublicly: false, reason: `unclassified failure: ${failure}` };

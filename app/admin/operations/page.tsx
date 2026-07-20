@@ -15,18 +15,16 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 const DISPOSITION_LABEL: Record<DryRunLeadResult["disposition"], string> = {
-  would_create: "Would create",
-  would_review: "Would hold for review",
-  would_reject: "Would reject",
-  would_skip_duplicate: "Would skip (duplicate)",
-  would_skip_known: "Would skip (known)",
+  would_create_private_draft: "Would create private draft",
+  would_create_suspected_pair: "Would create + flag suspected pair",
+  would_hold_no_write: "Would hold (no row)",
+  would_skip_known: "Would return existing draft",
 };
 
 const DISPOSITION_TONE: Record<DryRunLeadResult["disposition"], string> = {
-  would_create: "text-pine",
-  would_review: "text-ember",
-  would_reject: "text-flame",
-  would_skip_duplicate: "text-graphite",
+  would_create_private_draft: "text-pine",
+  would_create_suspected_pair: "text-ember",
+  would_hold_no_write: "text-flame",
   would_skip_known: "text-graphite",
 };
 
@@ -47,10 +45,9 @@ function DryRunSection() {
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs">
         <span className="rounded-pill bg-paper px-2.5 py-1 font-semibold text-ink">{t.leads} leads</span>
-        <span className="rounded-pill bg-pine/10 px-2.5 py-1 font-semibold text-pine">{t.wouldCreate} create</span>
-        <span className="rounded-pill bg-ember/10 px-2.5 py-1 font-semibold text-ember">{t.wouldReview} review</span>
-        <span className="rounded-pill bg-flame/10 px-2.5 py-1 font-semibold text-flame">{t.wouldReject} reject</span>
-        <span className="rounded-pill bg-paper px-2.5 py-1 font-semibold text-graphite">{t.wouldSkipDuplicate} duplicate</span>
+        <span className="rounded-pill bg-pine/10 px-2.5 py-1 font-semibold text-pine">{t.wouldCreatePrivateDraft} private drafts</span>
+        <span className="rounded-pill bg-ember/10 px-2.5 py-1 font-semibold text-ember">{t.wouldCreateSuspectedPair} suspected pairs</span>
+        <span className="rounded-pill bg-flame/10 px-2.5 py-1 font-semibold text-flame">{t.wouldHoldNoWrite} held without rows</span>
       </div>
 
       <ul className="mt-4 divide-y divide-line">
@@ -62,7 +59,7 @@ function DryRunSection() {
               </span>
               <span className={`text-xs font-semibold ${DISPOSITION_TONE[result.disposition]}`}>
                 {DISPOSITION_LABEL[result.disposition]}
-                {result.disposition === "would_create" || result.disposition === "would_review"
+                {result.confidence !== null
                   ? ` · confidence ${result.confidence.toFixed(2)}`
                   : ""}
               </span>
@@ -90,6 +87,9 @@ const SUPPRESSION_LABEL: Record<NonNullable<PreviewListingVerdict["suppression"]
   not_in_window: "outside window",
   pref_off: "preference off",
   already_sent: "already sent",
+  email_disabled: "email disabled",
+  missing_email: "missing email",
+  digest_cap: "outside digest cap",
 };
 
 function ReminderSection() {

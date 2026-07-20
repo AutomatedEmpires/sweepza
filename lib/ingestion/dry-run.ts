@@ -1,4 +1,4 @@
-import { dedupKeys, explainDuplicate } from "@/lib/ingestion/fingerprint";
+import { dedupKeys, explainDuplicate, type DedupKeys } from "@/lib/ingestion/fingerprint";
 import { mapExtraction, type RawExtraction } from "@/lib/ingestion/mapper";
 import { verifyCandidate } from "@/lib/ingestion/verify";
 
@@ -10,14 +10,14 @@ import { verifyCandidate } from "@/lib/ingestion/verify";
 // database write): it is handed the extractions a run would have produced and
 // reports, per lead, what disposition it would reach and why. That makes the
 // pipeline's judgment inspectable before anyone turns it on — the founder can
-// see "this source would create 4, hold 3 for review, reject 2, and skip 1
-// duplicate" without a single row being written or a single page being fetched.
+// see exactly which private drafts, suspected pairs, no-write holds, and
+// idempotent returns would result without a single row being written or page
+// being fetched.
 
 export type DryRunDisposition =
-  | "would_create"
-  | "would_review"
-  | "would_reject"
-  | "would_skip_duplicate"
+  | "would_create_private_draft"
+  | "would_create_suspected_pair"
+  | "would_hold_no_write"
   | "would_skip_known";
 
 export interface DryRunLeadInput {
@@ -30,8 +30,8 @@ export interface DryRunLeadResult {
   officialUrl: string;
   disposition: DryRunDisposition;
   title: string | null;
-  /** Confidence 0..1 from verify.ts (soft evidence share). */
-  confidence: number;
+  /** Confidence 0..1 from verify.ts, or null when verification was not run. */
+  confidence: number | null;
   /** Hard-gate failures that would hold the listing. */
   hardFailures: string[];
   /** Mapper issues + verifier summary — the "why" for a reviewer. */
@@ -44,10 +44,9 @@ export interface DryRunReport {
   source: string;
   totals: {
     leads: number;
-    wouldCreate: number;
-    wouldReview: number;
-    wouldReject: number;
-    wouldSkipDuplicate: number;
+    wouldCreatePrivateDraft: number;
+    wouldCreateSuspectedPair: number;
+    wouldHoldNoWrite: number;
     wouldSkipKnown: number;
   };
   results: DryRunLeadResult[];
@@ -57,10 +56,16 @@ export interface DryRunReport {
 
 export interface DryRunOptions {
   /**
-   * Official-URL keys already in the catalog. A lead matching one is reported as
-   * `would_skip_known` (idempotency), exactly as the live orchestrator would.
+   * Atomic URL+variant identities already in the catalog. URL alone is not an
+   * identity because sponsors legitimately reuse a page for later cycles or
+   * regional variants.
    */
-  knownUrlKeys?: Set<string>;
+  knownIdentityKeys?: Set<string>;
+}
+
+/** Mirrors the database uniqueness claim: normalized URL plus cycle/region. */
+export function dryRunIdentityKey(keys: DedupKeys): string | null {
+  return keys.urlKey ? `${keys.urlKey}|${keys.variantKey}` : null;
 }
 
 /**
@@ -75,11 +80,11 @@ export function dryRunIngestion(
   leads: DryRunLeadInput[],
   options: DryRunOptions = {},
 ): DryRunReport {
-  const known = options.knownUrlKeys ?? new Set<string>();
+  const known = new Set(options.knownIdentityKeys ?? []);
   const results: DryRunLeadResult[] = [];
 
-  // Track what we've "created" this batch, to catch intra-batch duplicates the
-  // same way the orchestrator's seenThisRun + findExistingListingId would.
+  // Track what this simulation created so later candidates reproduce the
+  // database's atomic identity and suspected-pair outcomes within the batch.
   const acceptedThisRun: { officialUrl: string; input: Parameters<typeof dedupKeys>[0] }[] = [];
 
   for (const lead of leads) {
@@ -88,20 +93,42 @@ export function dryRunIngestion(
 
     const keys = candidate.dedup;
 
-    // Idempotency: already known under this official URL.
-    if (keys.urlKey && known.has(keys.urlKey)) {
+    const identityKey = dryRunIdentityKey(keys);
+
+    // Production verifies the newly extracted body before it asks the database
+    // to claim identity. A stale/malformed revisit must therefore remain a
+    // no-write hold even when its URL+variant already exists.
+    const verification = verifyCandidate(candidate);
+    notes.push(verification.summary);
+
+    if (!verification.publishable) {
       results.push({
         officialUrl: lead.officialUrl,
-        disposition: "would_skip_known",
+        disposition: "would_hold_no_write",
         title: candidate.title || null,
-        confidence: 0,
-        hardFailures: [],
-        notes: ["already in the catalog under this official URL — would refresh last_seen only"],
+        confidence: verification.confidence,
+        hardFailures: verification.hardFailures,
+        notes: [...notes, "live ingestion would record these failures in run notes and would not create a listing row"],
       });
       continue;
     }
 
-    // Cross-source duplicate within this batch.
+    // Idempotency: only the exact URL+variant claim is already known.
+    if (identityKey && known.has(identityKey)) {
+      results.push({
+        officialUrl: lead.officialUrl,
+        disposition: "would_skip_known",
+        title: candidate.title || null,
+        confidence: verification.confidence,
+        hardFailures: [],
+        notes: ["same URL and cycle/region variant already exists — atomic create would return the existing private draft"],
+      });
+      continue;
+    }
+
+    // Exact URL+variant identity within this batch is idempotent. Content-only
+    // similarity is handled after verification: live ingestion still creates a
+    // separate private draft and records a suspected-pair review edge.
     const dupe = acceptedThisRun.find((prior) => {
       const explanation = explainDuplicate(prior.input, {
         officialRulesUrl: candidate.officialRulesUrl,
@@ -110,41 +137,42 @@ export function dryRunIngestion(
         prizeName: candidate.prizeName,
         endDate: candidate.endDate,
         eligibilityCountry: candidate.eligibilityCountry,
+        eligibilityStates: candidate.eligibilityStates,
       });
-      return explanation.verdict === "identical" || explanation.verdict === "suspected";
+      return explanation.verdict === "identical";
     });
     if (dupe) {
       results.push({
         officialUrl: lead.officialUrl,
-        disposition: "would_skip_duplicate",
+        disposition: "would_skip_known",
         title: candidate.title || null,
-        confidence: 0,
+        confidence: verification.confidence,
         hardFailures: [],
-        notes: ["matches another lead in this batch — would hold as a suspected duplicate"],
+        notes: ["same URL and cycle/region variant already claimed in this batch — atomic create would return the existing private draft"],
         duplicateOf: dupe.officialUrl,
       });
       continue;
     }
 
-    // NOT NULL guardrail the orchestrator applies before insert.
-    if (!candidate.title || !candidate.shortDescription || !candidate.prizeName) {
-      results.push({
-        officialUrl: lead.officialUrl,
-        disposition: "would_reject",
-        title: candidate.title || null,
-        confidence: 0,
-        hardFailures: ["missing required field (title / short description / prize)"],
-        notes,
+    const suspected = acceptedThisRun.find((prior) => {
+      const explanation = explainDuplicate(prior.input, {
+        officialRulesUrl: candidate.officialRulesUrl,
+        entryUrl: candidate.entryUrl,
+        sponsorName: lead.extraction.sponsorName,
+        prizeName: candidate.prizeName,
+        endDate: candidate.endDate,
+        eligibilityCountry: candidate.eligibilityCountry,
+        eligibilityStates: candidate.eligibilityStates,
       });
-      continue;
+      return explanation.verdict === "suspected";
+    });
+
+    const disposition: DryRunDisposition = suspected
+      ? "would_create_suspected_pair"
+      : "would_create_private_draft";
+    if (suspected) {
+      notes.push("content similarity would create a separate private draft plus a suspected-duplicate review pair");
     }
-
-    const verification = verifyCandidate(candidate);
-    notes.push(verification.summary);
-
-    const disposition: DryRunDisposition = verification.publishable
-      ? "would_create"
-      : "would_review";
 
     results.push({
       officialUrl: lead.officialUrl,
@@ -153,9 +181,10 @@ export function dryRunIngestion(
       confidence: verification.confidence,
       hardFailures: verification.hardFailures,
       notes,
+      ...(suspected ? { duplicateOf: suspected.officialUrl } : {}),
     });
 
-    // A creatable/reviewable lead becomes a dedupe reference for the rest.
+    // A created private draft becomes an identity/dedup reference for the rest.
     acceptedThisRun.push({
       officialUrl: lead.officialUrl,
       input: {
@@ -165,16 +194,17 @@ export function dryRunIngestion(
         prizeName: candidate.prizeName,
         endDate: candidate.endDate,
         eligibilityCountry: candidate.eligibilityCountry,
+        eligibilityStates: candidate.eligibilityStates,
       },
     });
+    if (identityKey) known.add(identityKey);
   }
 
   const totals = {
     leads: leads.length,
-    wouldCreate: results.filter((r) => r.disposition === "would_create").length,
-    wouldReview: results.filter((r) => r.disposition === "would_review").length,
-    wouldReject: results.filter((r) => r.disposition === "would_reject").length,
-    wouldSkipDuplicate: results.filter((r) => r.disposition === "would_skip_duplicate").length,
+    wouldCreatePrivateDraft: results.filter((r) => r.disposition === "would_create_private_draft").length,
+    wouldCreateSuspectedPair: results.filter((r) => r.disposition === "would_create_suspected_pair").length,
+    wouldHoldNoWrite: results.filter((r) => r.disposition === "would_hold_no_write").length,
     wouldSkipKnown: results.filter((r) => r.disposition === "would_skip_known").length,
   };
 

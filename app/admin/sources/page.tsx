@@ -3,7 +3,7 @@ import { getSourceHealth, type SourceHealthRow } from "@/lib/db/source-health";
 
 export const metadata = {
   title: "Source Health",
-  description: "Ingestion source registry, compliance states, and run health.",
+  description: "Ingestion source policy, approval records, preflight gates, and run health.",
 };
 
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ function SourceCard({ row }: { row: SourceHealthRow }) {
           }`}
         >
           <Icon name={row.gate.allowed ? "check" : "shield"} size={14} />
-          {row.gate.allowed ? "Would run" : "Gated"}
+          {row.gate.allowed ? "Preflight gate passes" : "Gated"}
         </div>
       </div>
 
@@ -168,9 +168,9 @@ export default async function AdminSourcesPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ember">Admin</p>
         <h1 className="mt-1 font-display text-2xl font-bold text-ink">Source health</h1>
         <p className="mt-2 text-sm leading-relaxed text-graphite">
-          Every ingestion source, its compliance state, and whether it would run right now.
-          Ingestion executes only when the deployment switch, the reviewed policy floor, and the
-          approval record all agree.
+          Every ingestion source, its compliance state, and the result of its preflight gate.
+          Execution also requires the database run lease, so a passing preflight gate is never shown
+          as authority to run.
         </p>
       </header>
 
@@ -190,10 +190,10 @@ export default async function AdminSourcesPage() {
 
       {!health.tablesPresent ? (
         <p className="mt-4 rounded-card border border-line bg-paper px-4 py-3 text-sm text-graphite">
-          The source registry tables are not readable yet (migrations not applied in this
-          environment). Showing the code-level policy floor only; approval records and run history
-          appear once <span className="font-mono text-xs">20260716120000_source_registry.sql</span>{" "}
-          is applied.
+          Operational data is only partially readable in this environment. Approval records are{" "}
+          {health.registryReadable ? "available" : "unavailable"}; run history is{" "}
+          {health.runsReadable ? "available" : "unavailable"}. The static code-level policy floor
+          remains visible, but an unavailable read is never treated as approval.
         </p>
       ) : null}
 

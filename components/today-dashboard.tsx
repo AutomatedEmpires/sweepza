@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { cn } from "@/lib/cn";
-import { daysUntil } from "@/lib/listing-badges";
+import { listingExpiration } from "@/lib/listing-badges";
 import { formatRelativeTime } from "@/lib/listing-format";
 import { useSeekerState } from "@/lib/seeker-state";
 import {
@@ -141,8 +141,12 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
       .slice(0, MAX_SECTION_CARDS);
   }, [listings, lastVisitAt, touchedIds]);
 
-  const endingToday = buckets.endingSoon.filter((l) => daysUntil(l.endDate) <= 0);
-  const endingSoonRest = buckets.endingSoon.filter((l) => daysUntil(l.endDate) > 0);
+  const endingToday = buckets.endingSoon.filter(
+    (listing) => listingExpiration(listing.endDate).state === "ends_today",
+  );
+  const endingSoonRest = buckets.endingSoon.filter(
+    (listing) => listingExpiration(listing.endDate).state !== "ends_today",
+  );
 
   const readyCount = buckets.ready.length + buckets.readyAgain.length;
   const hasRoutine =
