@@ -5,7 +5,9 @@
 // metadata key before creating. Run under Doppler so the key never touches
 // disk or logs:
 //   doppler run --project sweepza --config dev -- node scripts/provision-stripe.mjs \
+//     --expected-account acct_... \
 //     --webhook-url https://sweepza.vercel.app/api/webhooks/stripe
+// Live mode additionally requires: --confirm-live-account acct_...
 //
 // Prints ONLY non-secret identifiers (product/price/endpoint ids). The
 // webhook signing secret is written to the path given via --secret-out
@@ -13,6 +15,21 @@
 
 import Stripe from "stripe";
 import { writeFileSync } from "node:fs";
+import {
+  REQUIRED_STRIPE_WEBHOOK_EVENTS,
+  getSweepzaMetadataState,
+  inspectProvisioningPreflight,
+  isOwnedSweepzaAccountWebhook,
+  mergeRequiredWebhookEvents,
+  releaseSecretOutput,
+  reserveSecretOutput,
+  selectSweepzaPriceCandidate,
+} from "./stripe-operator-safety.mjs";
+import {
+  listAllStripePages,
+  persistWebhookSecretWithRollback,
+  runProvisioningWorkflow,
+} from "./provision-stripe-workflow.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a, i, all) =>
@@ -21,15 +38,19 @@ const args = Object.fromEntries(
 );
 
 const key = process.env.STRIPE_SECRET_KEY;
-if (!key) {
-  console.error("STRIPE_SECRET_KEY missing from environment (run under doppler run).");
-  process.exit(1);
-}
-const mode = key.startsWith("sk_live_") ? "live" : "test";
-const stripe = new Stripe(key);
-
 const WEBHOOK_URL = args["webhook-url"];
 const SECRET_OUT = args["secret-out"] ?? "/tmp/stripe-whsec";
+const EXPECTED_ACCOUNT = args["expected-account"];
+const LIVE_CONFIRMATION = args["confirm-live-account"];
+
+const preflight = inspectProvisioningPreflight({
+  key,
+  expectedAccountId: EXPECTED_ACCOUNT,
+  liveConfirmation: LIVE_CONFIRMATION,
+  webhookUrl: WEBHOOK_URL,
+  secretOutputPath: SECRET_OUT,
+});
+let stripe;
 
 // Pricing: add-on $5/mo matches the amount already hardcoded in
 // lib/db/host-dashboard.ts (addSlotPriceMonthly: 5). Baseline $19/mo for the
@@ -55,11 +76,69 @@ const PLANS = [
   },
 ];
 
-async function ensureProductAndPrice(plan) {
-  const existing = await stripe.products.search({
-    query: `metadata["sweepza_key"]:"${plan.lookup}" AND active:"true"`,
+async function discoverProductAndPrice(plan) {
+  const activeProducts = await listAllStripePages(
+    (startingAfter) =>
+      stripe.products.list({
+        active: true,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: "active product" },
+  );
+  const keyedProducts = activeProducts.filter(
+    (product) => product.metadata?.sweepza_key === plan.lookup,
+  );
+  const productStates = keyedProducts.map((product) => ({
+    product,
+    state: getSweepzaMetadataState(product.metadata, plan.lookup),
+  }));
+  if (productStates.some(({ state }) => state !== "exact")) {
+    throw new Error(
+      `Refusing ambiguous product key ${plan.lookup}: matching product is not venture=sweepza.`,
+    );
+  }
+  if (productStates.length > 1) {
+    throw new Error(
+      `Refusing ambiguous product key ${plan.lookup}: multiple active products match.`,
+    );
+  }
+  const productMatch = productStates[0] ?? null;
+  const product = productMatch?.product ?? null;
+  if (!product) {
+    return {
+      plan,
+      product: null,
+      price: null,
+      priceNeedsMetadataUpgrade: false,
+    };
+  }
+
+  const activePrices = await listAllStripePages(
+    (startingAfter) =>
+      stripe.prices.list({
+        product: product.id,
+        active: true,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: `active price for ${plan.lookup}` },
+  );
+  const priceMatch = selectSweepzaPriceCandidate(activePrices, {
+    unitAmount: plan.unitAmount,
+    lookup: plan.lookup,
   });
-  let product = existing.data[0];
+  return {
+    plan,
+    product,
+    price: priceMatch?.price ?? null,
+    priceNeedsMetadataUpgrade: priceMatch?.state === "legacy",
+  };
+}
+
+async function applyProductAndPrice(discovery) {
+  const { plan } = discovery;
+  let product = discovery.product;
   if (!product) {
     product = await stripe.products.create({
       name: plan.name,
@@ -67,40 +146,73 @@ async function ensureProductAndPrice(plan) {
       metadata: { sweepza_key: plan.lookup, venture: "sweepza" },
     });
   }
-
-  const prices = await stripe.prices.list({ product: product.id, active: true, limit: 10 });
-  let price = prices.data.find(
-    (p) => p.recurring?.interval === "month" && p.unit_amount === plan.unitAmount,
-  );
+  let price = discovery.price;
   if (!price) {
     price = await stripe.prices.create({
       product: product.id,
       currency: "usd",
       unit_amount: plan.unitAmount,
-      recurring: { interval: "month" },
-      metadata: { sweepza_key: plan.lookup },
+      recurring: {
+        interval: "month",
+        interval_count: 1,
+        usage_type: "licensed",
+      },
+      metadata: { sweepza_key: plan.lookup, venture: "sweepza" },
+    });
+  } else if (discovery.priceNeedsMetadataUpgrade) {
+    price = await stripe.prices.update(price.id, {
+      metadata: { ...price.metadata, venture: "sweepza" },
     });
   }
-  return { product: product.id, price: price.id, envVar: plan.envVar, amount: plan.unitAmount };
+  return {
+    product: product.id,
+    price: price.id,
+    envVar: plan.envVar,
+    amount: plan.unitAmount,
+  };
 }
 
-async function ensureWebhook(url) {
-  if (!url) return null;
-  const events = [
-    "customer.subscription.created",
-    "customer.subscription.updated",
-    "customer.subscription.deleted",
-  ];
-  const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
-  const existing = endpoints.data.find((e) => e.url === url && e.status === "enabled");
-  if (existing) {
-    const hasWildcard = existing.enabled_events.includes("*");
-    const missingEvents = hasWildcard
+async function discoverWebhook(url) {
+  const events = REQUIRED_STRIPE_WEBHOOK_EVENTS;
+  const endpoints = await listAllStripePages(
+    (startingAfter) =>
+      stripe.webhookEndpoints.list({
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: "webhook endpoint" },
+  );
+  const matches = endpoints.filter((endpoint) => endpoint.url === url);
+  if (matches.length > 1) {
+    throw new Error("Refusing ambiguous webhook state: multiple endpoints match.");
+  }
+  const existing = matches[0] ?? null;
+  if (existing && !isOwnedSweepzaAccountWebhook(existing)) {
+    throw new Error(
+      "Refusing unowned, unscoped, or Connect/application webhook; an explicitly tagged Sweepza account endpoint is required.",
+    );
+  }
+  if (existing && existing.status !== "enabled") {
+    throw new Error("Refusing disabled matching webhook; operator review is required.");
+  }
+  const hasWildcard = existing?.enabled_events.includes("*") ?? false;
+  const missingEvents = existing
+    ? hasWildcard
       ? []
-      : events.filter((event) => !existing.enabled_events.includes(event));
+      : events.filter((event) => !existing.enabled_events.includes(event))
+    : events;
+  return { url, events, existing, missingEvents };
+}
+
+async function applyWebhook(discovery, secretFd) {
+  const { existing, events, missingEvents, url } = discovery;
+  if (existing) {
     if (missingEvents.length > 0) {
       const updated = await stripe.webhookEndpoints.update(existing.id, {
-        enabled_events: events,
+        enabled_events: mergeRequiredWebhookEvents(
+          existing.enabled_events,
+          events,
+        ),
       });
       return {
         id: updated.id,
@@ -114,19 +226,70 @@ async function ensureWebhook(url) {
     // can't re-read it — report and let the operator rotate if needed.
     return { id: existing.id, url: existing.url, secretWritten: false, note: "existing endpoint reused; secret not re-readable" };
   }
+  if (secretFd === null) {
+    throw new Error("Refusing webhook creation without a reserved secret output.");
+  }
   const created = await stripe.webhookEndpoints.create({
     url,
     enabled_events: events,
+    connect: false,
     description: "Sweepza subscription sync",
+    metadata: { venture: "sweepza", endpoint_scope: "account" },
   });
-  writeFileSync(SECRET_OUT, created.secret, { mode: 0o600 });
+  await persistWebhookSecretWithRollback({
+    endpoint: created,
+    secretFd,
+    writeSecret: writeFileSync,
+    deleteEndpoint: (endpointId) => stripe.webhookEndpoints.del(endpointId),
+  });
   return { id: created.id, url: created.url, secretWritten: true };
 }
 
-const results = [];
-for (const plan of PLANS) {
-  results.push(await ensureProductAndPrice(plan));
+try {
+  const result = await runProvisioningWorkflow({
+    preflight,
+    expectedAccountId: EXPECTED_ACCOUNT,
+    retrieveAccount: async () => {
+      stripe = new Stripe(key);
+      return stripe.accounts.retrieve();
+    },
+    discover: async () => {
+      const plans = [];
+      for (const plan of PLANS) plans.push(await discoverProductAndPrice(plan));
+      const webhook = await discoverWebhook(WEBHOOK_URL);
+      return { plans, webhook };
+    },
+    needsSecretOutput: (discovery) => discovery.webhook.existing === null,
+    reserveSecretOutput: () => reserveSecretOutput(SECRET_OUT),
+    mutate: async (discovery, secretFd) => {
+      const plans = [];
+      for (const plan of discovery.plans) {
+        plans.push(await applyProductAndPrice(plan));
+      }
+      const webhook = await applyWebhook(discovery.webhook, secretFd);
+      return {
+        keepSecretOutput: webhook.secretWritten,
+        plans,
+        webhook,
+      };
+    },
+    releaseSecretOutput: (secretFd, options) =>
+      releaseSecretOutput(secretFd, SECRET_OUT, options),
+  });
+  console.log(
+    JSON.stringify(
+      {
+        accountId: result.account.id,
+        plans: result.plans,
+        webhook: result.webhook,
+      },
+      null,
+      2,
+    ),
+  );
+} catch (error) {
+  console.error(
+    `REFUSED: ${error instanceof Error ? error.message : "Stripe provisioning failed."}`,
+  );
+  process.exit(1);
 }
-const webhook = await ensureWebhook(WEBHOOK_URL);
-
-console.log(JSON.stringify({ mode, plans: results, webhook }, null, 2));

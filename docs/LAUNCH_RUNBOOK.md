@@ -85,7 +85,9 @@ Everything after step 4 is automated/verifiable.
 Run:
 
 ```bash
-doppler run --project sweepza --config prd -- node scripts/verify-live-checkout.mjs
+doppler run --project sweepza --config prd -- \
+  node scripts/verify-live-checkout.mjs \
+  --expected-account acct_REPLACE_WITH_APPROVED_SWEEPZA_ACCOUNT
 ```
 
 It confirms, from live Stripe + production Supabase (no secrets printed): the
@@ -94,6 +96,12 @@ Stripe's current status (active before cancellation, canceled afterward), the
 baseline entitlement has `included_active_listings=3` and
 `max_active_listings=3`, both configured recurring prices are live and
 Sweepza-owned, and recent subscription webhook deliveries are not stuck.
+Before any other provider/database query, the verifier requires the explicit
+CLI account id to equal the checked-in approved live account, checks the
+authenticated account, and binds the Supabase URL to the canonical Sweepza
+project. The checked-in live account is currently `null`, so this historical
+command refuses before any provider call until an id and verification window
+are explicitly approved through review.
 
 ### Cancellation proof (do this second)
 
