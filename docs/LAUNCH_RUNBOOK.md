@@ -233,27 +233,32 @@ provide the key/DSN"; configuration + verification are then automatable.
 
 ### Resend
 
-- Code: `lib/email/send.ts` posts to `api.resend.com/emails` via `fetch`; it is a
-  graceful no-op (logs a warning) when `RESEND_API_KEY` is unset, and throws on a
-  non-2xx response with status + body for observability. No retry (single
-  attempt; acceptable for transactional). Sender defaults to
-  `Sweepza <hello@sweepza.com>` unless `RESEND_FROM_EMAIL` overrides it.
+- Code: `lib/email/send.ts` posts to `api.resend.com/emails` only when
+  `OUTBOUND_EMAIL_ENABLED` is the literal `"true"`. The gate is checked before
+  configuration and fetch. An enabled but incomplete configuration throws;
+  non-2xx provider responses throw with status and body for observability.
+- Configuration requires all three values: `RESEND_API_KEY`, an explicit
+  `RESEND_FROM_EMAIL`, and an explicit `RESEND_REPLY_TO_EMAIL`. Both identities
+  must parse as `sweepza.com` or a subdomain. There are no hardcoded operational
+  sender or inbox defaults, and generic/legacy fallback variables are rejected.
 - Emails are sent for **listing lifecycle + winner** events only
   (`sendHostNotification`: `listing_approved`, `listing_held`,
   `listing_expiring_soon`; `sendWinnerNotification`: `winner_post_published`).
   **No billing/checkout emails exist.** Recipients are always the target user's
-  own `app_user.email` (never a hardcoded/invented address); every attempt writes
-  a `notification_log` row (`sent`/`skipped`), honoring per-event + channel prefs.
-- **Exact intended sender identity:** `Sweepza <notifications@send.sweepza.com>`
-  (set `RESEND_FROM_EMAIL` to this). Operational/from-domain: `send.sweepza.com`.
-- **External action:** create/authorize a Sweepza Resend account (or workspace)
-  and add the sending domain `send.sweepza.com`. Then (automatable): add the
-  Resend DKIM `TXT resend._domainkey`, SPF `TXT send` (`v=spf1
-  include:amazonses.com ~all`), and bounce `MX send →
-  feedback-smtp.us-east-1.amazonses.com` (priority 10) at GoDaddy; verify the
-  domain in Resend; set `RESEND_API_KEY` + `RESEND_FROM_EMAIL` in Doppler `prd` +
-  Vercel Production; fresh deploy; trigger one real listing-approved notification
-  from admin and confirm inbox delivery (not just a 200).
+  own `app_user.email`. A row is marked `sent` only after transport success;
+  gate-disabled attempts are `skipped` with `sent_at = null` and a reason.
+- The scheduled seeker-reminder route authenticates first, then returns a 200
+  structured no-op before Supabase/provider work while disabled. Enabled but
+  incomplete configuration returns 503. Bulk Vercel env sync intentionally
+  excludes `OUTBOUND_EMAIL_ENABLED`.
+- **External actions remain founder-gated:** provision a dedicated Sweepza
+  Resend resource, choose and verify the sending domain using the provider's
+  current DNS instructions, name the From and Reply-To identities, name the
+  inbound owner/forwarding target, and prove an end-to-end reply loop. The
+  existing machine connector belongs to Explore & Earn and must not be used.
+  A configured sender header is not evidence that the Reply-To inbox exists or
+  is monitored. Any internal test send and any production activation require
+  separate explicit approval.
 
 ---
 

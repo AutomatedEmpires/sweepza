@@ -120,6 +120,7 @@ sync_env_group() {
     SENTRY_AUTH_TOKEN
     RESEND_API_KEY
     RESEND_FROM_EMAIL
+    RESEND_REPLY_TO_EMAIL
     CRON_SECRET
     GITHUB_OWNER
     GITHUB_REPO
@@ -129,6 +130,8 @@ sync_env_group() {
   # PAYMENTS_ENABLED is intentionally excluded. A routine bulk secret sync
   # must never become live-money activation authority; that gate is changed
   # only through a separate founder-approved operation.
+  # OUTBOUND_EMAIL_ENABLED is excluded for the same reason. Provisioning the
+  # Resend tuple must never become authority to send mail.
 
   for key in "${base_keys[@]}"; do
     sync_secret_from_doppler "$key" "$vercel_env" "$doppler_config"

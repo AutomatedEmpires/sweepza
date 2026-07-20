@@ -45,6 +45,9 @@ The script syncs these keys from Doppler into Vercel:
 - `STRIPE_SECRET_KEY`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_POSTHOG_HOST`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `RESEND_REPLY_TO_EMAIL`
 - `GITHUB_OWNER`
 - `GITHUB_REPO`
 - `GITHUB_TOKEN`
@@ -63,6 +66,9 @@ These still need provider-side provisioning before they can be added to Doppler:
 - `SENTRY_ORG`
 - `SENTRY_PROJECT`
 - `NOTION_API_TOKEN`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `RESEND_REPLY_TO_EMAIL`
 
 ## WSL commands for Doppler
 
@@ -111,6 +117,18 @@ for cfg in dev dev_personal stg prd; do
   doppler secrets set NEXT_PUBLIC_POSTHOG_KEY='phc_replace_me' --project sweepza --config "$cfg"
 done
 ```
+
+### Resend
+
+Do not use the machine Resend connector: it belongs to Explore & Earn. A
+dedicated Sweepza resource, exact From identity, exact Reply-To identity, and
+inbound owner/reply-loop proof remain founder-gated provider work.
+
+Configuration uses `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and
+`RESEND_REPLY_TO_EMAIL`. Keep `OUTBOUND_EMAIL_ENABLED` unset. The bulk sync may
+copy the configuration tuple but intentionally excludes the activation gate;
+never add `OUTBOUND_EMAIL_ENABLED` to that script. No internal test send or
+Production enablement is authorized by this runbook.
 
 ### Sentry
 
@@ -236,8 +254,10 @@ After adding new keys to Doppler:
 
 ```bash
 pnpm ops:sync-vercel-env
-vercel deploy --prod --yes --scope jackson-coles-projects-dd76106c
 ```
+
+Create a production deployment only after the relevant activation change has
+its own explicit approval and reviewed rollback/verification window.
 
 Until a custom domain is attached in Vercel, keep `prd` `NEXT_PUBLIC_APP_URL` set to `https://sweepza.vercel.app`.
 

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   paymentsEnabled: false,
+  outboundEmailConfigured: true,
+  outboundEmailEnabled: false,
   env: {
     NEXT_PUBLIC_APP_URL: "https://sweepza.com",
     STRIPE_SECRET_KEY: "sk_configured",
@@ -15,12 +17,45 @@ vi.mock("@/lib/env", () => ({ env: mocks.env }));
 vi.mock("@/lib/billing/payment-gate", () => ({
   isPaymentsEnabled: () => mocks.paymentsEnabled,
 }));
+vi.mock("@/lib/email/outbound-gate", () => ({
+  isOutboundEmailConfigured: () => mocks.outboundEmailConfigured,
+  isOutboundEmailEnabled: () => mocks.outboundEmailEnabled,
+}));
 
 import { GET } from "@/app/api/health/route";
 
 describe("health payment status", () => {
   beforeEach(() => {
     mocks.paymentsEnabled = false;
+    mocks.outboundEmailConfigured = true;
+    mocks.outboundEmailEnabled = false;
+  });
+
+  it("reports configured email separately from disabled delivery", async () => {
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.email).toEqual({
+      configured: true,
+      enabled: false,
+      ready: false,
+    });
+    expect(body.ok).toBe(true);
+  });
+
+  it("fails health when email is enabled without complete configuration", async () => {
+    mocks.outboundEmailEnabled = true;
+    mocks.outboundEmailConfigured = false;
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.email).toEqual({
+      configured: false,
+      enabled: true,
+      ready: false,
+    });
+    expect(body.ok).toBe(false);
   });
 
   it("reports configured Stripe resources separately from activation", async () => {
