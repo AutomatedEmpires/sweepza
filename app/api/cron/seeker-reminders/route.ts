@@ -6,6 +6,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   planSeekerReminders,
   reminderLogKey,
+  MAX_ITEMS_PER_REMINDER_DIGEST,
   type ReminderCandidate,
   type ReminderPrefs,
 } from "@/lib/seeker-reminders";
@@ -22,8 +23,6 @@ export const maxDuration = 60;
 // keyed to its window (re-open date / end date), so any lookback longer than the
 // widest window (ending-soon = 3 days) prevents a second send within a window.
 const DEDUPE_LOOKBACK_DAYS = 8;
-// Cap the digest so a heavy tracker never gets an overwhelming wall of rows.
-const MAX_ITEMS_PER_DIGEST = 12;
 const REMINDER_TYPES = ["ready_again", "ends_today", "ending_soon"] as const;
 
 interface SeekerStateRow {
@@ -201,7 +200,7 @@ export async function GET(request: Request) {
     const emailEnabled = prefsByUser.get(appUserId)?.email_enabled !== false;
     if (!emailEnabled || !bucket.email) continue;
 
-    const toSend = planned.slice(0, MAX_ITEMS_PER_DIGEST);
+    const toSend = planned.slice(0, MAX_ITEMS_PER_REMINDER_DIGEST);
     const items: SeekerReminderItem[] = toSend.map((r) => ({
       kind: r.type,
       title: r.listing.title,

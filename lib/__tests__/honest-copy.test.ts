@@ -252,8 +252,10 @@ const EXEMPT_APP_SOURCES: Record<string, string> = {
   "app/admin/import/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
   "app/admin/listings/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
   "app/admin/notifications/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
+  "app/admin/operations/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
   "app/admin/reports/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
   "app/admin/review/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
+  "app/admin/sources/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
   "app/admin/winners/page.tsx": "admin-only: behind the app/admin/layout.tsx role gate",
 
   // VISUAL REVIEW — design-system fixtures that render FAKE listings. Not

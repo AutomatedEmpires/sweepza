@@ -13,6 +13,8 @@ import type { EntryFrequency } from "@/lib/types/listing";
 // Resend.
 
 const ENDING_SOON_DAYS = 3;
+/** Shared production/preview cap so the operator view cannot overstate a digest. */
+export const MAX_ITEMS_PER_REMINDER_DIGEST = 12;
 
 export type SeekerReminderType = "ready_again" | "ends_today" | "ending_soon";
 

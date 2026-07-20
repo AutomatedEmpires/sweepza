@@ -27,6 +27,8 @@ export function AdminNav({ counts }: { counts: AdminNavCounts }) {
     { href: "/admin/claims", label: "Claims" },
     { href: "/admin/winners", label: "Winners", badge: counts.pending_winners },
     { href: "/admin/notifications", label: "Notifications" },
+    { href: "/admin/sources", label: "Source health" },
+    { href: "/admin/operations", label: "Operations" },
   ];
 
   function isActive(href: string): boolean {
