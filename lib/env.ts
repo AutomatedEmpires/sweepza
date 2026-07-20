@@ -27,10 +27,19 @@ const schema = z.object({
   RESEND_FROM_EMAIL: z.string().optional(),
   /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
   CRON_SECRET: z.string().optional(),
+  /** "true" flips CSP from report-only to enforcing (nonce-based). Redeploy required. */
+  CSP_ENFORCE: z.string().optional(),
   /** Anthropic key for the ingestion extractor. Ingestion no-ops if unset. */
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Override the extraction model (defaults to claude-opus-4-8). */
   INGEST_EXTRACTION_MODEL: z.string().optional(),
+  /**
+   * Master switch for live source ingestion. Execution requires the literal
+   * string "true"; absent or anything else means ingestion no-ops. This is a
+   * founder-controlled activation gate — code being merged never implies this
+   * is set. Per-source compliance approval is still required on top.
+   */
+  INGESTION_ENABLED: z.string().optional(),
 });
 
 export const env = schema.parse(process.env);

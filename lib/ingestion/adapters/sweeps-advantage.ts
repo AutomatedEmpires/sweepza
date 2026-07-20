@@ -1,6 +1,16 @@
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
-import type { DiscoverOptions, DiscoveredLead, SourceAdapter } from "@/lib/ingestion/source";
-import { getSourceDescriptor } from "@/lib/ingestion/source";
+import {
+  decodeHtmlEntities,
+  protectQuotedTagDelimiters,
+  stripHtmlToText,
+} from "@/lib/ingestion/html-text";
+import {
+  SourceFetchError,
+  type AdapterContext,
+  type DiscoveryWorkItem,
+  type DiscoveredLead,
+  type SourceAdapter,
+} from "@/lib/ingestion/source";
 import type { EntryFrequency } from "@/lib/db/enums";
 
 // Tier-1 discovery adapter for Sweepstakes Advantage (build priority #1 — 200+
@@ -11,11 +21,11 @@ import type { EntryFrequency } from "@/lib/db/enums";
 // hints for prioritization — never published.
 //
 // The parsers are pure and unit-tested against fixtures; the adapter is the
-// thin network shell around them.
+// thin shell around them, and it fetches exclusively through the policy client
+// handed to it in AdapterContext.
 
 const BASE = "https://www.sweepsadvantage.com";
 const HUB_PATH = "/new-sweepstakes";
-const USER_AGENT = "Mozilla/5.0 (compatible; SweepzaBot/0.1; +https://sweepza.com/bot)";
 
 export interface SweepsAdvantageCard {
   sourceId: string;
@@ -28,34 +38,6 @@ export interface SweepsAdvantageCard {
   hintFrequency?: EntryFrequency;
   hintValue?: number;
   hintRestrictions?: string;
-}
-
-const ENTITIES: Record<string, string> = {
-  "&amp;": "&", "&quot;": '"', "&#39;": "'", "&rsquo;": "’", "&lsquo;": "‘",
-  "&ldquo;": "“", "&rdquo;": "”", "&ndash;": "–", "&mdash;": "—",
-  "&nbsp;": " ", "&hellip;": "…", "&trade;": "™", "&reg;": "®",
-};
-
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&[a-z]+;|&#\d+;/gi, (m) => ENTITIES[m.toLowerCase()] ?? m);
-}
-
-function stripTags(value: string): string {
-  const withoutBlocks = value.replace(
-    /<(script|style)\b[^>]*>[\s\S]*?<\/\1[^>]*>/gi,
-    " ",
-  );
-  // Strip remaining tags repeatedly so overlapping/reconstructed "<...>"
-  // sequences cannot survive a single pass.
-  let previous: string;
-  let stripped = withoutBlocks;
-  do {
-    previous = stripped;
-    stripped = stripped.replace(/<[^>]*>/g, "");
-  } while (stripped !== previous);
-  return decodeEntities(stripped).replace(/\s+/g, " ").trim();
 }
 
 /** Sweeps Advantage prints dates as MM-DD-YYYY; return YYYY-MM-DD. */
@@ -84,12 +66,12 @@ function moneyFromValue(value: string): number | undefined {
 function field(cardHtml: string, label: string): string | undefined {
   const re = new RegExp(`<strong>\\s*${label}\\s*:</strong>([^<]*)`, "i");
   const m = cardHtml.match(re);
-  return m ? decodeEntities(m[1]).replace(/\s+/g, " ").trim() : undefined;
+  return m ? decodeHtmlEntities(m[1]).replace(/\s+/g, " ").trim() : undefined;
 }
 
 /** The newest daily-listing path from the /new-sweepstakes hub, or null. */
 export function parseNewestDailyPath(hubHtml: string): string | null {
-  const m = hubHtml.match(/\/new-sweepstakes-\d+\.html/);
+  const m = protectQuotedTagDelimiters(hubHtml).match(/\/new-sweepstakes-\d+\.html/);
   return m ? m[0] : null;
 }
 
@@ -99,7 +81,7 @@ export function parseNewestDailyPath(hubHtml: string): string | null {
  * the labeled metadata fields as hints.
  */
 export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
-  const parts = html.split(/data-link_id="/).slice(1);
+  const parts = protectQuotedTagDelimiters(html).split(/data-link_id="/).slice(1);
   const cards: SweepsAdvantageCard[] = [];
 
   for (const part of parts) {
@@ -110,7 +92,7 @@ export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
     const titleMatch = part.match(
       new RegExp(`href="/sweepstakes-${id}\\.html"[^>]*>([\\s\\S]*?)</a>`, "i"),
     );
-    const title = titleMatch ? stripTags(titleMatch[1]) : "";
+    const title = titleMatch ? stripHtmlToText(titleMatch[1]) : "";
     if (!title) continue;
 
     const descMatch = part.match(/class="sweepstake-description"[^>]*>([\s\S]*?)<\/p>/i);
@@ -123,7 +105,7 @@ export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
       redirectPath: `/go.php?id=${id}`,
       detailPath: `/sweepstakes-${id}.html`,
       title,
-      description: descMatch ? stripTags(descMatch[1]) : undefined,
+      description: descMatch ? stripHtmlToText(descMatch[1]) : undefined,
       hintEndDate: expires ? saDateToIso(expires) : undefined,
       hintFrequency: limit ? frequencyFromLimit(limit) : undefined,
       hintValue: value ? moneyFromValue(value) : undefined,
@@ -134,50 +116,87 @@ export function parseSweepsAdvantageDaily(html: string): SweepsAdvantageCard[] {
   return cards;
 }
 
-async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal });
-  if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
-  return res.text();
-}
-
-/** Follow the SA redirect to the official sponsor URL, normalized (utm stripped). */
-async function resolveOfficialUrl(
-  redirectPath: string,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  const res = await fetch(`${BASE}${redirectPath}`, {
-    headers: { "User-Agent": USER_AGENT },
-    redirect: "follow",
-    signal,
-  });
-  return normalizeUrl(res.url);
-}
-
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 export const sweepsAdvantageAdapter: SourceAdapter = {
   id: "sweeps_advantage",
-  async discover({ limit, signal }: DiscoverOptions): Promise<DiscoveredLead[]> {
-    const crawlDelay = getSourceDescriptor("sweeps_advantage")?.crawlDelayMs ?? 2000;
+  async discover({ http, workQueue, limit }: AdapterContext): Promise<DiscoveredLead[]> {
+    // Source-level fetches. A 500/timeout/rate-limit here means THE SOURCE is
+    // down, which is not the same fact as "no new sweeps" — collapsing both to
+    // [] let the orchestrator record `ok`, reset consecutive_failures, and kept
+    // the circuit breaker from ever opening on a real outage.
+    const hub = await http.get(`${BASE}${HUB_PATH}`);
+    if (hub.status !== "ok" && hub.status !== "not_modified") {
+      throw new SourceFetchError(hub.url, hub.failure, hub.message);
+    }
 
-    const hub = await fetchText(`${BASE}${HUB_PATH}`, signal);
-    const dailyPath = parseNewestDailyPath(hub);
-    if (!dailyPath) return [];
+    // The source answered, but its markup no longer contains the daily link this
+    // adapter is built around. That is not a quiet day — it means the page
+    // changed shape or is serving something unexpected, and returning [] would
+    // hide a broken parser behind "no new sweeps" indefinitely. Classified as
+    // `empty_body`: we got a response with nothing usable in it.
+    if (hub.status === "ok") {
+      const dailyPath = parseNewestDailyPath(hub.body);
+      if (!dailyPath) {
+        throw new SourceFetchError(
+          `${BASE}${HUB_PATH}`,
+          "empty_body",
+          "the hub returned no daily-sweepstakes link — the page shape changed or the parser is stale",
+        );
+      }
 
-    await delay(crawlDelay);
-    const dailyHtml = await fetchText(`${BASE}${dailyPath}`, signal);
-    const cards = parseSweepsAdvantageDaily(dailyHtml);
+      const daily = await http.get(`${BASE}${dailyPath}`);
+      if (daily.status !== "ok" && daily.status !== "not_modified") {
+        throw new SourceFetchError(daily.url, daily.failure, daily.message);
+      }
+      if (daily.status === "ok") {
+        const cards = parseSweepsAdvantageDaily(daily.body);
+        if (cards.length === 0) {
+          throw new SourceFetchError(
+            daily.url,
+            "empty_body",
+            "the daily page returned no parseable sweepstakes cards",
+          );
+        }
+        await workQueue.enqueue(cards.map((card): DiscoveryWorkItem => ({
+          key: card.sourceId,
+          payload: { ...card },
+        })));
+        // Every child is durable before this validator can produce a 304.
+        await http.commitFetchState(`${BASE}${dailyPath}`, daily);
+      }
+      // Deliberately do not commit the hub validator. A hub can remain
+      // unchanged while the current daily page gains cards; fetching the hub
+      // body is how we retain the daily URL needed to revalidate that page.
+    }
 
     const leads: DiscoveredLead[] = [];
-    for (const card of cards.slice(0, limit ?? cards.length)) {
-      await delay(crawlDelay);
-      const officialUrl = await resolveOfficialUrl(card.redirectPath, signal).catch(() => null);
-      if (!officialUrl) continue;
-      leads.push({
-        officialUrl,
-        sourceUrl: `${BASE}${card.detailPath}`,
-        hint: { title: card.title, endDate: card.hintEndDate },
-      });
+    for (const item of await workQueue.take(limit)) {
+      const card = item.payload as unknown as SweepsAdvantageCard;
+      if (!card.sourceId || !card.redirectPath || !card.detailPath || !card.title) {
+        await workQueue.complete(item.key);
+        continue;
+      }
+      // The redirect is the only way to learn the official URL; a failed
+      // resolve drops the lead rather than guessing at a destination.
+      const resolved = await http.resolve(`${BASE}${card.redirectPath}`);
+      if (resolved.status !== "ok") {
+        if (resolved.status === "failed" && resolved.failure === "not_found") {
+          await workQueue.complete(item.key);
+        } else {
+          await workQueue.defer(item.key);
+        }
+        continue;
+      }
+      const officialUrl = normalizeUrl(resolved.finalUrl);
+      if (officialUrl) {
+        leads.push({
+          officialUrl,
+          sourceUrl: `${BASE}${card.detailPath}`,
+          hint: { title: card.title, endDate: card.hintEndDate },
+          discoveryWorkKey: item.key,
+        });
+      } else {
+        await workQueue.complete(item.key);
+      }
     }
     return leads;
   },

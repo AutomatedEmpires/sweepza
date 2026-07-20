@@ -34,6 +34,12 @@ describe("toIsoDate", () => {
     expect(toIsoDate("someday")).toBeNull();
     expect(toIsoDate(null)).toBeNull();
   });
+  it.each(["2026-02-29", "2026-02-30", "2026-04-31", "2026-08-01garbage"])(
+    "rejects invalid calendar date %s",
+    (value) => {
+      expect(toIsoDate(value)).toBeNull();
+    },
+  );
 });
 
 describe("mapExtraction", () => {
@@ -78,6 +84,8 @@ describe("mapExtraction", () => {
     expect(candidate.title).toBe("");
     expect(candidate.officialRulesUrl).toBeNull();
     expect(candidate.endDate).toBeNull();
+    expect(candidate.eligibilityStates).toBeNull();
+    expect(candidate.dedup.variantKey).toContain("|?");
     expect(issues).toEqual(
       expect.arrayContaining([
         "Missing title.",
@@ -126,6 +134,14 @@ describe("verifyCandidate", () => {
     const result = verifyCandidate(candidate, NOW);
     expect(result.publishable).toBe(false);
     expect(result.hardFailures).toContain("end_date_in_future");
+  });
+
+  it("blocks impossible calendar dates before persistence", () => {
+    for (const endDate of ["2026-02-29", "2026-02-30", "2026-04-31"]) {
+      const { candidate } = mapExtraction(complete({ endDate }));
+      expect(candidate.endDate).toBeNull();
+      expect(verifyCandidate(candidate, NOW).hardFailures).toContain("end_date_in_future");
+    }
   });
 
   it("stays publishable but lower-confidence when soft checks miss", () => {

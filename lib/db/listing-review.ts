@@ -12,7 +12,6 @@ export interface ReviewQueueListing {
   prize_category: string | null;
   main_image_url: string | null;
   official_rules_url: string | null;
-  official_rules_exception: boolean;
   entry_url: string | null;
   end_date: string | null;
   entry_frequency: string | null;
@@ -42,7 +41,7 @@ export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
     .from("listing")
     .select(
       `id, slug, title, short_description, prize_name, prize_category,
-       main_image_url, official_rules_url, official_rules_exception, entry_url,
+       main_image_url, official_rules_url, entry_url,
        end_date, entry_frequency, eligibility_country, lifecycle_status,
        visibility_status, moderation_status, listing_verification_status,
        review_notes_internal, created_at, host_id,
@@ -67,7 +66,6 @@ export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
       prize_category: row.prize_category,
       main_image_url: row.main_image_url,
       official_rules_url: row.official_rules_url,
-      official_rules_exception: row.official_rules_exception,
       entry_url: row.entry_url,
       end_date: row.end_date,
       entry_frequency: row.entry_frequency,

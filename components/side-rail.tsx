@@ -48,8 +48,10 @@ export function SideRail() {
         })}
       </nav>
 
+      {/* Was: "No purchase necessary" — the rail renders on every page, so this asserted
+          the sponsor's legal representation site-wide. Sweepza's own fee is all we can state. */}
       <p className="mt-auto px-3 text-[10px] uppercase tracking-[0.15em] text-graphite">
-        No purchase necessary
+        Free for seekers
       </p>
     </aside>
   );

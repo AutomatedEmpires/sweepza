@@ -1,5 +1,6 @@
 import { ENTRY_FREQUENCIES, type EntryFrequency } from "@/lib/db/enums";
 import { dedupKeys, normalizeUrl, type DedupKeys } from "@/lib/ingestion/fingerprint";
+import { isValidDateOnly } from "@/lib/ingestion/lifecycle";
 
 // Canonical mapper — turns a loose extraction of an official sweepstakes page
 // into the strict, controlled-vocabulary shape the rest of Sweepza speaks
@@ -44,7 +45,7 @@ export interface NormalizedCandidate {
   endDate: string | null;
   entryFrequency: EntryFrequency;
   eligibilityCountry: string | null;
-  eligibilityStates: string[];
+  eligibilityStates: string[] | null;
   ageRequirement: number | null;
   noPurchaseNecessary: boolean;
   sponsorName: string | null;
@@ -119,11 +120,11 @@ function parseInteger(value: number | string | null | undefined): number | null 
 export function toIsoDate(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
-  const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
+  const iso = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(trimmed);
+  if (!iso || !isValidDateOnly(iso[1])) return null;
+  if (trimmed === iso[1]) return iso[1];
   const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  return Number.isNaN(parsed.getTime()) ? null : iso[1];
 }
 
 function parseBoolean(value: boolean | string | null | undefined): boolean {
@@ -208,6 +209,10 @@ export function mapExtraction(raw: RawExtraction): MapResult {
   const longRaw = clean(raw.longDescription);
   const long = longRaw ? truncate(longRaw, 2000).value : null;
 
+  const eligibilityStates = raw.eligibilityStates == null
+    ? null
+    : raw.eligibilityStates.map((state) => clean(state).toUpperCase()).filter(Boolean);
+
   const candidate: NormalizedCandidate = {
     title: title.value,
     shortDescription: short.value,
@@ -221,9 +226,7 @@ export function mapExtraction(raw: RawExtraction): MapResult {
     endDate,
     entryFrequency: frequency ?? "other",
     eligibilityCountry: mapCountry(raw.eligibilityCountry),
-    eligibilityStates: (raw.eligibilityStates ?? [])
-      .map((s) => clean(s).toUpperCase())
-      .filter(Boolean),
+    eligibilityStates,
     ageRequirement: parseInteger(raw.ageRequirement),
     noPurchaseNecessary: parseBoolean(raw.noPurchaseNecessary),
     sponsorName: clean(raw.sponsorName) || null,
@@ -237,6 +240,7 @@ export function mapExtraction(raw: RawExtraction): MapResult {
       prizeName,
       endDate,
       eligibilityCountry: mapCountry(raw.eligibilityCountry),
+      eligibilityStates,
     }),
   };
 

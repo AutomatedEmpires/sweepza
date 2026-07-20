@@ -1,3 +1,24 @@
+<!-- ae-control-plane v1 (2026-07-16). Machine operating contract; product docs follow below. -->
+# Operating contract — Automated Empires control plane
+
+- **Canonical clone (the ONLY writable copy):** WSL `Ubuntu-24.04-Recovered` → `/home/jackson/automatedempires/ventures/sweepza`.
+  Never clone this repository anywhere else on the machine. Parallel work uses controlled
+  worktrees: `ae start sweepza -t <task> -a <agent> --worktree`.
+- **Sessions:** acquire the single-writer lease first (`ae start sweepza -t <task> -a <agent>`);
+  end with `ae finish sweepza`. Work counts as done ONLY when pushed and remote-SHA-verified.
+- **Deploys:** merging `main` auto-deploys production via Vercel — **LIVE at sweepza.com**.
+- **Validate before merge:** `pnpm typecheck && pnpm lint` (CI must be green; squash merges).
+- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, email=resend (sender isolation — OWN identity, never E&E's), storage=none (Sweepza has no Cloudinary account, code, or env — the previous "own account/env" claim was false; corrected 2026-07-18), ai=anthropic (ingestion extraction, claude-opus-4-8).
+- **LOCKED:** Sweepza is FULLY INDEPENDENT from Explore & Earn — no shared Stripe/Resend/Supabase resources, ever
+- **LOCKED:** Launch gate: NO-GO until 6 founder decisions are made — CI-green code is not launch permission
+- **LOCKED:** Theme: tokenized day/night hybrid (auto by local clock, dark 8pm-6am) — edit app/tokens.css only
+- **Warn before:** MERGING TO MAIN DEPLOYS sweepza.com
+- **Warn before:** activating ingestion crons (needs founder env + per-source compliance approval)
+- **Warn before:** sending email
+- Full policy: `github.com/AutomatedEmpires/ae-control` → `POLICY.md`. Briefing: `ae info sweepza`.
+
+---
+
 # Sweepza — Agent & Contributor Guide
 
 This file is binding for every contributor, human or AI (Copilot or Claude). Read it before writing code.
@@ -8,7 +29,7 @@ Sweepza is one app in the AutomatedEmpires venture system; **Explore&Earn (E&E) 
 
 - **Machine:** Windows 11 ARM64 (Snapdragon X Elite) → WSL2 Ubuntu 24.04 → VS Code. Working path `/home/jackson/automatedempires/ventures/sweepza`. 16 GB RAM — **one agent at a time**; do not assume parallel heavy builds or long-running watchers.
 - **Runtime (pinned):** Node **24.16.0** (`.nvmrc`) · pnpm **10.12.4** (`packageManager`) · TypeScript end-to-end. Any version change requires a dated decision in the locked Notion canon.
-- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary · Observability = PostHog + Sentry · Icons = Phosphor (semantic registry in components/icon.tsx) · Email = Resend.
+- **Integration spine (cross-app standard — do not introduce alternates without a dated decision):** Secrets = Doppler · Hosting = Vercel · Database = Supabase Postgres (+ PostGIS) · Auth = Clerk · Maps = Mapbox · Payments = Stripe Connect · Media = Cloudinary if Sweepza adopts media (current storage is `none`) · Observability = PostHog + Sentry · Icons = Phosphor (semantic registry in components/icon.tsx) · Email = Resend.
 - **CI & agent routing:** CI runs through the org reusable workflow (`.github/workflows/ci.yml` → `AutomatedEmpires/.github` reusable-ci). Agent routing (build-task router, PR agent router/dispatch) mirrors E&E. Notion decides product truth; this repo decides implementation truth.
 
 ## Source of truth

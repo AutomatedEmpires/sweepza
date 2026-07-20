@@ -1,4 +1,4 @@
-import { daysUntil } from "@/lib/listing-badges";
+import { daysUntil, listingExpiration } from "@/lib/listing-badges";
 import { nextEntryAt } from "@/lib/sweep-routine";
 import type { EntryFrequency } from "@/lib/types/listing";
 
@@ -13,6 +13,8 @@ import type { EntryFrequency } from "@/lib/types/listing";
 // Resend.
 
 const ENDING_SOON_DAYS = 3;
+/** Shared production/preview cap so the operator view cannot overstate a digest. */
+export const MAX_ITEMS_PER_REMINDER_DIGEST = 12;
 
 export type SeekerReminderType = "ready_again" | "ends_today" | "ending_soon";
 
@@ -91,6 +93,7 @@ export function planReminderForListing(
   candidate: ReminderCandidate,
   prefs: ReminderPrefs = ALL_REMINDERS_ON,
   now: Date = new Date(),
+  calendarTimeZone?: string,
 ): PlannedReminder | null {
   const { listing, activity } = candidate;
 
@@ -98,7 +101,8 @@ export function planReminderForListing(
   if (activity.wonAt || activity.skippedAt) return null;
 
   const endsInDays = daysUntil(listing.endDate, now);
-  const expired = endsInDays < 0;
+  const expiry = listingExpiration(listing.endDate, now, calendarTimeZone);
+  const expired = expiry.state === "expired";
   if (expired) return null;
 
   const tracked = Boolean(activity.savedAt) || Boolean(activity.enteredAt);
@@ -119,14 +123,14 @@ export function planReminderForListing(
 
   // Ending reminders — only for sweeps the seeker is actually tracking.
   if (tracked) {
-    if (prefs.endsToday && endsInDays <= 0) {
+    if (prefs.endsToday && expiry.state === "ends_today") {
       options.push({
         type: "ends_today",
         listing,
         reminderKey: isoDay(listing.endDate),
         endsInDays,
       });
-    } else if (prefs.endsSoon && endsInDays > 0 && endsInDays <= ENDING_SOON_DAYS) {
+    } else if (prefs.endsSoon && expiry.state === "ending_soon") {
       options.push({
         type: "ending_soon",
         listing,
@@ -149,10 +153,11 @@ export function planSeekerReminders(
   candidates: ReminderCandidate[],
   prefs: ReminderPrefs = ALL_REMINDERS_ON,
   now: Date = new Date(),
+  calendarTimeZone?: string,
 ): PlannedReminder[] {
   const planned: PlannedReminder[] = [];
   for (const candidate of candidates) {
-    const reminder = planReminderForListing(candidate, prefs, now);
+    const reminder = planReminderForListing(candidate, prefs, now, calendarTimeZone);
     if (reminder) planned.push(reminder);
   }
 

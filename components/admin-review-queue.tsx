@@ -110,7 +110,7 @@ export function AdminReviewQueue({
         const state = feedback[listing.id] ?? {};
         const missingImage = !listing.main_image_url;
         const missingRules =
-          !listing.official_rules_url && !listing.official_rules_exception;
+          !listing.official_rules_url;
 
         return (
           <div

@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "ops:smoke": "node scripts/smoke.mjs",
     "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
     "ops:expire-stale": "node scripts/expire-stale-listings.mjs",
     "ops:seed-dev": "node scripts/seed-dev-listings.mjs",
