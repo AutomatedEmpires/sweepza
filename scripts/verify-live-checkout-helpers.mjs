@@ -89,6 +89,7 @@ export function isExpectedRecurringPrice(price, expected) {
       price.currency === "usd" &&
       price.recurring?.interval === "month" &&
       price.recurring?.interval_count === 1 &&
+      price.recurring?.usage_type === "licensed" &&
       product &&
       product.deleted !== true &&
       product.active === true &&

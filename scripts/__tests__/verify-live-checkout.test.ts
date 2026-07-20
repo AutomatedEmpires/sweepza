@@ -111,7 +111,11 @@ describe("price ownership proof", () => {
       active: true,
       unit_amount: 500,
       currency: "usd",
-      recurring: { interval: "month", interval_count: 1 },
+      recurring: {
+        interval: "month",
+        interval_count: 1,
+        usage_type: "licensed",
+      },
       product: {
         active: true,
         metadata: {
@@ -130,6 +134,19 @@ describe("price ownership proof", () => {
     expect(
       isExpectedRecurringPrice(
         { ...price, livemode: false },
+        { unitAmount: 500, lookupKey: "sweepza_additional_listing" },
+      ),
+    ).toBe(false);
+    expect(
+      isExpectedRecurringPrice(
+        {
+          ...price,
+          recurring: {
+            interval: "month",
+            interval_count: 1,
+            usage_type: "metered",
+          },
+        },
         { unitAmount: 500, lookupKey: "sweepza_additional_listing" },
       ),
     ).toBe(false);

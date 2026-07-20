@@ -8,6 +8,11 @@ import {
 export const SWEEPZA_LIVE_WEBHOOK_URL =
   "https://sweepza.com/api/webhooks/stripe";
 export const SWEEPZA_SUPABASE_PROJECT_REF = "ojwhsntcpmoxnzisuomq";
+export const REQUIRED_STRIPE_WEBHOOK_EVENTS = Object.freeze([
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+]);
 export const APPROVED_STRIPE_ACCOUNT_IDS = Object.freeze({
   test: "acct_1TeqgHD7Yqq488pB",
   live: null,
@@ -100,15 +105,69 @@ export function hasExpectedRecurringPriceEconomics(price, expected) {
       price.currency === "usd" &&
       price.unit_amount === expected.unitAmount &&
       price.recurring?.interval === "month" &&
-      price.recurring?.interval_count === 1,
+      price.recurring?.interval_count === 1 &&
+      price.recurring?.usage_type === "licensed",
   );
+}
+
+export function getSweepzaMetadataState(metadata, lookup) {
+  if (metadata?.sweepza_key !== lookup) return "mismatch";
+  if (metadata?.venture === "sweepza") return "exact";
+  if (metadata?.venture === undefined) return "legacy";
+  return "foreign";
+}
+
+export function selectSweepzaPriceCandidate(prices, expected) {
+  const economicMatches = prices.filter((price) =>
+    hasExpectedRecurringPriceEconomics(price, expected),
+  );
+  const classified = economicMatches.map((price) => ({
+    price,
+    state: getSweepzaMetadataState(price.metadata, expected.lookup),
+  }));
+  if (classified.some(({ state }) => state === "foreign")) {
+    throw new Error(
+      `Refusing price reuse for ${expected.lookup}: an economic match carries a foreign venture tag.`,
+    );
+  }
+  const scoped = classified.filter(
+    ({ state }) => state === "exact" || state === "legacy",
+  );
+  if (economicMatches.length > 0 && scoped.length === 0) {
+    throw new Error(
+      `Refusing price reuse for ${expected.lookup}: economic match lacks exact Sweepza metadata.`,
+    );
+  }
+  if (scoped.length > 1) {
+    throw new Error(
+      `Refusing ambiguous price state for ${expected.lookup}: multiple scoped prices match.`,
+    );
+  }
+  return scoped[0] ?? null;
 }
 
 export function isReusableSweepzaPrice(price, expected) {
   return Boolean(
     hasExpectedRecurringPriceEconomics(price, expected) &&
-      price.metadata?.venture === "sweepza" &&
-      price.metadata?.sweepza_key === expected.lookup,
+      getSweepzaMetadataState(price.metadata, expected.lookup) === "exact",
+  );
+}
+
+export function isOwnedSweepzaAccountWebhook(endpoint) {
+  return Boolean(
+    endpoint?.application === null &&
+      endpoint.metadata?.venture === "sweepza" &&
+      endpoint.metadata?.endpoint_scope === "account",
+  );
+}
+
+export function hasRequiredWebhookEvents(endpoint) {
+  const enabledEvents = endpoint?.enabled_events ?? [];
+  return (
+    enabledEvents.includes("*") ||
+    REQUIRED_STRIPE_WEBHOOK_EVENTS.every((event) =>
+      enabledEvents.includes(event),
+    )
   );
 }
 

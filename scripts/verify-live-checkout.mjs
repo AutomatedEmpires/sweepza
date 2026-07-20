@@ -24,8 +24,11 @@ import {
   SWEEPZA_SUPABASE_PROJECT_REF,
   getApprovedStripeAccountId,
   getStripeKeyMode,
+  hasRequiredWebhookEvents,
   isExpectedSupabaseProjectUrl,
+  isOwnedSweepzaAccountWebhook,
 } from "./stripe-operator-safety.mjs";
+import { listAllStripePages } from "./provision-stripe-workflow.mjs";
 
 const SWEEPZA_WEBHOOK_URL = "https://sweepza.com/api/webhooks/stripe";
 
@@ -251,14 +254,28 @@ for (const s of sweepzaSubs) {
 }
 
 // 5. Webhook endpoint is registered + enabled
-const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
-const wh = endpoints.data.find((e) => e.url === SWEEPZA_WEBHOOK_URL);
+const endpoints = await listAllStripePages(
+  (startingAfter) =>
+    stripe.webhookEndpoints.list({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    }),
+  { label: "live webhook endpoint" },
+);
+const matchingWebhooks = endpoints.filter((e) => e.url === SWEEPZA_WEBHOOK_URL);
+const wh = matchingWebhooks.length === 1 ? matchingWebhooks[0] : null;
 check(
-  "Sweepza live webhook endpoint enabled",
-  Boolean(wh) && wh.status === "enabled" && wh.livemode === true,
+  "Sweepza live account webhook endpoint enabled and complete",
+  Boolean(wh) &&
+    wh.status === "enabled" &&
+    wh.livemode === true &&
+    isOwnedSweepzaAccountWebhook(wh) &&
+    hasRequiredWebhookEvents(wh),
   wh
-    ? `${wh.id} live=${wh.livemode} events=${wh.enabled_events.length}`
-    : "not registered",
+    ? `${wh.id} live=${wh.livemode} owned=${isOwnedSweepzaAccountWebhook(wh)} events_complete=${hasRequiredWebhookEvents(wh)}`
+    : matchingWebhooks.length > 1
+      ? `ambiguous endpoints=${matchingWebhooks.length}`
+      : "not registered",
 );
 
 // 6. Recent subscription events + pending-webhook backlog

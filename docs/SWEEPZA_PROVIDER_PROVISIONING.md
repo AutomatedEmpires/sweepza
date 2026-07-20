@@ -109,10 +109,20 @@ The operator scripts add a separate account-isolation boundary:
   reviewed code change; future live execution will also require
   `--confirm-live-account` with that exact id. A newly returned signing secret
   is written only to a new (`O_EXCL`, no-follow) mode-0600 `/tmp/stripe-*` file.
+  Read-only discovery exhausts strongly consistent list pagination before any
+  write. Existing account webhooks are reused without reserving that file;
+  only endpoints tagged `venture=sweepza` and `endpoint_scope=account` qualify,
+  so untagged and Connect/application endpoints are refused. Legacy prices on
+  an already venture-scoped Sweepza product, carrying the exact Sweepza key
+  but no venture tag, are upgraded in place; unscoped products, foreign
+  venture tags, and ambiguous duplicates are refused. Reusable prices must be
+  active licensed USD monthly prices with the exact amount and Sweepza key.
 - `scripts/verify-live-checkout.mjs` is read-only, but still requires
   explicit `--expected-account`, the checked-in approved live id, and the exact
   canonical Sweepza Supabase URL before continuing. With the live allowlist
-  intentionally empty, it currently refuses before any provider call.
+  intentionally empty, it currently refuses before any provider call. Once
+  authorized, it also requires one live, enabled, explicitly Sweepza-owned
+  account webhook with the complete subscription event set.
 
 These checks reduce operator error; they do not authorize provisioning, live
 verification, or payment activation.

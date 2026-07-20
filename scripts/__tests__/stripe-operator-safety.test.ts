@@ -8,15 +8,19 @@ import {
 } from "node:fs";
 import {
   APPROVED_STRIPE_ACCOUNT_IDS,
+  getSweepzaMetadataState,
   getStripeKeyMode,
+  hasRequiredWebhookEvents,
   inspectProvisioningPreflight,
   isReusableSweepzaPrice,
   isAllowedSecretOutputPath,
   isAllowedSweepzaWebhookUrl,
   isExpectedSupabaseProjectUrl,
+  isOwnedSweepzaAccountWebhook,
   mergeRequiredWebhookEvents,
   releaseSecretOutput,
   reserveSecretOutput,
+  selectSweepzaPriceCandidate,
 } from "../stripe-operator-safety.mjs";
 
 const FILE_TEST_PATHS = [
@@ -177,7 +181,11 @@ describe("price reuse boundary", () => {
     active: true,
     currency: "usd",
     unit_amount: 1900,
-    recurring: { interval: "month", interval_count: 1 },
+    recurring: {
+      interval: "month",
+      interval_count: 1,
+      usage_type: "licensed",
+    },
     metadata: {
       venture: "sweepza",
       sweepza_key: "sweepza_host_baseline",
@@ -193,12 +201,85 @@ describe("price reuse boundary", () => {
     { unit_amount: 500 },
     { recurring: { interval: "year", interval_count: 1 } },
     { recurring: { interval: "month", interval_count: 2 } },
+    {
+      recurring: {
+        interval: "month",
+        interval_count: 1,
+        usage_type: "metered",
+      },
+    },
     { metadata: { venture: "other", sweepza_key: "sweepza_host_baseline" } },
     { metadata: { venture: "sweepza", sweepza_key: "other" } },
   ])("rejects mismatch %o", (override) => {
     expect(isReusableSweepzaPrice({ ...exactPrice, ...override }, expected)).toBe(
       false,
     );
+  });
+
+  it("classifies only unclaimed keyed metadata as safely upgradeable legacy data", () => {
+    expect(
+      getSweepzaMetadataState(
+        { sweepza_key: "sweepza_host_baseline" },
+        "sweepza_host_baseline",
+      ),
+    ).toBe("legacy");
+    expect(
+      getSweepzaMetadataState(
+        { venture: "sweepza", sweepza_key: "sweepza_host_baseline" },
+        "sweepza_host_baseline",
+      ),
+    ).toBe("exact");
+    expect(
+      getSweepzaMetadataState(
+        { venture: "other", sweepza_key: "sweepza_host_baseline" },
+        "sweepza_host_baseline",
+      ),
+    ).toBe("foreign");
+    expect(
+      getSweepzaMetadataState(
+        { venture: "", sweepza_key: "sweepza_host_baseline" },
+        "sweepza_host_baseline",
+      ),
+    ).toBe("foreign");
+    expect(getSweepzaMetadataState({}, "sweepza_host_baseline")).toBe(
+      "mismatch",
+    );
+  });
+
+  it.each(["exact", "legacy"])(
+    "refuses a foreign same-key economic price alongside a %s candidate",
+    (candidateState) => {
+      const candidate = {
+        ...exactPrice,
+        metadata:
+          candidateState === "exact"
+            ? exactPrice.metadata
+            : { sweepza_key: "sweepza_host_baseline" },
+      };
+      const foreign = {
+        ...exactPrice,
+        metadata: {
+          venture: "other",
+          sweepza_key: "sweepza_host_baseline",
+        },
+      };
+
+      expect(() =>
+        selectSweepzaPriceCandidate([candidate, foreign], expected),
+      ).toThrow("foreign venture tag");
+    },
+  );
+
+  it("returns one legacy candidate for in-place metadata repair", () => {
+    const legacy = {
+      ...exactPrice,
+      metadata: { sweepza_key: "sweepza_host_baseline" },
+    };
+
+    expect(selectSweepzaPriceCandidate([legacy], expected)).toEqual({
+      price: legacy,
+      state: "legacy",
+    });
   });
 });
 
@@ -225,6 +306,44 @@ describe("webhook event preservation", () => {
     expect(
       mergeRequiredWebhookEvents(["*"], ["customer.subscription.created"]),
     ).toEqual(["*"]);
+  });
+
+  it("accepts only explicitly owned Sweepza account endpoints", () => {
+    const exact = {
+      application: null,
+      metadata: { venture: "sweepza", endpoint_scope: "account" },
+    };
+    expect(isOwnedSweepzaAccountWebhook(exact)).toBe(true);
+    expect(
+      isOwnedSweepzaAccountWebhook({ ...exact, application: "ca_connected" }),
+    ).toBe(false);
+    expect(
+      isOwnedSweepzaAccountWebhook({ ...exact, metadata: {} }),
+    ).toBe(false);
+    expect(
+      isOwnedSweepzaAccountWebhook({
+        ...exact,
+        metadata: { venture: "other", endpoint_scope: "account" },
+      }),
+    ).toBe(false);
+  });
+
+  it("requires all subscription events or a wildcard", () => {
+    expect(
+      hasRequiredWebhookEvents({
+        enabled_events: [
+          "customer.subscription.created",
+          "customer.subscription.updated",
+          "customer.subscription.deleted",
+        ],
+      }),
+    ).toBe(true);
+    expect(hasRequiredWebhookEvents({ enabled_events: ["*"] })).toBe(true);
+    expect(
+      hasRequiredWebhookEvents({
+        enabled_events: ["customer.subscription.created"],
+      }),
+    ).toBe(false);
   });
 });
 

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { runProvisioningWorkflow } from "../provision-stripe-workflow.mjs";
+import {
+  listAllStripePages,
+  persistWebhookSecretWithRollback,
+  runProvisioningWorkflow,
+} from "../provision-stripe-workflow.mjs";
 
 function workflow(overrides: Record<string, unknown> = {}) {
   return {
@@ -7,6 +11,7 @@ function workflow(overrides: Record<string, unknown> = {}) {
     expectedAccountId: "acct_Sweepza",
     retrieveAccount: vi.fn(async () => ({ id: "acct_Sweepza" })),
     discover: vi.fn(async () => ({ plans: [], webhook: {} })),
+    needsSecretOutput: vi.fn(() => true),
     reserveSecretOutput: vi.fn(() => ({ fd: 7 })),
     mutate: vi.fn(async () => ({ keepSecretOutput: false, plans: [] })),
     releaseSecretOutput: vi.fn(),
@@ -99,5 +104,107 @@ describe("Stripe provisioning workflow ordering", () => {
       "mutate",
       "release:true",
     ]);
+  });
+
+  it("does not reserve or release a file when discovery will reuse a webhook", async () => {
+    const steps = workflow({
+      discover: vi.fn(async () => ({
+        plans: [],
+        webhook: { existing: { id: "we_existing" } },
+      })),
+      needsSecretOutput: vi.fn(
+        (discovery: { webhook: { existing: unknown } }) =>
+          discovery.webhook.existing === null,
+      ),
+    });
+
+    await runProvisioningWorkflow(steps);
+    expect(steps.reserveSecretOutput).not.toHaveBeenCalled();
+    expect(steps.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ webhook: { existing: { id: "we_existing" } } }),
+      null,
+    );
+    expect(steps.releaseSecretOutput).not.toHaveBeenCalled();
+  });
+});
+
+describe("Stripe list reconciliation", () => {
+  it("exhausts cursor pages using the last object id", async () => {
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [{ id: "prod_2" }], has_more: true })
+      .mockResolvedValueOnce({ data: [{ id: "prod_1" }], has_more: false });
+
+    await expect(
+      listAllStripePages(fetchPage, { label: "product" }),
+    ).resolves.toEqual([{ id: "prod_2" }, { id: "prod_1" }]);
+    expect(fetchPage).toHaveBeenNthCalledWith(1, undefined);
+    expect(fetchPage).toHaveBeenNthCalledWith(2, "prod_2");
+  });
+
+  it("refuses malformed or unbounded pagination", async () => {
+    await expect(
+      listAllStripePages(
+        vi.fn(async () => ({ data: [], has_more: true })),
+        { label: "product" },
+      ),
+    ).rejects.toThrow("invalid product pagination");
+    await expect(
+      listAllStripePages(
+        vi.fn(async () => ({ data: [{ id: "prod_same" }], has_more: true })),
+        { label: "product", maxPages: 2 },
+      ),
+    ).rejects.toThrow("after 2 pages");
+  });
+});
+
+describe("webhook secret rollback", () => {
+  it("persists the one-time secret without rollback", async () => {
+    const writeSecret = vi.fn();
+    const deleteEndpoint = vi.fn();
+
+    await persistWebhookSecretWithRollback({
+      endpoint: { id: "we_123", secret: "whsec_value" },
+      secretFd: 7,
+      writeSecret,
+      deleteEndpoint,
+    });
+
+    expect(writeSecret).toHaveBeenCalledWith(7, "whsec_value");
+    expect(deleteEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("deletes a newly created endpoint when secret persistence fails", async () => {
+    const writeError = new Error("disk full");
+    const deleteEndpoint = vi.fn(async () => undefined);
+
+    await expect(
+      persistWebhookSecretWithRollback({
+        endpoint: { id: "we_123", secret: "whsec_value" },
+        secretFd: 7,
+        writeSecret: vi.fn(() => {
+          throw writeError;
+        }),
+        deleteEndpoint,
+      }),
+    ).rejects.toBe(writeError);
+    expect(deleteEndpoint).toHaveBeenCalledWith("we_123");
+  });
+
+  it("surfaces an orphan endpoint id when rollback also fails", async () => {
+    await expect(
+      persistWebhookSecretWithRollback({
+        endpoint: { id: "we_orphan", secret: "whsec_value" },
+        secretFd: 7,
+        writeSecret: vi.fn(() => {
+          throw new Error("disk full");
+        }),
+        deleteEndpoint: vi.fn(async () => {
+          throw new Error("provider refused deletion");
+        }),
+      }),
+    ).rejects.toThrow(
+      "Webhook we_orphan was created, but secret persistence and rollback both failed",
+    );
   });
 });

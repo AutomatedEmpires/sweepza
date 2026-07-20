@@ -16,14 +16,20 @@
 import Stripe from "stripe";
 import { writeFileSync } from "node:fs";
 import {
-  hasExpectedRecurringPriceEconomics,
+  REQUIRED_STRIPE_WEBHOOK_EVENTS,
+  getSweepzaMetadataState,
   inspectProvisioningPreflight,
-  isReusableSweepzaPrice,
+  isOwnedSweepzaAccountWebhook,
   mergeRequiredWebhookEvents,
   releaseSecretOutput,
   reserveSecretOutput,
+  selectSweepzaPriceCandidate,
 } from "./stripe-operator-safety.mjs";
-import { runProvisioningWorkflow } from "./provision-stripe-workflow.mjs";
+import {
+  listAllStripePages,
+  persistWebhookSecretWithRollback,
+  runProvisioningWorkflow,
+} from "./provision-stripe-workflow.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a, i, all) =>
@@ -71,84 +77,93 @@ const PLANS = [
 ];
 
 async function discoverProductAndPrice(plan) {
-  const existing = await stripe.products.search({
-    query: `metadata["sweepza_key"]:"${plan.lookup}" AND active:"true"`,
-  });
-  if (existing.has_more) {
-    throw new Error(
-      `Refusing incomplete product discovery for ${plan.lookup}: result is paginated.`,
-    );
-  }
-  const wrongVenture = existing.data.filter(
-    (product) => product.metadata?.venture !== "sweepza",
+  const activeProducts = await listAllStripePages(
+    (startingAfter) =>
+      stripe.products.list({
+        active: true,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: "active product" },
   );
-  if (wrongVenture.length > 0) {
+  const keyedProducts = activeProducts.filter(
+    (product) => product.metadata?.sweepza_key === plan.lookup,
+  );
+  const productStates = keyedProducts.map((product) => ({
+    product,
+    state: getSweepzaMetadataState(product.metadata, plan.lookup),
+  }));
+  if (productStates.some(({ state }) => state !== "exact")) {
     throw new Error(
       `Refusing ambiguous product key ${plan.lookup}: matching product is not venture=sweepza.`,
     );
   }
-  if (existing.data.length > 1) {
+  if (productStates.length > 1) {
     throw new Error(
       `Refusing ambiguous product key ${plan.lookup}: multiple active products match.`,
     );
   }
-  const product = existing.data[0] ?? null;
-  if (!product) return { plan, product: null, price: null };
+  const productMatch = productStates[0] ?? null;
+  const product = productMatch?.product ?? null;
+  if (!product) {
+    return {
+      plan,
+      product: null,
+      price: null,
+      priceNeedsMetadataUpgrade: false,
+    };
+  }
 
-  const prices = await stripe.prices.list({
-    product: product.id,
-    active: true,
-    limit: 100,
+  const activePrices = await listAllStripePages(
+    (startingAfter) =>
+      stripe.prices.list({
+        product: product.id,
+        active: true,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: `active price for ${plan.lookup}` },
+  );
+  const priceMatch = selectSweepzaPriceCandidate(activePrices, {
+    unitAmount: plan.unitAmount,
+    lookup: plan.lookup,
   });
-  if (prices.has_more) {
-    throw new Error(
-      `Refusing incomplete price discovery for ${plan.lookup}: more than 100 active prices.`,
-    );
-  }
-  const economicMatches = prices.data.filter(
-    (price) =>
-      hasExpectedRecurringPriceEconomics(price, {
-        unitAmount: plan.unitAmount,
-      }),
-  );
-  const exactMatches = economicMatches.filter(
-    (price) =>
-      isReusableSweepzaPrice(price, {
-        unitAmount: plan.unitAmount,
-        lookup: plan.lookup,
-      }),
-  );
-  if (economicMatches.length > 0 && exactMatches.length === 0) {
-    throw new Error(
-      `Refusing price reuse for ${plan.lookup}: economic match lacks exact Sweepza metadata.`,
-    );
-  }
-  if (exactMatches.length > 1) {
-    throw new Error(
-      `Refusing ambiguous price state for ${plan.lookup}: multiple exact prices match.`,
-    );
-  }
-  return { plan, product, price: exactMatches[0] ?? null };
+  return {
+    plan,
+    product,
+    price: priceMatch?.price ?? null,
+    priceNeedsMetadataUpgrade: priceMatch?.state === "legacy",
+  };
 }
 
 async function applyProductAndPrice(discovery) {
   const { plan } = discovery;
-  const product =
-    discovery.product ??
-    (await stripe.products.create({
+  let product = discovery.product;
+  if (!product) {
+    product = await stripe.products.create({
       name: plan.name,
       description: plan.description,
       metadata: { sweepza_key: plan.lookup, venture: "sweepza" },
-    }));
-  const price =
-    discovery.price ??
-    (await stripe.prices.create({
+    });
+  }
+  let price = discovery.price;
+  if (!price) {
+    price = await stripe.prices.create({
       product: product.id,
       currency: "usd",
       unit_amount: plan.unitAmount,
-      recurring: { interval: "month", interval_count: 1 },
+      recurring: {
+        interval: "month",
+        interval_count: 1,
+        usage_type: "licensed",
+      },
       metadata: { sweepza_key: plan.lookup, venture: "sweepza" },
-    }));
+    });
+  } else if (discovery.priceNeedsMetadataUpgrade) {
+    price = await stripe.prices.update(price.id, {
+      metadata: { ...price.metadata, venture: "sweepza" },
+    });
+  }
   return {
     product: product.id,
     price: price.id,
@@ -158,20 +173,25 @@ async function applyProductAndPrice(discovery) {
 }
 
 async function discoverWebhook(url) {
-  const events = [
-    "customer.subscription.created",
-    "customer.subscription.updated",
-    "customer.subscription.deleted",
-  ];
-  const endpoints = await stripe.webhookEndpoints.list({ limit: 50 });
-  if (endpoints.has_more) {
-    throw new Error("Refusing incomplete webhook discovery: more than 50 endpoints.");
-  }
-  const matches = endpoints.data.filter((endpoint) => endpoint.url === url);
+  const events = REQUIRED_STRIPE_WEBHOOK_EVENTS;
+  const endpoints = await listAllStripePages(
+    (startingAfter) =>
+      stripe.webhookEndpoints.list({
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      }),
+    { label: "webhook endpoint" },
+  );
+  const matches = endpoints.filter((endpoint) => endpoint.url === url);
   if (matches.length > 1) {
     throw new Error("Refusing ambiguous webhook state: multiple endpoints match.");
   }
   const existing = matches[0] ?? null;
+  if (existing && !isOwnedSweepzaAccountWebhook(existing)) {
+    throw new Error(
+      "Refusing unowned, unscoped, or Connect/application webhook; an explicitly tagged Sweepza account endpoint is required.",
+    );
+  }
   if (existing && existing.status !== "enabled") {
     throw new Error("Refusing disabled matching webhook; operator review is required.");
   }
@@ -206,20 +226,22 @@ async function applyWebhook(discovery, secretFd) {
     // can't re-read it — report and let the operator rotate if needed.
     return { id: existing.id, url: existing.url, secretWritten: false, note: "existing endpoint reused; secret not re-readable" };
   }
-  let created;
-  try {
-    created = await stripe.webhookEndpoints.create({
-      url,
-      enabled_events: events,
-      description: "Sweepza subscription sync",
-    });
-    writeFileSync(secretFd, created.secret);
-  } catch (error) {
-    if (created) {
-      await stripe.webhookEndpoints.del(created.id).catch(() => undefined);
-    }
-    throw error;
+  if (secretFd === null) {
+    throw new Error("Refusing webhook creation without a reserved secret output.");
   }
+  const created = await stripe.webhookEndpoints.create({
+    url,
+    enabled_events: events,
+    connect: false,
+    description: "Sweepza subscription sync",
+    metadata: { venture: "sweepza", endpoint_scope: "account" },
+  });
+  await persistWebhookSecretWithRollback({
+    endpoint: created,
+    secretFd,
+    writeSecret: writeFileSync,
+    deleteEndpoint: (endpointId) => stripe.webhookEndpoints.del(endpointId),
+  });
   return { id: created.id, url: created.url, secretWritten: true };
 }
 
@@ -237,6 +259,7 @@ try {
       const webhook = await discoverWebhook(WEBHOOK_URL);
       return { plans, webhook };
     },
+    needsSecretOutput: (discovery) => discovery.webhook.existing === null,
     reserveSecretOutput: () => reserveSecretOutput(SECRET_OUT),
     mutate: async (discovery, secretFd) => {
       const plans = [];
