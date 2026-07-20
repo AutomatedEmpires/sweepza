@@ -16,9 +16,7 @@ on:
         required: false
         default: 'https://sweepza.com'
 
-permissions:
-  contents: read
-  issues: write
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}
@@ -28,6 +26,8 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     env:
       SMOKE_URL: ${{ inputs.base_url || 'https://sweepza.com' }}
     steps:
@@ -45,10 +45,19 @@ jobs:
         timeout-minutes: 5
         run: node scripts/smoke.mjs "$SMOKE_URL"
 
+  escalate:
+    needs: smoke
+    if: ${{ always() && needs.smoke.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      SMOKE_URL: ${{ inputs.base_url || 'https://sweepza.com' }}
+    steps:
       - name: File an ops issue on failure
-        if: failure()
         # Pinned to the repo's reviewed SHA (matches the router workflows) —
-        # this step holds issues:write, so no floating tags here.
+        # this is the only job that holds issues:write.
         uses: actions/github-script@91a83c091797b22c5771b1d7178fd0fddacc73ea
         with:
           script: |
