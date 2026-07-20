@@ -61,7 +61,8 @@ servers for the healthy case and each guarded failure mode.
 `https://sweepza.com` every six hours and on manual dispatch (the dispatch
 input accepts any deployment URL). On failure it files — or comments on —
 an open issue titled **"Production smoke checks failing"** with the run
-link, so a red scheduled run is never silent. Close the issue once the
+link and the exact target URL that failed (dispatch runs may target
+previews), so a red scheduled run is never silent. Close the issue once the
 regression is fixed and a run is green again; the next failure opens a
 fresh one. Deploys are still checked fastest by a manual dispatch right
 after the deploy lands — the schedule is the backstop, not the trigger.
