@@ -44,7 +44,6 @@ const preflight = inspectProvisioningPreflight({
   webhookUrl: WEBHOOK_URL,
   secretOutputPath: SECRET_OUT,
 });
-const mode = preflight.mode;
 let stripe;
 
 // Pricing: add-on $5/mo matches the amount already hardcoded in
@@ -257,7 +256,6 @@ try {
   console.log(
     JSON.stringify(
       {
-        mode,
         accountId: result.account.id,
         plans: result.plans,
         webhook: result.webhook,
