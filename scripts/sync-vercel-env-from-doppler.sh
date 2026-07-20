@@ -126,6 +126,10 @@ sync_env_group() {
     GITHUB_TOKEN
   )
 
+  # PAYMENTS_ENABLED is intentionally excluded. A routine bulk secret sync
+  # must never become live-money activation authority; that gate is changed
+  # only through a separate founder-approved operation.
+
   for key in "${base_keys[@]}"; do
     sync_secret_from_doppler "$key" "$vercel_env" "$doppler_config"
   done

@@ -2,12 +2,14 @@ import "server-only";
 
 import type Stripe from "stripe";
 import type { AppUserRow, HostRow } from "@/lib/db/types";
+import { assertPaymentsEnabled } from "@/lib/billing/payment-gate";
 import { env } from "@/lib/env";
 import {
   computePlanAllowance,
   getAdditionalListingPriceId,
   getBaselinePriceId,
   HOST_BASELINE_PLAN,
+  isBillingConfigured,
 } from "@/lib/billing/plans";
 import { createStripeServerClient, ensureStripeCustomerForHost } from "./server";
 
@@ -39,6 +41,13 @@ function getAppBaseUrl(): string {
 export async function createHostCheckoutSession(
   args: CreateHostCheckoutSessionArgs,
 ): Promise<HostCheckoutSession> {
+  assertPaymentsEnabled();
+  if (!isBillingConfigured()) {
+    throw new Error(
+      "Cannot start checkout: the complete Stripe application, webhook, price, and app URL tuple is not configured.",
+    );
+  }
+  const baseUrl = getAppBaseUrl();
   const baselinePriceId = getBaselinePriceId();
   if (!baselinePriceId) {
     throw new Error(
@@ -71,7 +80,6 @@ export async function createHostCheckoutSession(
     });
   }
 
-  const baseUrl = getAppBaseUrl();
   // Stripe metadata values must be strings. These keys mirror exactly what
   // upsertSubscriptionFromStripe reads back off the subscription.
   const metadata: Record<string, string> = {
@@ -112,6 +120,7 @@ export async function createStripePortalSession(args: {
   customerId: string;
   returnUrl?: string;
 }): Promise<string> {
+  assertPaymentsEnabled();
   const stripe = createStripeServerClient();
   const session = await stripe.billingPortal.sessions.create({
     customer: args.customerId,

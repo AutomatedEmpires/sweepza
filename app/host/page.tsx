@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Icon, type IconName } from "@/components/icon";
 import { HostPitch } from "@/components/host-pitch";
@@ -8,17 +7,21 @@ import { HostProfileForm } from "@/components/host-profile-form";
 import type { HostProfileFormValues } from "@/components/host-profile-form";
 import {
   getMaxAdditionalListings,
+  getEffectiveListingAllowance,
   HOST_BASELINE_PLAN,
   isBillingConfigured,
   MAX_ACTIVE_LISTINGS,
 } from "@/lib/billing/plans";
+import {
+  assertPaymentsEnabled,
+  isPaymentsEnabled,
+} from "@/lib/billing/payment-gate";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
-import { ensureSubscriptionForHost, getHostByAppUserId } from "@/lib/db/hosts";
+import { getHostByAppUserId } from "@/lib/db/hosts";
 import { SITE_URL } from "@/lib/site";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
-import { ensureStripeCustomerForHost } from "@/lib/stripe/server";
 
 const HOST_DESCRIPTION =
   "List your free-to-enter sweepstakes on Sweepza — reviewed listings, official-page entries, and an audience that returns daily to re-enter.";
@@ -84,13 +87,11 @@ export default async function HostPage({
   const subscription = dashboard?.subscription ?? null;
   const listingCounts = dashboard?.counts;
   const recentListings = dashboard?.recentListings ?? [];
-  const listingAllowance = subscription
-    ? subscription.included_active_listings +
-      subscription.purchased_additional_listings
-    : 1;
+  const listingAllowance = getEffectiveListingAllowance(subscription);
   const activeListings = listingCounts?.active ?? 0;
   const listingSlotsRemaining = Math.max(listingAllowance - activeListings, 0);
   const planActive = subscription?.status === "active";
+  const paymentsEnabled = isPaymentsEnabled();
   const billingConfigured = isBillingConfigured();
   const baselineIncluded = HOST_BASELINE_PLAN.includedActiveListings;
   const maxAdditional = getMaxAdditionalListings();
@@ -115,27 +116,10 @@ export default async function HostPage({
       }
     : null;
 
-  async function connectBillingAction() {
-    "use server";
-
-    const currentUser = await ensureCurrentAppUser();
-    if (!currentUser?.appUser.is_host) {
-      throw new Error("Host access is required to create a billing profile.");
-    }
-
-    const currentHost = await getHostByAppUserId(currentUser.appUserId);
-    if (!currentHost) {
-      throw new Error("Host profile is missing; billing cannot be initialized.");
-    }
-
-    await ensureStripeCustomerForHost(currentHost, currentUser.appUser);
-    await ensureSubscriptionForHost(currentHost.id);
-    revalidatePath("/host");
-  }
-
   async function startCheckoutAction(formData: FormData) {
     "use server";
 
+    assertPaymentsEnabled();
     const currentUser = await ensureCurrentAppUser();
     if (!currentUser?.appUser.is_host) {
       throw new Error("Host access is required to start a plan.");
@@ -176,12 +160,12 @@ export default async function HostPage({
           </header>
         ) : null}
 
-        {checkoutStatus === "success" ? (
+        {paymentsEnabled && checkoutStatus === "success" ? (
           <div className="rounded-card border border-pine/25 bg-pine/5 p-4 text-sm text-ink/75">
             Thanks! Your plan is activating. Listing entitlements update
             automatically once Stripe confirms the subscription.
           </div>
-        ) : checkoutStatus === "cancelled" ? (
+        ) : paymentsEnabled && checkoutStatus === "cancelled" ? (
           <div className="rounded-card border border-line bg-surface p-4 text-sm text-graphite shadow-e1">
             Checkout was cancelled. No changes were made to your plan.
           </div>
@@ -189,7 +173,10 @@ export default async function HostPage({
 
         {!clerkConfigured ? (
           <>
-            <HostPitch signInAvailable={false} />
+            <HostPitch
+              signInAvailable={false}
+              paymentsEnabled={paymentsEnabled}
+            />
             <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
               <h2 className="text-sm font-semibold text-ink">
                 Host auth is not configured yet
@@ -201,7 +188,7 @@ export default async function HostPage({
             </div>
           </>
         ) : !authUser ? (
-          <HostPitch signInAvailable />
+          <HostPitch signInAvailable paymentsEnabled={paymentsEnabled} />
         ) : isHost && !host ? (
           <>
             <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
@@ -394,16 +381,6 @@ export default async function HostPage({
                       </dd>
                     </div>
                   </dl>
-                  {!host.stripe_customer_id ? (
-                    <form action={connectBillingAction} className="mt-4">
-                      <button
-                        type="submit"
-                        className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
-                      >
-                        Create billing profile
-                      </button>
-                    </form>
-                  ) : null}
                 </div>
 
                 {hostProfileValues ? (
@@ -464,7 +441,13 @@ export default async function HostPage({
                     </div>
                   </dl>
 
-                  {!billingConfigured ? (
+                  {!paymentsEnabled ? (
+                    <p className="mt-4 text-sm leading-relaxed text-graphite">
+                      Payments are not enabled. Existing plan records remain
+                      visible, but Sweepza will not create customers, open
+                      Checkout, or start billing sessions.
+                    </p>
+                  ) : !billingConfigured ? (
                     <p className="mt-4 text-sm leading-relaxed text-graphite">
                       Plan checkout is not configured in this environment yet.
                       Set the Stripe price IDs to enable purchases.

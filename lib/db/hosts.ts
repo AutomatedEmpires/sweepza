@@ -1,8 +1,7 @@
 import "server-only";
 
-import { HOST_BASELINE_PLAN } from "@/lib/billing/plans";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import type { HostRow, SubscriptionRow } from "./types";
+import type { HostRow } from "./types";
 
 export async function getHostByAppUserId(
   appUserId: string,
@@ -88,43 +87,6 @@ export async function upsertHostProfileForAppUser(
 
   if (error) {
     throw new Error(`upsertHostProfileForAppUser insert failed: ${error.message}`);
-  }
-
-  return data;
-}
-
-export async function ensureSubscriptionForHost(
-  hostId: string,
-): Promise<SubscriptionRow> {
-  const supabase = createServiceRoleClient();
-  const { data: existing, error: existingError } = await supabase
-    .from("subscription")
-    .select("*")
-    .eq("host_id", hostId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .returns<SubscriptionRow[]>();
-
-  if (existingError) {
-    throw new Error(`ensureSubscriptionForHost lookup failed: ${existingError.message}`);
-  }
-
-  const current = existing?.[0];
-  if (current) return current;
-
-  const { data, error } = await supabase
-    .from("subscription")
-    .insert({
-      host_id: hostId,
-      included_active_listings: HOST_BASELINE_PLAN.includedActiveListings,
-      purchased_additional_listings: 0,
-      max_active_listings: HOST_BASELINE_PLAN.includedActiveListings,
-    })
-    .select("*")
-    .single<SubscriptionRow>();
-
-  if (error) {
-    throw new Error(`ensureSubscriptionForHost insert failed: ${error.message}`);
   }
 
   return data;

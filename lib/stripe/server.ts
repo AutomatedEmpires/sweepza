@@ -1,6 +1,7 @@
 import "server-only";
 
 import Stripe from "stripe";
+import { assertPaymentsEnabled } from "@/lib/billing/payment-gate";
 import type { AppUserRow, HostRow } from "@/lib/db/types";
 import { env } from "@/lib/env";
 import { updateHostStripeCustomerId } from "@/lib/db/hosts";
@@ -8,6 +9,7 @@ import { updateHostStripeCustomerId } from "@/lib/db/hosts";
 let stripeClient: Stripe | null = null;
 
 export function createStripeServerClient(): Stripe {
+  assertPaymentsEnabled();
   const key = env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error("Stripe is not configured: set STRIPE_SECRET_KEY.");
@@ -24,6 +26,7 @@ export async function ensureStripeCustomerForHost(
   host: HostRow,
   appUser: AppUserRow,
 ): Promise<{ customerId: string; host: HostRow }> {
+  assertPaymentsEnabled();
   if (host.stripe_customer_id) {
     return { customerId: host.stripe_customer_id, host };
   }

@@ -48,6 +48,30 @@ export interface PlanAllowance {
   maxActiveListings: number;
 }
 
+interface SubscriptionAllowance {
+  status: string;
+  included_active_listings: number;
+  purchased_additional_listings: number;
+}
+
+export function hasPaidListingEntitlement(status: string): boolean {
+  return status === "active" || status === "grace";
+}
+
+export function getEffectiveListingAllowance(
+  subscription: SubscriptionAllowance | null,
+): number {
+  if (!subscription || !hasPaidListingEntitlement(subscription.status)) {
+    return 1;
+  }
+
+  return Math.min(
+    subscription.included_active_listings +
+      subscription.purchased_additional_listings,
+    MAX_ACTIVE_LISTINGS,
+  );
+}
+
 // Compute a clean, DB-safe allowance for a baseline purchase plus add-ons.
 // The result maps 1:1 onto the subscription row columns.
 export function computePlanAllowance(additionalListings: number): PlanAllowance {
@@ -68,7 +92,14 @@ export function computePlanAllowance(additionalListings: number): PlanAllowance 
   };
 }
 
-// True when the baseline plan can actually be purchased in this environment.
+// True when the required Stripe tuple is present. This is configuration only;
+// PAYMENTS_ENABLED remains the separate activation authority.
 export function isBillingConfigured(): boolean {
-  return Boolean(getBaselinePriceId());
+  return Boolean(
+    env.STRIPE_SECRET_KEY &&
+      env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY &&
+      env.STRIPE_WEBHOOK_SECRET &&
+      env.NEXT_PUBLIC_APP_URL &&
+      getBaselinePriceId(),
+  );
 }

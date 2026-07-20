@@ -1,6 +1,8 @@
 import "server-only";
 
 import { ensureCurrentAppUser } from "@/lib/auth";
+import { assertPaymentsEnabled } from "@/lib/billing/payment-gate";
+import { getEffectiveListingAllowance } from "@/lib/billing/plans";
 import { createStripePortalSession as createStripePortalUrl } from "@/lib/stripe/checkout";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { hostListingEditSchema } from "@/lib/host-listing-schema";
@@ -519,8 +521,7 @@ export async function getHostBillingSnapshot(): Promise<HostBillingSnapshot> {
   if (activeCountResult.error) throw new Error(`getHostBillingSnapshot listing count failed: ${activeCountResult.error.message}`);
 
   const subscription = subscriptionResult.data;
-  const includedActiveListings =
-    (subscription?.included_active_listings ?? 1) + (subscription?.purchased_additional_listings ?? 0);
+  const includedActiveListings = getEffectiveListingAllowance(subscription);
   const status = subscription?.status ?? "no_plan";
   const statusLabel =
     status === "active"
@@ -546,6 +547,7 @@ export async function getHostBillingSnapshot(): Promise<HostBillingSnapshot> {
 }
 
 export async function createHostBillingPortalUrl(): Promise<string> {
+  assertPaymentsEnabled();
   const { host } = await getHostIdentity();
   if (!host.stripe_customer_id) throw new HostAccessError("No Stripe customer on file yet.", 400);
   return createStripePortalUrl({ customerId: host.stripe_customer_id });
