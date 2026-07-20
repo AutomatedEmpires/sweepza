@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { env } from "@/lib/env";
 import { APP_URL } from "@/lib/site";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
@@ -15,6 +14,10 @@ import {
   type SeekerReminderItem,
 } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send";
+import {
+  isOutboundEmailConfigured,
+  isOutboundEmailEnabled,
+} from "@/lib/email/outbound-gate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -80,11 +83,33 @@ export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // A batch job that logs 'sent' rows must not run without a real transport, or
-  // it would dedupe reminders that were never delivered.
-  if (!env.RESEND_API_KEY) {
+  const outboundEmailEnabled = isOutboundEmailEnabled();
+  const outboundEmailConfigured = isOutboundEmailConfigured();
+
+  if (!outboundEmailEnabled) {
+    return NextResponse.json({
+      ok: true,
+      enabled: false,
+      configured: outboundEmailConfigured,
+      reason: "outbound_email_disabled",
+      candidates: 0,
+      emailed: 0,
+      reminders: 0,
+      failed: 0,
+    });
+  }
+
+  // An enabled batch job must have the complete canonical transport tuple. It
+  // fails before Supabase work so no reminder can be logged without delivery.
+  if (!outboundEmailConfigured) {
     return NextResponse.json(
-      { error: "RESEND_API_KEY is not configured; seeker reminders are disabled." },
+      {
+        ok: false,
+        enabled: true,
+        configured: false,
+        error:
+          "Outbound email requires a Resend key plus Sweepza-owned From and Reply-To identities.",
+      },
       { status: 503 },
     );
   }
@@ -215,7 +240,11 @@ export async function GET(request: Request) {
     });
 
     try {
-      await sendEmail({ to: bucket.email, subject, html });
+      const result = await sendEmail({ to: bucket.email, subject, html });
+      if (result.status !== "sent") {
+        failures.push(appUserId);
+        continue;
+      }
     } catch (error) {
       failures.push(appUserId);
       Sentry.captureException(
@@ -247,6 +276,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: failures.length === 0,
+    enabled: true,
+    configured: true,
     candidates: userIds.length,
     emailed,
     reminders: reminderCount,

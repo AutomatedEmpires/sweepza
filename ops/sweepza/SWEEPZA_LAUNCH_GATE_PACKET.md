@@ -153,22 +153,25 @@ were explicitly authorized in advance.
 
 A verified sender header does not prove that replies are received or owned.
 
-**Current technical reality.** `lib/email/send.ts` sends when
-`RESEND_API_KEY` is present and otherwise skips. The daily
-`/api/cron/seeker-reminders` schedule already exists in `vercel.json`; the route
-returns 503 without the key but can send eligible reminders on the next run as
-soon as the key is present. Other notification call sites also use the shared
-sender. There is no checked-in email-enable gate and the current helper does not
-establish a separate Reply-To contract. Consequently, provisioning a production
-key can activate outbound mail.
+**Current technical reality.** A checked-in, default-off
+`OUTBOUND_EMAIL_ENABLED` gate covers the shared sender and scheduled reminder
+route. Only the literal `"true"` permits delivery. Configuration requires a
+Resend key plus explicit Sweepza-owned `RESEND_FROM_EMAIL` and
+`RESEND_REPLY_TO_EMAIL` identities; no hardcoded operational mailbox exists.
+The authenticated cron is a successful, observable no-op before database or
+provider work while disabled, and enabled-but-incomplete configuration returns
+503. `/api/health` reports configured, enabled, and ready separately. Installing
+credentials alone cannot activate mail, and bulk env sync excludes the gate.
 
-**Required engineering control before any production key.** Add and test a
-checked-in, default-off email gate covering cron reminders and all transactional
-call sites. The disabled state must perform no provider call and must give
-operators an honest status. Either remove/disable the reminder schedule until
-approval or make the scheduled route a successful, observable no-op while the
-gate is off. Define explicit From and Reply-To variables without claiming an
-inbox exists.
+Notification logs record `sent` only after the transport reports success. A
+gate-disabled transactional attempt records `skipped` with a delivery reason.
+This engineering control does not prove provider ownership, inbound mailbox
+ownership, forwarding, or an end-to-end reply loop.
+
+**Pre-activation reliability gap.** The reminder digest sends before inserting
+its deduplication log. If delivery succeeds and that database insert fails, a
+later enabled run could resend the digest. Add durable idempotency/log state and
+prove the post-send failure path before any outbound-email activation.
 
 **Safe sequence.**
 

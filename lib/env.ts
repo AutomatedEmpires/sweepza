@@ -31,6 +31,13 @@ const schema = z.object({
   NOTION_API_TOKEN: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional(),
+  RESEND_REPLY_TO_EMAIL: z.string().optional(),
+  /**
+   * Master switch for every outbound email path. Only the literal string
+   * "true" permits a provider call. Credentials and sender identity alone
+   * never authorize email delivery.
+   */
+  OUTBOUND_EMAIL_ENABLED: z.string().optional(),
   /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
   CRON_SECRET: z.string().optional(),
   /** "true" flips CSP from report-only to enforcing (nonce-based). Redeploy required. */

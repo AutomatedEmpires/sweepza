@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { isPaymentsEnabled } from "@/lib/billing/payment-gate";
 import { isBillingConfigured } from "@/lib/billing/plans";
+import {
+  isOutboundEmailConfigured,
+  isOutboundEmailEnabled,
+} from "@/lib/email/outbound-gate";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +12,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const stripeConfigured = isBillingConfigured();
   const paymentsEnabled = isPaymentsEnabled();
+  const outboundEmailConfigured = isOutboundEmailConfigured();
+  const outboundEmailEnabled = isOutboundEmailEnabled();
 
   return NextResponse.json({
-    ok: !paymentsEnabled || stripeConfigured,
+    ok:
+      (!paymentsEnabled || stripeConfigured) &&
+      (!outboundEmailEnabled || outboundEmailConfigured),
     timestamp: new Date().toISOString(),
     integrations: {
       appUrl: Boolean(env.NEXT_PUBLIC_APP_URL),
@@ -35,6 +43,11 @@ export async function GET() {
         ),
         webhook: Boolean(env.STRIPE_WEBHOOK_SECRET),
         prices: Boolean(env.STRIPE_PRICE_HOST_BASELINE),
+      },
+      email: {
+        configured: outboundEmailConfigured,
+        enabled: outboundEmailEnabled,
+        ready: outboundEmailConfigured && outboundEmailEnabled,
       },
       posthog: Boolean(env.NEXT_PUBLIC_POSTHOG_KEY && env.NEXT_PUBLIC_POSTHOG_HOST),
       sentry: Boolean(

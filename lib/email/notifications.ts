@@ -8,6 +8,7 @@ import {
   type EmailContent,
 } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send";
+import { OutboundEmailConfigurationError } from "@/lib/email/outbound-gate";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export type HostNotificationType =
@@ -64,7 +65,7 @@ function buildHostEmail(
 async function writeLog(
   appUserId: string,
   type: string,
-  status: "sent" | "skipped",
+  status: "sent" | "skipped" | "failed",
   payload: Record<string, string>,
 ): Promise<void> {
   const supabase = createServiceRoleClient();
@@ -82,10 +83,17 @@ async function writeLog(
   }
 }
 
+function deliveryFailureReason(error: unknown): string {
+  return error instanceof OutboundEmailConfigurationError
+    ? "outbound_email_misconfigured"
+    : "outbound_email_delivery_failed";
+}
+
 /**
  * Send an email notification to a host for a listing lifecycle event.
- * Honors the host's per-event email preference and channel toggle, and always
- * records a notification_log row (status 'sent' or 'skipped').
+ * Honors the host's per-event email preference and channel toggle. Once a
+ * recipient is resolved, records a sent/skipped/failed delivery outcome; log
+ * insertion failures are reported to stderr.
  */
 export async function sendHostNotification(args: {
   hostId: string;
@@ -127,8 +135,23 @@ export async function sendHostNotification(args: {
 
   if (eventEnabled && channelEnabled && email) {
     const { subject, html } = buildHostEmail(type, payload);
-    await sendEmail({ to: email, subject, html });
-    await writeLog(appUserId, type, "sent", payload);
+    try {
+      const result = await sendEmail({ to: email, subject, html });
+      await writeLog(
+        appUserId,
+        type,
+        result.status,
+        result.status === "skipped"
+          ? { ...payload, delivery_reason: result.reason }
+          : payload,
+      );
+    } catch (error) {
+      await writeLog(appUserId, type, "failed", {
+        ...payload,
+        delivery_reason: deliveryFailureReason(error),
+      });
+      throw error;
+    }
   } else {
     await writeLog(appUserId, type, "skipped", payload);
   }
@@ -136,8 +159,9 @@ export async function sendHostNotification(args: {
 
 /**
  * Send the winner-post-published email to the post author.
- * Honors the email channel toggle and winner_wall_verification preference, and
- * always records a notification_log row.
+ * Honors the email channel toggle and winner_wall_verification preference.
+ * Once a recipient is resolved, records a sent/skipped/failed delivery outcome;
+ * log insertion failures are reported to stderr.
  */
 export async function sendWinnerNotification(args: {
   appUserId: string;
@@ -169,8 +193,23 @@ export async function sendWinnerNotification(args: {
       listingTitle: payload.listingTitle ?? "",
       winnersUrl: payload.winnersUrl ?? "",
     });
-    await sendEmail({ to: email, subject, html });
-    await writeLog(appUserId, type, "sent", payload);
+    try {
+      const result = await sendEmail({ to: email, subject, html });
+      await writeLog(
+        appUserId,
+        type,
+        result.status,
+        result.status === "skipped"
+          ? { ...payload, delivery_reason: result.reason }
+          : payload,
+      );
+    } catch (error) {
+      await writeLog(appUserId, type, "failed", {
+        ...payload,
+        delivery_reason: deliveryFailureReason(error),
+      });
+      throw error;
+    }
   } else {
     await writeLog(appUserId, type, "skipped", payload);
   }
