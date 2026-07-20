@@ -62,7 +62,24 @@ jobs:
         with:
           script: |
             const target = process.env.SMOKE_URL;
-            const title = "Production smoke checks failing";
+            const { createHash } = require("node:crypto");
+            let normalizedTarget = target.trim();
+            try {
+              const parsed = new URL(normalizedTarget);
+              parsed.hash = "";
+              if (parsed.pathname === "/") parsed.pathname = "";
+              normalizedTarget = parsed.toString().replace(/\/$/, "");
+            } catch {
+              // The smoke step will already have failed for an invalid URL.
+            }
+            const productionTarget = normalizedTarget === "https://sweepza.com";
+            const targetKey = createHash("sha256")
+              .update(normalizedTarget)
+              .digest("hex")
+              .slice(0, 12);
+            const title = productionTarget
+              ? "Production smoke checks failing"
+              : `Deployment smoke checks failing [${targetKey}]`;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
               `Smoke checks failed against ${target}: ${runUrl}`,
