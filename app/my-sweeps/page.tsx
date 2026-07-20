@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { APP_NAME } from "@/lib/site";
 import { MySweepsDashboard } from "@/components/my-sweeps-dashboard";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import {
@@ -8,7 +9,21 @@ import {
 import { getSeekerStateSnapshotForAppUser } from "@/lib/db/seeker-state";
 import type { Listing } from "@/lib/types/listing";
 
-export const metadata = { title: "My Sweeps" };
+const MY_SWEEPS_DESCRIPTION =
+  "Your saved, entered, and won sweepstakes in one place — with re-entry windows tracked so daily entries take seconds.";
+
+export const metadata = {
+  title: "My Sweeps",
+  description: MY_SWEEPS_DESCRIPTION,
+  alternates: { canonical: "/my-sweeps" },
+  openGraph: {
+    title: "My Sweeps",
+    description: MY_SWEEPS_DESCRIPTION,
+    url: "/my-sweeps",
+    type: "website",
+    siteName: APP_NAME,
+  },
+};
 export const dynamic = "force-dynamic";
 
 export default async function MySweepsPage() {

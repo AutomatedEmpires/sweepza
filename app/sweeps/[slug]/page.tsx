@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { ListingDetail } from "@/components/listing-detail";
-import { getCachedListingBySlug } from "@/lib/db/listings-cache";
+import { requirePublicListingBySlug } from "@/lib/db/required-listing";
 import {
   buildListingJsonLd,
   listingOgImagePath,
@@ -20,8 +19,9 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await getCachedListingBySlug(slug);
-  if (!listing) return { title: "Sweepstakes not found" };
+  // Middleware performs the hard-404 preflight. This lookup still protects
+  // metadata during client transitions and availability races.
+  const listing = await requirePublicListingBySlug(slug);
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL);
   const ogImageUrl = new URL(listingOgImagePath(listing.slug), SITE_URL);
@@ -61,8 +61,7 @@ export default async function ListingDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const listing = await getCachedListingBySlug(slug);
-  if (!listing) notFound();
+  const listing = await requirePublicListingBySlug(slug);
 
   const canonicalUrl = new URL(listingPath(listing.slug), SITE_URL).toString();
   const jsonLd = serializeJsonLd(buildListingJsonLd(listing, canonicalUrl));

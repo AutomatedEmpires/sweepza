@@ -1,5 +1,5 @@
 import type { Listing } from "@/lib/types/listing";
-import { daysUntil, isExpired } from "@/lib/listing-badges";
+import { daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 
 // Filters, sorting, and query helpers for Discover.
 // Source of truth: "Sweepza — Search, Filters & Query Engine".
@@ -56,14 +56,19 @@ function isVerified(listing: Listing): boolean {
   );
 }
 
-function matchesChip(listing: Listing, chip: FilterChipId, now: Date): boolean {
+function matchesChip(
+  listing: Listing,
+  chip: FilterChipId,
+  now: Date,
+  calendarTimeZone?: string,
+): boolean {
   switch (chip) {
     case "new": {
       const d = publishedDaysAgo(listing, now);
       return d !== null && d >= 0 && d <= NEW_DAYS;
     }
     case "ends_today":
-      return !isExpired(listing, now) && daysUntil(listing.endDate, now) <= 0;
+      return listingExpiration(listing.endDate, now, calendarTimeZone).state === "ends_today";
     case "ends_soon": {
       const days = daysUntil(listing.endDate, now);
       return !isExpired(listing, now) && days > 0 && days <= ENDS_SOON_DAYS;
@@ -83,6 +88,7 @@ export function filterListings(
   listings: Listing[],
   active: FilterChipId[],
   now: Date = new Date(),
+  calendarTimeZone?: string,
 ): Listing[] {
   if (active.length === 0) return listings;
 
@@ -97,7 +103,9 @@ export function filterListings(
   const groups = [...byGroup.values()];
   return listings.filter((listing) =>
     // AND across groups, OR within a group.
-    groups.every((chips) => chips.some((chip) => matchesChip(listing, chip, now))),
+    groups.every((chips) =>
+      chips.some((chip) => matchesChip(listing, chip, now, calendarTimeZone)),
+    ),
   );
 }
 

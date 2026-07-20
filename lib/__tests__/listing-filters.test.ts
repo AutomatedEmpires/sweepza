@@ -40,6 +40,7 @@ describe("filterListings", () => {
       [endsToday, endsSoon, endsLater],
       ["ends_today", "ends_soon"],
       NOW,
+      "UTC",
     );
 
     expect(result).toEqual(expect.arrayContaining([endsToday, endsSoon]));
@@ -65,6 +66,7 @@ describe("filterListings", () => {
       [endsTodayVerified, endsTodayUnverified, verifiedButEndsLater],
       ["ends_today", "verified"],
       NOW,
+      "UTC",
     );
 
     expect(result).toEqual([endsTodayVerified]);
@@ -89,6 +91,7 @@ describe("filterListings", () => {
         [endsToday, alreadyExpired, endsLater],
         ["ends_today"],
         NOW,
+        "UTC",
       );
       expect(result).toEqual([endsToday]);
     });

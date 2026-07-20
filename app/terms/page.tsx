@@ -1,8 +1,19 @@
 import Link from "next/link";
+import { APP_NAME } from "@/lib/site";
+
+const TERMS_DESCRIPTION = "Baseline terms governing use of Sweepza.";
 
 export const metadata = {
   title: "Terms of Use",
-  description: "Baseline terms governing use of Sweepza.",
+  description: TERMS_DESCRIPTION,
+  alternates: { canonical: "/terms" },
+  openGraph: {
+    title: "Terms of Use",
+    description: TERMS_DESCRIPTION,
+    url: "/terms",
+    type: "website",
+    siteName: APP_NAME,
+  },
 };
 
 const sections = [

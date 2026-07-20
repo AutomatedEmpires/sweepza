@@ -44,6 +44,7 @@ describe("planReminderForListing", () => {
       candidate({ enteredAt: ENTERED_YESTERDAY }),
       undefined,
       NOW,
+      "UTC",
     );
     expect(result?.type).toBe("ready_again");
     expect(result?.reminderKey).toMatch(DATE_KEY);
@@ -75,6 +76,7 @@ describe("planReminderForListing", () => {
       ),
       undefined,
       NOW,
+      "UTC",
     );
     expect(result?.type).toBe("ends_today");
     expect(result?.reminderKey).toMatch(DATE_KEY);
@@ -137,6 +139,7 @@ describe("planReminderForListing", () => {
       candidate({ enteredAt: ENTERED_YESTERDAY }, { endDate: new Date(NOW.getTime()).toISOString() }),
       undefined,
       NOW,
+      "UTC",
     );
     expect(result?.type).toBe("ends_today");
   });
@@ -162,6 +165,7 @@ describe("planSeekerReminders", () => {
       ],
       undefined,
       NOW,
+      "UTC",
     );
     expect(reminders.map((r) => r.type)).toEqual([
       "ends_today",
