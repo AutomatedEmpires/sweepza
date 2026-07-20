@@ -55,6 +55,21 @@ servers for the healthy case and each guarded failure mode.
 - Locally before opening infra-touching PRs: `pnpm build && pnpm start`
   in one shell, `pnpm ops:smoke` in another.
 
+## Scheduled runs
+
+`.github/workflows/production-smoke.yml` runs the harness against
+`https://sweepza.com` every six hours and on manual dispatch (the dispatch
+input accepts any deployment URL). On failure it files — or comments on —
+an open issue with the run link and exact failed target, so a red run is
+never silent. The canonical production target uses the title **"Production
+smoke checks failing"**. Other dispatch targets use a deterministic
+target-scoped title, **"Deployment smoke checks failing `[target-key]`"**,
+so preview failures never append to or create a false production incident.
+Close the relevant issue once the regression is fixed and that target is
+green again; the next failure opens a fresh one. Deploys are still checked
+fastest by a manual dispatch right after the deploy lands — the schedule is
+the backstop, not the trigger.
+
 ## Known limits
 
 - Preview deployments behind Vercel Deployment Protection answer 302 to

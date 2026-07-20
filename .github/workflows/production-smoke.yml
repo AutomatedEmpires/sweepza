@@ -1,0 +1,111 @@
+name: Production Smoke
+
+# Runs scripts/smoke.mjs against the live deployment on a schedule, so
+# regressions on launch invariants (security headers, canonical/og:url canon,
+# dead-slug 404s, cache-free service worker) are caught within hours instead
+# of at the next manual run. The harness is dependency-free — no install step.
+# See docs/runbooks/smoke-checks.md.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Deployment URL to smoke-check'
+        required: false
+        default: 'https://sweepza.com'
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SMOKE_URL: ${{ inputs.base_url || 'https://sweepza.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Run smoke checks
+        # Step-scoped timeout, shorter than the job's: the harness has no
+        # per-request fetch timeout, so a stalled endpoint must fail THIS step
+        # (letting the escalation step below run) instead of running into the
+        # job timeout, which would kill the job before the issue gets filed.
+        timeout-minutes: 5
+        run: node scripts/smoke.mjs "$SMOKE_URL"
+
+  escalate:
+    needs: smoke
+    if: ${{ always() && needs.smoke.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      SMOKE_URL: ${{ inputs.base_url || 'https://sweepza.com' }}
+    steps:
+      - name: File an ops issue on failure
+        # Pinned to the repo's reviewed SHA (matches the router workflows) —
+        # this is the only job that holds issues:write.
+        uses: actions/github-script@91a83c091797b22c5771b1d7178fd0fddacc73ea
+        with:
+          script: |
+            const target = process.env.SMOKE_URL;
+            const { createHash } = require("node:crypto");
+            let normalizedTarget = target.trim();
+            try {
+              const parsed = new URL(normalizedTarget);
+              parsed.hash = "";
+              if (parsed.pathname === "/") parsed.pathname = "";
+              normalizedTarget = parsed.toString().replace(/\/$/, "");
+            } catch {
+              // The smoke step will already have failed for an invalid URL.
+            }
+            const productionTarget = normalizedTarget === "https://sweepza.com";
+            const targetKey = createHash("sha256")
+              .update(normalizedTarget)
+              .digest("hex")
+              .slice(0, 12);
+            const title = productionTarget
+              ? "Production smoke checks failing"
+              : `Deployment smoke checks failing [${targetKey}]`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Smoke checks failed against ${target}: ${runUrl}`,
+              "",
+              `Reproduce locally with \`pnpm ops:smoke ${target}\`.`,
+              "Triage guide: `docs/runbooks/smoke-checks.md`.",
+            ].join("\n");
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = open.find((issue) => issue.title === title && !issue.pull_request);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
