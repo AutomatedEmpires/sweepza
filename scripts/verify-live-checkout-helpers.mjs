@@ -1,8 +1,10 @@
+import { getStripeKeyMode } from "./stripe-operator-safety.mjs";
+
 export const BASELINE_INCLUDED_ACTIVE_LISTINGS = 3;
 export const MAX_ACTIVE_LISTINGS = 10;
 
 export function isLiveStripeKey(key) {
-  return /^(?:sk|rk)_live_/.test(key ?? "");
+  return getStripeKeyMode(key) === "live";
 }
 
 export function toLocalSubscriptionStatus(status) {

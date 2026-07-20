@@ -98,6 +98,25 @@ routine environment sync. The gate is changed separately, only after
 Preview/sandbox proof and an explicit founder authorization. Never add
 `PAYMENTS_ENABLED` to the bulk `sync-vercel-env-from-doppler.sh` key list.
 
+The operator scripts add a separate account-isolation boundary:
+
+- `scripts/provision-stripe.mjs` refuses to run without
+  `--expected-account acct_...` and an explicit allowed Sweepza webhook URL. It
+  retrieves and compares the authenticated account before any product, price,
+  or webhook mutation. The expected id must match the checked-in mode-specific
+  allowlist. The approved live id is currently `null`, so both `sk_live_` and
+  `rk_live_` refuse all mutation until a founder-approved id lands through a
+  reviewed code change; future live execution will also require
+  `--confirm-live-account` with that exact id. A newly returned signing secret
+  is written only to a new (`O_EXCL`, no-follow) mode-0600 `/tmp/stripe-*` file.
+- `scripts/verify-live-checkout.mjs` is read-only, but still requires
+  explicit `--expected-account`, the checked-in approved live id, and the exact
+  canonical Sweepza Supabase URL before continuing. With the live allowlist
+  intentionally empty, it currently refuses before any provider call.
+
+These checks reduce operator error; they do not authorize provisioning, live
+verification, or payment activation.
+
 ```bash
 for cfg in dev dev_personal stg; do
   doppler secrets set STRIPE_SECRET_KEY='sk_test_replace_me' --project sweepza --config "$cfg"

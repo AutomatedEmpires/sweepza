@@ -143,6 +143,16 @@ idempotent retry behavior, entitlements, Sentry visibility, and reconciliation
 are all evidenced. No real charge is proof unless its amount and test identity
 were explicitly authorized in advance.
 
+Operator tooling now requires an expected Stripe account id before any
+provisioning or live verification. The mutating provisioner retrieves that
+account before writes, requires an exact allowlisted Sweepza webhook URL, and
+demands a second exact-account confirmation for both `sk_live_` and `rk_live_`
+keys. The mode-specific account allowlist contains the verified sandbox id and
+an intentional `null` live id, so live provisioning and verification refuse
+before provider calls until a founder-approved live id lands through review.
+The read-only live verifier also binds to the canonical Sweepza Supabase
+project. These are guardrails, not provider approval or live-money authority.
+
 ## Decision 4 — Outbound email and inbound mailbox ownership
 
 **Decisions required.** These are separate controls:
