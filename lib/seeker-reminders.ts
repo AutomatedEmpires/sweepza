@@ -77,6 +77,24 @@ function isoDay(value: Date | string): string {
   return new Date(value).toISOString().slice(0, 10);
 }
 
+function dateInTimeZone(now: Date, timeZone?: string): string | null {
+  if (!timeZone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const values = Object.fromEntries(
+      parts.map((part) => [part.type, part.value]),
+    );
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Compute the single most relevant reminder for one tracked listing, or null.
  *
@@ -99,6 +117,13 @@ export function planReminderForListing(
 
   // Never nudge a resolved listing.
   if (activity.wonAt || activity.skippedAt) return null;
+
+  // Public discovery keeps a date-only listing visible through the last
+  // plausible civil timezone. Reminder claims intentionally use a strict
+  // calendar, however: after the selected calendar has advanced, yesterday's
+  // listing must not poison an otherwise-current atomic digest.
+  const calendarToday = dateInTimeZone(now, calendarTimeZone);
+  if (calendarToday && listing.endDate.slice(0, 10) < calendarToday) return null;
 
   const endsInDays = daysUntil(listing.endDate, now);
   const expiry = listingExpiration(listing.endDate, now, calendarTimeZone);

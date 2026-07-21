@@ -812,6 +812,7 @@ declare
   v_notification_type text;
   v_recipient text;
   v_metadata jsonb;
+  v_attempt_count integer;
   v_first_attempt_at timestamptz;
   v_send_before timestamptz;
   v_lease_expires_at timestamptz;
@@ -860,6 +861,7 @@ begin
     nd.notification_type,
     nd.recipient,
     nd.metadata,
+    nd.attempt_count,
     nd.first_attempt_at,
     nd.send_before,
     nd.lease_expires_at
@@ -867,6 +869,7 @@ begin
     v_notification_type,
     v_recipient,
     v_metadata,
+    v_attempt_count,
     v_first_attempt_at,
     v_send_before,
     v_lease_expires_at
@@ -1116,13 +1119,15 @@ begin
   update public.notification_log nl
      set status = 'suppressed',
          dedupe_key = case
-           when v_reason = 'reminder_no_longer_current' then null
+           when v_reason = 'reminder_no_longer_current'
+             and v_attempt_count = 0 then null
            else nl.dedupe_key
          end,
          metadata = nl.metadata
            || jsonb_build_object('delivery_reason', v_reason)
            || case
-             when v_reason = 'reminder_no_longer_current' then
+             when v_reason = 'reminder_no_longer_current'
+               and v_attempt_count = 0 then
                jsonb_build_object('released_dedupe_key', nl.dedupe_key)
              else '{}'::jsonb
            end,
@@ -1140,6 +1145,194 @@ $$;
 
 comment on function public.authorize_email_delivery_transport(uuid, uuid) is
   'Token-CAS transport authorization using final database time, terminal suppression before expiry, and a shared rolling provider-rate window. Service role only.';
+
+-- Re-authorize legacy host/winner notifications and reserve their provider
+-- request in one transaction. The rolling-window lock is deliberately last:
+-- the returned recipient and consent snapshot are current at the exact point
+-- the provider slot begins, with no post-reservation database reads required.
+create or replace function public.authorize_transactional_email_transport(
+  p_app_user_id uuid,
+  p_host_id uuid,
+  p_preference_key text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_app_user_id uuid := p_app_user_id;
+  v_host_app_user_id uuid;
+  v_recipient text;
+  v_email_enabled boolean := true;
+  v_event_enabled boolean := true;
+  v_now timestamptz;
+  v_request_times timestamptz[];
+  v_next_attempt_at timestamptz;
+begin
+  if p_preference_key in (
+    'email_on_listing_approved',
+    'email_on_listing_held',
+    'email_on_listing_expiring_soon'
+  ) then
+    if p_host_id is null then
+      return jsonb_build_object(
+        'authorized', false,
+        'reserved', false,
+        'reason', 'invalid_authorization_scope'
+      );
+    end if;
+
+    -- Resolve the parent without a lock, then re-check the host only after the
+    -- app_user parent is locked. This matches account-deletion lock order.
+    select h.app_user_id
+      into v_host_app_user_id
+      from public.host h
+     where h.id = p_host_id;
+    if not found then
+      return jsonb_build_object(
+        'authorized', false,
+        'reserved', false,
+        'reason', 'host_unavailable'
+      );
+    end if;
+    if p_app_user_id is not null
+       and p_app_user_id <> v_host_app_user_id then
+      return jsonb_build_object(
+        'authorized', false,
+        'reserved', false,
+        'app_user_id', p_app_user_id,
+        'reason', 'host_authority_changed'
+      );
+    end if;
+    v_app_user_id := v_host_app_user_id;
+  elsif p_preference_key = 'winner_wall_verification' then
+    if p_app_user_id is null or p_host_id is not null then
+      return jsonb_build_object(
+        'authorized', false,
+        'reserved', false,
+        'reason', 'invalid_authorization_scope'
+      );
+    end if;
+  else
+    return jsonb_build_object(
+      'authorized', false,
+      'reserved', false,
+      'reason', 'unsupported_notification_type'
+    );
+  end if;
+
+  select au.email
+    into v_recipient
+    from public.app_user au
+   where au.id = v_app_user_id
+   for update;
+  if not found or nullif(btrim(v_recipient), '') is null then
+    return jsonb_build_object(
+      'authorized', false,
+      'reserved', false,
+      'app_user_id', v_app_user_id,
+      'reason', 'recipient_unavailable'
+    );
+  end if;
+
+  if p_host_id is not null then
+    perform 1
+      from public.host h
+     where h.id = p_host_id
+       and h.app_user_id = v_app_user_id
+     for share;
+    if not found then
+      return jsonb_build_object(
+        'authorized', false,
+        'reserved', false,
+        'app_user_id', v_app_user_id,
+        'reason', 'host_authority_changed'
+      );
+    end if;
+  end if;
+
+  select
+    np.email_enabled,
+    case p_preference_key
+      when 'email_on_listing_approved' then np.email_on_listing_approved
+      when 'email_on_listing_held' then np.email_on_listing_held
+      when 'email_on_listing_expiring_soon' then np.email_on_listing_expiring_soon
+      when 'winner_wall_verification' then np.winner_wall_verification
+    end
+    into v_email_enabled, v_event_enabled
+    from public.notification_pref np
+   where np.app_user_id = v_app_user_id
+   for share;
+
+  if not found then
+    v_email_enabled := true;
+    v_event_enabled := true;
+  end if;
+
+  if not v_email_enabled or not v_event_enabled then
+    return jsonb_build_object(
+      'authorized', false,
+      'reserved', false,
+      'app_user_id', v_app_user_id,
+      'reason', 'notification_preference_changed'
+    );
+  end if;
+
+  insert into private.email_transport_rate_window (
+    singleton,
+    request_times
+  ) values (
+    true,
+    array[]::timestamptz[]
+  )
+  on conflict (singleton) do nothing;
+
+  select rate_window.request_times
+    into v_request_times
+    from private.email_transport_rate_window rate_window
+   where rate_window.singleton
+   for update;
+
+  v_now := clock_timestamp();
+  select coalesce(
+    array_agg(recent.request_time order by recent.request_time),
+    array[]::timestamptz[]
+  )
+    into v_request_times
+    from unnest(v_request_times) recent(request_time)
+   where recent.request_time > v_now - interval '1 second';
+
+  if cardinality(v_request_times) >= 8 then
+    v_next_attempt_at := v_request_times[1]
+      + interval '1 second 50 milliseconds';
+    update private.email_transport_rate_window
+       set request_times = v_request_times
+     where singleton;
+
+    return jsonb_build_object(
+      'authorized', true,
+      'reserved', false,
+      'app_user_id', v_app_user_id,
+      'next_attempt_at', v_next_attempt_at
+    );
+  end if;
+
+  update private.email_transport_rate_window
+     set request_times = array_append(v_request_times, v_now)
+   where singleton;
+
+  return jsonb_build_object(
+    'authorized', true,
+    'reserved', true,
+    'app_user_id', v_app_user_id,
+    'recipient', v_recipient
+  );
+end;
+$$;
+
+comment on function public.authorize_transactional_email_transport(uuid, uuid, text) is
+  'Atomically re-authorizes host/winner email consent and recipient state while reserving the shared rolling provider window. Service role only.';
 
 create or replace function public.complete_email_delivery(
   p_delivery_id uuid,
@@ -1312,6 +1505,7 @@ as $$
 declare
   v_now timestamptz := clock_timestamp();
   v_suppressed_id uuid;
+  v_attempt_count integer;
   v_reason text := left(coalesce(nullif(btrim(p_reason), ''), 'suppressed'), 120);
 begin
   update private.notification_delivery nd
@@ -1329,7 +1523,7 @@ begin
    where nd.id = p_delivery_id
      and nd.status = 'queued'
      and nd.lease_token = p_lease_token
-  returning nd.id into v_suppressed_id;
+  returning nd.id, nd.attempt_count into v_suppressed_id, v_attempt_count;
 
   if v_suppressed_id is null then
     return false;
@@ -1337,9 +1531,19 @@ begin
 
   update public.notification_log nl
      set status = 'skipped',
-         metadata = nl.metadata || jsonb_build_object(
-           'delivery_reason', v_reason
-         ),
+         dedupe_key = case
+           when v_reason = 'reminder_no_longer_current'
+             and v_attempt_count = 0 then null
+           else nl.dedupe_key
+         end,
+         metadata = nl.metadata
+           || jsonb_build_object('delivery_reason', v_reason)
+           || case
+             when v_reason = 'reminder_no_longer_current'
+               and v_attempt_count = 0 then
+               jsonb_build_object('released_dedupe_key', nl.dedupe_key)
+             else '{}'::jsonb
+           end,
          updated_at = v_now
    where nl.delivery_id = v_suppressed_id
      and nl.status = 'queued';
@@ -1375,6 +1579,11 @@ revoke all on function public.authorize_email_delivery_transport(uuid, uuid) fro
 revoke all on function public.authorize_email_delivery_transport(uuid, uuid) from anon;
 revoke all on function public.authorize_email_delivery_transport(uuid, uuid) from authenticated;
 grant execute on function public.authorize_email_delivery_transport(uuid, uuid) to service_role;
+
+revoke all on function public.authorize_transactional_email_transport(uuid, uuid, text) from public;
+revoke all on function public.authorize_transactional_email_transport(uuid, uuid, text) from anon;
+revoke all on function public.authorize_transactional_email_transport(uuid, uuid, text) from authenticated;
+grant execute on function public.authorize_transactional_email_transport(uuid, uuid, text) to service_role;
 
 revoke all on function public.complete_email_delivery(uuid, uuid, text) from public;
 revoke all on function public.complete_email_delivery(uuid, uuid, text) from anon;

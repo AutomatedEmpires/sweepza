@@ -133,6 +133,19 @@ describe("planReminderForListing", () => {
     expect(result).toBeNull();
   });
 
+  it("never plans a prior UTC calendar date during the visibility grace window", () => {
+    const result = planReminderForListing(
+      candidate(
+        { savedAt: "2026-07-19T12:00:00.000Z" },
+        { endDate: "2026-07-20" },
+      ),
+      undefined,
+      new Date("2026-07-21T01:00:00.000Z"),
+      "UTC",
+    );
+    expect(result).toBeNull();
+  });
+
   it("prefers the more urgent ends_today over ready_again on the same listing", () => {
     // Daily sweep entered yesterday (ready again) that also ends today.
     const result = planReminderForListing(
@@ -181,6 +194,25 @@ describe("planSeekerReminders", () => {
       NOW,
     );
     expect(reminders).toHaveLength(1);
+  });
+
+  it("keeps current reminders when a mixed page contains a grace-visible prior date", () => {
+    const savedAt = "2026-07-19T12:00:00.000Z";
+    const reminders = planSeekerReminders(
+      [
+        candidate({ savedAt }, { id: "stale", endDate: "2026-07-20" }),
+        candidate({ savedAt }, { id: "current", endDate: "2026-07-21" }),
+      ],
+      undefined,
+      new Date("2026-07-21T01:00:00.000Z"),
+      "UTC",
+    );
+
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]).toMatchObject({
+      type: "ends_today",
+      listing: { id: "current" },
+    });
   });
 });
 

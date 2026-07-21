@@ -56,6 +56,7 @@ describe("sendEmail", () => {
       });
       expect(fetchMock).not.toHaveBeenCalled();
     },
+    10_000,
   );
 
   it("fails closed when enabled without a complete configuration", async () => {

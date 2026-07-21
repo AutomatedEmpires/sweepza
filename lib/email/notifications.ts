@@ -8,7 +8,15 @@ import {
   type EmailContent,
 } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send";
-import { OutboundEmailConfigurationError } from "@/lib/email/outbound-gate";
+import {
+  isEmailOutboxSchemaReady,
+  isOutboundEmailEnabled,
+  OutboundEmailConfigurationError,
+} from "@/lib/email/outbound-gate";
+import {
+  authorizeTransactionalEmailTransport,
+  EmailTransportCapacityError,
+} from "@/lib/email/transport-capacity";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export type HostNotificationType =
@@ -89,6 +97,37 @@ function deliveryFailureReason(error: unknown): string {
     : "outbound_email_delivery_failed";
 }
 
+async function currentNotificationRecipient(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  appUserId: string,
+  preferenceKey: string,
+): Promise<string | null> {
+  const [appUserResult, prefResult] = await Promise.all([
+    supabase
+      .from("app_user")
+      .select("email")
+      .eq("id", appUserId)
+      .maybeSingle<{ email: string | null }>(),
+    supabase
+      .from("notification_pref")
+      .select("*")
+      .eq("app_user_id", appUserId)
+      .maybeSingle<Record<string, unknown>>(),
+  ]);
+
+  if (appUserResult.error || prefResult.error) {
+    throw new Error("Email notification state could not be verified.");
+  }
+
+  const appUser = appUserResult.data;
+  const pref = prefResult.data;
+
+  if (!prefEnabled(pref, preferenceKey) || !prefEnabled(pref, "email_enabled")) {
+    return null;
+  }
+  return appUser?.email ?? null;
+}
+
 /**
  * Send an email notification to a host for a listing lifecycle event.
  * Honors the host's per-event email preference and channel toggle. Once a
@@ -103,11 +142,15 @@ export async function sendHostNotification(args: {
   const { hostId, type, payload } = args;
   const supabase = createServiceRoleClient();
 
-  const { data: host } = await supabase
+  const { data: host, error: hostError } = await supabase
     .from("host")
     .select("app_user_id")
     .eq("id", hostId)
     .maybeSingle<{ app_user_id: string }>();
+
+  if (hostError) {
+    throw new Error("Host notification authority could not be verified.");
+  }
 
   if (!host) {
     // eslint-disable-next-line no-console
@@ -116,44 +159,62 @@ export async function sendHostNotification(args: {
   }
 
   const appUserId = host.app_user_id;
+  const { subject, html } = buildHostEmail(type, payload);
 
-  const { data: appUser } = await supabase
-    .from("app_user")
-    .select("email")
-    .eq("id", appUserId)
-    .maybeSingle<{ email: string | null }>();
+  try {
+    let authorizedAppUserId = appUserId;
+    let email: string | null;
 
-  const { data: pref } = await supabase
-    .from("notification_pref")
-    .select("*")
-    .eq("app_user_id", appUserId)
-    .maybeSingle<Record<string, unknown>>();
-
-  const email = appUser?.email ?? null;
-  const eventEnabled = prefEnabled(pref, PREF_KEY_BY_TYPE[type]);
-  const channelEnabled = prefEnabled(pref, "email_enabled");
-
-  if (eventEnabled && channelEnabled && email) {
-    const { subject, html } = buildHostEmail(type, payload);
-    try {
-      const result = await sendEmail({ to: email, subject, html });
-      await writeLog(
-        appUserId,
-        type,
-        result.status,
-        result.status === "skipped"
-          ? { ...payload, delivery_reason: result.reason }
-          : payload,
+    if (isOutboundEmailEnabled()) {
+      if (!isEmailOutboxSchemaReady()) {
+        throw new EmailTransportCapacityError();
+      }
+      const authorization = await authorizeTransactionalEmailTransport(
+        supabase,
+        {
+          appUserId,
+          hostId,
+          preferenceKey: PREF_KEY_BY_TYPE[type],
+        },
       );
-    } catch (error) {
-      await writeLog(appUserId, type, "failed", {
-        ...payload,
-        delivery_reason: deliveryFailureReason(error),
-      });
-      throw error;
+      authorizedAppUserId = authorization.appUserId ?? appUserId;
+      if (!authorization.authorized) {
+        await writeLog(authorizedAppUserId, type, "skipped", {
+          ...payload,
+          delivery_reason: authorization.reason,
+        });
+        return;
+      }
+      email = authorization.recipient;
+    } else {
+      email = await currentNotificationRecipient(
+        supabase,
+        appUserId,
+        PREF_KEY_BY_TYPE[type],
+      );
+      if (!email) {
+        await writeLog(appUserId, type, "skipped", payload);
+        return;
+      }
     }
-  } else {
-    await writeLog(appUserId, type, "skipped", payload);
+
+    // The final enabled-path RPC both locks consent/identity and reserves the
+    // provider window. Keep transport adjacent: no database work belongs here.
+    const result = await sendEmail({ to: email, subject, html });
+    await writeLog(
+      authorizedAppUserId,
+      type,
+      result.status,
+      result.status === "skipped"
+        ? { ...payload, delivery_reason: result.reason }
+        : payload,
+    );
+  } catch (error) {
+    await writeLog(appUserId, type, "failed", {
+      ...payload,
+      delivery_reason: deliveryFailureReason(error),
+    });
+    throw error;
   }
 }
 
@@ -171,46 +232,60 @@ export async function sendWinnerNotification(args: {
   const type = "winner_post_published";
   const supabase = createServiceRoleClient();
 
-  const { data: appUser } = await supabase
-    .from("app_user")
-    .select("email")
-    .eq("id", appUserId)
-    .maybeSingle<{ email: string | null }>();
+  const { subject, html } = winnerPostPublishedEmail({
+    displayName: payload.displayName ?? "there",
+    listingTitle: payload.listingTitle ?? "",
+    winnersUrl: payload.winnersUrl ?? "",
+  });
 
-  const { data: pref } = await supabase
-    .from("notification_pref")
-    .select("*")
-    .eq("app_user_id", appUserId)
-    .maybeSingle<Record<string, unknown>>();
-
-  const email = appUser?.email ?? null;
-  const eventEnabled = prefEnabled(pref, "winner_wall_verification");
-  const channelEnabled = prefEnabled(pref, "email_enabled");
-
-  if (eventEnabled && channelEnabled && email) {
-    const { subject, html } = winnerPostPublishedEmail({
-      displayName: payload.displayName ?? "there",
-      listingTitle: payload.listingTitle ?? "",
-      winnersUrl: payload.winnersUrl ?? "",
-    });
-    try {
-      const result = await sendEmail({ to: email, subject, html });
-      await writeLog(
-        appUserId,
-        type,
-        result.status,
-        result.status === "skipped"
-          ? { ...payload, delivery_reason: result.reason }
-          : payload,
+  try {
+    let email: string | null;
+    if (isOutboundEmailEnabled()) {
+      if (!isEmailOutboxSchemaReady()) {
+        throw new EmailTransportCapacityError();
+      }
+      const authorization = await authorizeTransactionalEmailTransport(
+        supabase,
+        {
+          appUserId,
+          hostId: null,
+          preferenceKey: "winner_wall_verification",
+        },
       );
-    } catch (error) {
-      await writeLog(appUserId, type, "failed", {
-        ...payload,
-        delivery_reason: deliveryFailureReason(error),
-      });
-      throw error;
+      if (!authorization.authorized) {
+        await writeLog(appUserId, type, "skipped", {
+          ...payload,
+          delivery_reason: authorization.reason,
+        });
+        return;
+      }
+      email = authorization.recipient;
+    } else {
+      email = await currentNotificationRecipient(
+        supabase,
+        appUserId,
+        "winner_wall_verification",
+      );
+      if (!email) {
+        await writeLog(appUserId, type, "skipped", payload);
+        return;
+      }
     }
-  } else {
-    await writeLog(appUserId, type, "skipped", payload);
+
+    const result = await sendEmail({ to: email, subject, html });
+    await writeLog(
+      appUserId,
+      type,
+      result.status,
+      result.status === "skipped"
+        ? { ...payload, delivery_reason: result.reason }
+        : payload,
+    );
+  } catch (error) {
+    await writeLog(appUserId, type, "failed", {
+      ...payload,
+      delivery_reason: deliveryFailureReason(error),
+    });
+    throw error;
   }
 }

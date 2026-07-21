@@ -69,6 +69,7 @@ begin
           and l.lifecycle_status = 'active'
           and l.visibility_status = 'public'
           and l.end_date is not null
+          and l.end_date >= (p_now at time zone 'UTC')::date
           and (lss.saved_at is not null or lss.entered_at is not null)
           and lss.skipped_at is null
           and lss.won_at is null
@@ -97,6 +98,29 @@ begin
         updated_at = excluded.updated_at;
 end;
 $$;
+
+-- Releasing an unattempted stale snapshot's dedupe keys must wake the producer
+-- in the same transaction. Invalidating an active scan lease prevents a worker
+-- that observed the old reservation from restoring a one-day defer afterward.
+create or replace function private.requeue_seeker_reminder_scan_on_key_release()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if old.dedupe_key is not null
+     and new.dedupe_key is null
+     and new.metadata ->> 'delivery_reason' = 'reminder_no_longer_current' then
+    perform private.refresh_seeker_reminder_scan(new.app_user_id);
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_requeue_seeker_reminder_scan_on_key_release
+after update of dedupe_key on public.notification_log
+for each row execute function private.requeue_seeker_reminder_scan_on_key_release();
 
 create or replace function private.queue_seeker_reminder_scan_from_state()
 returns trigger
@@ -190,6 +214,7 @@ after update of email on public.app_user
 for each row execute function private.queue_seeker_reminder_scan_from_email();
 
 revoke all on function private.refresh_seeker_reminder_scan(uuid, timestamptz) from public;
+revoke all on function private.requeue_seeker_reminder_scan_on_key_release() from public;
 revoke all on function private.queue_seeker_reminder_scan_from_state() from public;
 revoke all on function private.queue_seeker_reminder_scans_from_listing() from public;
 revoke all on function private.queue_seeker_reminder_scan_from_pref() from public;
@@ -214,6 +239,7 @@ where nullif(btrim(au.email), '') is not null
   and l.lifecycle_status = 'active'
   and l.visibility_status = 'public'
   and l.end_date is not null
+  and l.end_date >= (clock_timestamp() at time zone 'UTC')::date
   and (lss.saved_at is not null or lss.entered_at is not null)
   and lss.skipped_at is null
   and lss.won_at is null
@@ -275,6 +301,7 @@ begin
           and l.lifecycle_status = 'active'
           and l.visibility_status = 'public'
           and l.end_date is not null
+          and l.end_date >= (v_now at time zone 'UTC')::date
           and (lss.saved_at is not null or lss.entered_at is not null)
           and lss.skipped_at is null
           and lss.won_at is null
@@ -356,6 +383,7 @@ begin
         and l.lifecycle_status = 'active'
         and l.visibility_status = 'public'
         and l.end_date is not null
+        and l.end_date >= (v_now at time zone 'UTC')::date
         and (lss.saved_at is not null or lss.entered_at is not null)
         and lss.skipped_at is null
         and lss.won_at is null
