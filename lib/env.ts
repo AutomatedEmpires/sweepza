@@ -38,6 +38,12 @@ const schema = z.object({
    * never authorize email delivery.
    */
   OUTBOUND_EMAIL_ENABLED: z.string().optional(),
+  /**
+   * Set only after the durable email-outbox migrations are applied. This lets
+   * disabled transport crons purge expired payloads without making code deploy
+   * order imply database activation.
+   */
+  EMAIL_OUTBOX_SCHEMA_READY: z.string().optional(),
   /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
   CRON_SECRET: z.string().optional(),
   /** "true" flips CSP from report-only to enforcing (nonce-based). Redeploy required. */

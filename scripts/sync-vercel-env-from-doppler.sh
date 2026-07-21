@@ -132,6 +132,8 @@ sync_env_group() {
   # only through a separate founder-approved operation.
   # OUTBOUND_EMAIL_ENABLED is excluded for the same reason. Provisioning the
   # Resend tuple must never become authority to send mail.
+  # EMAIL_OUTBOX_SCHEMA_READY is also excluded: it is set only after the two
+  # durable email migrations and runtime authorization checks are verified.
 
   for key in "${base_keys[@]}"; do
     sync_secret_from_doppler "$key" "$vercel_env" "$doppler_config"

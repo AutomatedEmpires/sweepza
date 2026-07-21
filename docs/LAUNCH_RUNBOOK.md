@@ -244,21 +244,24 @@ provide the key/DSN"; configuration + verification are then automatable.
 - Code: `lib/email/send.ts` posts to `api.resend.com/emails` only when
   `OUTBOUND_EMAIL_ENABLED` is the literal `"true"`. The gate is checked before
   configuration and fetch. An enabled but incomplete configuration throws;
-  non-2xx provider responses throw with status and body for observability.
+  non-2xx responses expose only allowlisted machine codes and status metadata.
 - Configuration requires all three values: `RESEND_API_KEY`, an explicit
   `RESEND_FROM_EMAIL`, and an explicit `RESEND_REPLY_TO_EMAIL`. Both identities
   must parse as `sweepza.com` or a subdomain. There are no hardcoded operational
   sender or inbox defaults, and generic/legacy fallback variables are rejected.
-- Emails are sent for **listing lifecycle + winner** events only
+- Transactional email covers **listing lifecycle + winner** events
   (`sendHostNotification`: `listing_approved`, `listing_held`,
   `listing_expiring_soon`; `sendWinnerNotification`: `winner_post_published`).
-  **No billing/checkout emails exist.** Recipients are always the target user's
-  own `app_user.email`. A row is marked `sent` only after transport success;
-  gate-disabled attempts are `skipped` with `sent_at = null` and a reason.
-- The scheduled seeker-reminder route authenticates first, then returns a 200
-  structured no-op before Supabase/provider work while disabled. Enabled but
-  incomplete configuration returns 503. Bulk Vercel env sync intentionally
-  excludes `OUTBOUND_EMAIL_ENABLED`.
+  **No billing/checkout emails exist.** Seeker digests use a private durable
+  outbox with daily/event dedupe, live recipient/preference/listing
+  reauthorization, provider-idempotent retries, and terminal payload purging.
+- Apply `20260721161502_durable_reminder_email_outbox.sql` and
+  `20260721165611_bounded_reminder_scan_queue.sql`, replay the full migration
+  stack, and verify queue/authorization runtime checks before setting
+  `EMAIL_OUTBOX_SCHEMA_READY="true"`. Keep `OUTBOUND_EMAIL_ENABLED` unset during
+  this schema activation. The minute crons remain provider-dark until the
+  separate outbound gate is explicitly approved and enabled. Bulk Vercel env
+  sync intentionally excludes activation gates.
 - **External actions remain founder-gated:** provision a dedicated Sweepza
   Resend resource, choose and verify the sending domain using the provider's
   current DNS instructions, name the From and Reply-To identities, name the
