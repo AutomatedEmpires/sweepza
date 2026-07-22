@@ -2,6 +2,7 @@
 
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { env, type Env } from "@/lib/env";
 import { listingFallbackImageUrl } from "@/lib/listing-media";
 import type {
   ImageCandidateDiagnostic,
@@ -44,12 +45,17 @@ export function assertSweepzaSupabaseUrl(rawUrl: string): void {
   }
 }
 
-export function requireSweepzaBackfillProvider(environment: NodeJS.ProcessEnv = process.env): {
+type BackfillProviderEnvironment = Pick<
+  Env,
+  "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"
+>;
+
+export function requireSweepzaBackfillProvider(environment: BackfillProviderEnvironment = env): {
   url: string;
   key: string;
 } {
   const url = environment.NEXT_PUBLIC_SUPABASE_URL ?? environment.SUPABASE_URL;
-  const key = environment.SUPABASE_SERVICE_ROLE_KEY ?? environment.SUPABASE_SERVICE_ROLE;
+  const key = environment.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Missing Sweepza Supabase URL or service-role key.");
 
   // Every mode creates a privileged client. Dry-run is read-only, but reading

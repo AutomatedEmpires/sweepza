@@ -34,10 +34,19 @@ describe("Sweepza project boundary", () => {
 
   it("refuses a wrong-project fallback-only dry-run before creating a client", () => {
     expect(() => requireSweepzaBackfillProvider({
-      NODE_ENV: "test",
       NEXT_PUBLIC_SUPABASE_URL: "https://wrongprojectref0000.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-only-value",
     })).toThrow(/Refusing service-role write/);
+  });
+
+  it("accepts the centralized server-only URL fallback for Sweepza", () => {
+    expect(requireSweepzaBackfillProvider({
+      SUPABASE_URL: `https://${SWEEPZA_SUPABASE_PROJECT_REF}.supabase.co`,
+      SUPABASE_SERVICE_ROLE_KEY: "test-only-value",
+    })).toEqual({
+      url: `https://${SWEEPZA_SUPABASE_PROJECT_REF}.supabase.co`,
+      key: "test-only-value",
+    });
   });
 });
 

@@ -7,6 +7,8 @@ declare
   v_listing record;
   v_source_page_url text;
   v_fallback_url text;
+  v_result jsonb;
+  v_backfilled integer := 0;
 begin
   for v_listing in
     select id, prize_category, entry_url, official_rules_url
@@ -14,6 +16,7 @@ begin
      where host_id is null
        and main_image_url is null
        and category_fallback_image is null
+       and coalesce(image_source_type::text, '') not in ('host_upload', 'owner_upload')
      order by id
      for update
   loop
@@ -31,7 +34,7 @@ begin
       else 'other'
     end;
 
-    perform public.finalize_listing_image(
+    v_result := public.finalize_listing_image(
       v_listing.id,
       jsonb_build_object(
         'sourcePageUrl', v_source_page_url,
@@ -54,6 +57,12 @@ begin
         ))
       )
     );
+
+    if coalesce((v_result ->> 'applied')::boolean, false) then
+      v_backfilled := v_backfilled + 1;
+    end if;
   end loop;
+
+  raise notice 'Backfilled % listing fallback images', v_backfilled;
 end;
 $$;

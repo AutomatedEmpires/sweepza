@@ -100,7 +100,7 @@ export async function GET(
           </div>
 
           <div style={{ display: "flex", fontSize: 20, color: OG_GRAPHITE }}>
-            Sweepza fallback art · no sponsor image provided
+            Sweepza fallback art · source image unavailable for display
           </div>
         </div>
       </div>
