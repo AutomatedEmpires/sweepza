@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   env: {
     PAYMENTS_ENABLED: undefined as string | undefined,
     STRIPE_SECRET_KEY: "sk_test_must_not_be_used",
+    STRIPE_ACCOUNT_ID: "acct_1TeqgHD7Yqq488pB",
+    VERCEL_ENV: undefined as string | undefined,
   },
   stripeConstructor: vi.fn(),
   updateHostStripeCustomerId: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock("@/lib/db/hosts", () => ({
 }));
 
 import {
+  assertStripeAccountBinding,
   createStripeServerClient,
   ensureStripeCustomerForHost,
 } from "@/lib/stripe/server";
@@ -23,6 +26,9 @@ import {
 describe("Stripe server boundary", () => {
   beforeEach(() => {
     mocks.env.PAYMENTS_ENABLED = undefined;
+    mocks.env.STRIPE_SECRET_KEY = "sk_test_must_not_be_used";
+    mocks.env.STRIPE_ACCOUNT_ID = "acct_1TeqgHD7Yqq488pB";
+    mocks.env.VERCEL_ENV = undefined;
     mocks.stripeConstructor.mockReset();
     mocks.updateHostStripeCustomerId.mockReset();
   });
@@ -42,5 +48,18 @@ describe("Stripe server boundary", () => {
 
     expect(mocks.stripeConstructor).not.toHaveBeenCalled();
     expect(mocks.updateHostStripeCustomerId).not.toHaveBeenCalled();
+  });
+
+  it("rejects test-mode credentials in production before calling Stripe", async () => {
+    mocks.env.PAYMENTS_ENABLED = "true";
+    mocks.env.VERCEL_ENV = "production";
+    mocks.env.STRIPE_SECRET_KEY = "sk_test_sweepza";
+    const retrieve = vi.fn();
+
+    await expect(
+      assertStripeAccountBinding({ accounts: { retrieve } } as never),
+    ).rejects.toThrow(/production payments require live Stripe credentials/);
+
+    expect(retrieve).not.toHaveBeenCalled();
   });
 });

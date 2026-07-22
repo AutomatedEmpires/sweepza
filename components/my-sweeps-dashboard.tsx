@@ -57,7 +57,7 @@ const TABS: {
     icon: "check",
     empty: {
       title: "No entries tracked yet",
-      body: "When you enter a sweep through Sweepza, it's tracked here automatically.",
+      body: "After using the official entry page, confirm your entry to track it here.",
     },
   },
   {

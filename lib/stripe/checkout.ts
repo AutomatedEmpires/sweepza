@@ -8,10 +8,15 @@ import {
   computePlanAllowance,
   getAdditionalListingPriceId,
   getBaselinePriceId,
+  getMaxAdditionalListings,
   HOST_BASELINE_PLAN,
   isBillingConfigured,
 } from "@/lib/billing/plans";
-import { createStripeServerClient, ensureStripeCustomerForHost } from "./server";
+import {
+  assertStripeAccountBinding,
+  createStripeServerClient,
+  ensureStripeCustomerForHost,
+} from "./server";
 
 export interface CreateHostCheckoutSessionArgs {
   host: HostRow;
@@ -47,6 +52,9 @@ export async function createHostCheckoutSession(
       "Cannot start checkout: the complete Stripe application, webhook, price, and app URL tuple is not configured.",
     );
   }
+  if (args.host.account_status !== "active") {
+    throw new Error("Only an active host account can start Checkout.");
+  }
   const baseUrl = getAppBaseUrl();
   const baselinePriceId = getBaselinePriceId();
   if (!baselinePriceId) {
@@ -55,14 +63,43 @@ export async function createHostCheckoutSession(
     );
   }
 
-  const allowance = computePlanAllowance(args.additionalListings ?? 0);
+  const requestedAdditional = args.additionalListings ?? 0;
+  if (
+    !Number.isInteger(requestedAdditional) ||
+    requestedAdditional < 0 ||
+    requestedAdditional > getMaxAdditionalListings()
+  ) {
+    throw new Error(
+      `Additional listing quantity must be an integer from 0 to ${getMaxAdditionalListings()}.`,
+    );
+  }
+  const allowance = computePlanAllowance(requestedAdditional);
   const additionalPriceId = getAdditionalListingPriceId();
 
   const stripe = createStripeServerClient();
+  // Bind every Checkout operation to the reviewed Sweepza account, including
+  // hosts that already have a persisted customer id and therefore skip
+  // customer creation.
+  await assertStripeAccountBinding(stripe);
   const { customerId } = await ensureStripeCustomerForHost(
     args.host,
     args.appUser,
   );
+
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "all",
+    limit: 20,
+  });
+  const hasNonterminalSubscription = subscriptions.data.some(
+    (subscription) =>
+      !["canceled", "incomplete_expired"].includes(subscription.status),
+  );
+  if (hasNonterminalSubscription) {
+    throw new Error(
+      "This host already has a Stripe subscription. Manage it in the billing portal.",
+    );
+  }
 
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
     { price: baselinePriceId, quantity: 1 },
@@ -93,18 +130,53 @@ export async function createHostCheckoutSession(
     max_active_listings: String(allowance.maxActiveListings),
   };
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
+  const openSessions = await stripe.checkout.sessions.list({
     customer: customerId,
-    line_items: lineItems,
-    allow_promotion_codes: true,
-    success_url: `${baseUrl}/host?checkout=success`,
-    cancel_url: `${baseUrl}/host?checkout=cancelled`,
-    metadata,
-    subscription_data: {
-      metadata,
-    },
+    status: "open",
+    limit: 20,
   });
+  const reusableSession = openSessions.data.find(
+    (session) =>
+      session.mode === "subscription" &&
+      session.url &&
+      session.metadata?.venture === "sweepza" &&
+      session.metadata.host_id === args.host.id &&
+      session.metadata.max_active_listings ===
+        String(allowance.maxActiveListings),
+  );
+  if (reusableSession?.url) {
+    return { url: reusableSession.url, sessionId: reusableSession.id };
+  }
+
+  const mismatchedSweepzaSessions = openSessions.data.filter(
+    (session) =>
+      session.mode === "subscription" &&
+      session.metadata?.venture === "sweepza" &&
+      session.metadata.host_id === args.host.id,
+  );
+  for (const session of mismatchedSweepzaSessions) {
+    await stripe.checkout.sessions.expire(session.id);
+  }
+
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "subscription",
+      customer: customerId,
+      client_reference_id: args.host.id,
+      line_items: lineItems,
+      allow_promotion_codes: true,
+      success_url: `${baseUrl}/host?checkout=success`,
+      cancel_url: `${baseUrl}/host?checkout=cancelled`,
+      metadata,
+      subscription_data: {
+        metadata,
+      },
+    },
+    {
+      idempotencyKey:
+        `sweepza/checkout/${args.host.id}/${Math.floor(Date.now() / 600_000)}`,
+    },
+  );
 
   if (!session.url) {
     throw new Error("Stripe did not return a checkout URL.");
@@ -122,6 +194,7 @@ export async function createStripePortalSession(args: {
 }): Promise<string> {
   assertPaymentsEnabled();
   const stripe = createStripeServerClient();
+  await assertStripeAccountBinding(stripe);
   const session = await stripe.billingPortal.sessions.create({
     customer: args.customerId,
     return_url: args.returnUrl ?? `${getAppBaseUrl()}/host`,

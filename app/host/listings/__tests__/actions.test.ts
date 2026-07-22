@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   deactivateListing: vi.fn(),
+  reactivateListing: vi.fn(),
   submitForReview: vi.fn(),
   revalidatePath: vi.fn(),
   revalidatePublicListings: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/db/host-dashboard", () => ({
   deactivateListing: mocks.deactivateListing,
+  reactivateListing: mocks.reactivateListing,
   submitForReview: mocks.submitForReview,
 }));
 vi.mock("@/lib/db/listings-cache", () => ({

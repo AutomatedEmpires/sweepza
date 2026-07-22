@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { publicHttpUrlSchema } from "@/lib/http-url-schema";
 import type {
   HostVerificationStatus,
   NotificationChannel,
@@ -11,7 +12,6 @@ import type {
   ReportTargetType,
   SubscriptionStatus,
 } from "./enums";
-import type { ReportRow } from "./types";
 
 // "Open" reports are any report that has not reached a terminal state
 // (resolved / dismissed / action_taken). The DB has no literal 'open' status.
@@ -24,6 +24,11 @@ const OPEN_REPORT_STATUSES: ReportStatus[] = [
 
 // Winner posts still awaiting an editorial decision.
 const PENDING_WINNER_STATUSES: string[] = ["submitted", "pending_review"];
+
+function safeExternalHref(value: string | null | undefined): string | null {
+  const parsed = publicHttpUrlSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 // ---------------------------------------------------------------------------
 // Dashboard snapshots
@@ -341,9 +346,13 @@ export interface AdminReportRow {
   target_type: ReportTargetType;
   target_id: string;
   reason_code: ReportReason;
+  details: string | null;
   ai_severity: ReportAiSeverity | null;
   created_at: string;
   reporter_display_name: string | null;
+  target_label: string;
+  target_context: string | null;
+  target_href: string | null;
 }
 
 interface RawReporter {
@@ -355,6 +364,7 @@ interface RawAdminReport {
   target_type: ReportTargetType;
   target_id: string;
   reason_code: ReportReason;
+  details: string | null;
   ai_severity: ReportAiSeverity | null;
   created_at: string;
   reporter: RawReporter | RawReporter[] | null;
@@ -365,7 +375,7 @@ export async function getOpenReports(): Promise<AdminReportRow[]> {
   const { data, error } = await supabase
     .from("report")
     .select(
-      `id, target_type, target_id, reason_code, ai_severity, created_at,
+      `id, target_type, target_id, reason_code, details, ai_severity, created_at,
        reporter:reporter_user_id ( display_name )`,
     )
     .in("status", OPEN_REPORT_STATUSES)
@@ -374,18 +384,69 @@ export async function getOpenReports(): Promise<AdminReportRow[]> {
     throw new Error(`getOpenReports failed: ${error.message}`);
   }
 
-  return ((data ?? []) as RawAdminReport[]).map((row) => {
+  const rows = (data ?? []) as RawAdminReport[];
+  const listingIds = [...new Set(rows
+    .filter((row) => ["listing", "image", "entry_link"].includes(row.target_type))
+    .map((row) => row.target_id))];
+  const hostIds = [...new Set(rows.filter((row) => row.target_type === "host").map((row) => row.target_id))];
+  const winnerIds = [...new Set(rows.filter((row) => row.target_type === "winner_post").map((row) => row.target_id))];
+  const listingMap = new Map<string, { title: string; slug: string; sponsor_name: string | null; official_rules_url: string | null }>();
+  const hostMap = new Map<string, { display_name: string; website_url: string | null; account_status: string }>();
+  const winnerMap = new Map<string, { caption: string; review_status: string }>();
+
+  if (listingIds.length > 0) {
+    const result = await supabase
+      .from("listing")
+      .select("id, title, slug, sponsor_name, official_rules_url")
+      .in("id", listingIds)
+      .returns<Array<{ id: string; title: string; slug: string; sponsor_name: string | null; official_rules_url: string | null }>>();
+    if (result.error) throw new Error(`getOpenReports listing targets failed: ${result.error.message}`);
+    for (const listing of result.data ?? []) listingMap.set(listing.id, listing);
+  }
+  if (hostIds.length > 0) {
+    const result = await supabase
+      .from("host")
+      .select("id, display_name, website_url, account_status")
+      .in("id", hostIds)
+      .returns<Array<{ id: string; display_name: string; website_url: string | null; account_status: string }>>();
+    if (result.error) throw new Error(`getOpenReports host targets failed: ${result.error.message}`);
+    for (const host of result.data ?? []) hostMap.set(host.id, host);
+  }
+  if (winnerIds.length > 0) {
+    const result = await supabase
+      .from("winner_post")
+      .select("id, caption, review_status")
+      .in("id", winnerIds)
+      .returns<Array<{ id: string; caption: string; review_status: string }>>();
+    if (result.error) throw new Error(`getOpenReports winner targets failed: ${result.error.message}`);
+    for (const winner of result.data ?? []) winnerMap.set(winner.id, winner);
+  }
+
+  return rows.map((row) => {
     const reporter = Array.isArray(row.reporter)
       ? row.reporter[0] ?? null
       : row.reporter;
+    const listing = listingMap.get(row.target_id);
+    const host = hostMap.get(row.target_id);
+    const winner = winnerMap.get(row.target_id);
     return {
       id: row.id,
       target_type: row.target_type,
       target_id: row.target_id,
       reason_code: row.reason_code,
+      details: row.details,
       ai_severity: row.ai_severity,
       created_at: row.created_at,
       reporter_display_name: reporter?.display_name ?? null,
+      target_label: listing?.title ?? host?.display_name ?? winner?.caption.slice(0, 80) ?? "Target unavailable",
+      target_context: listing
+        ? `${listing.sponsor_name ?? "Sponsor not stated"} · ${row.target_type.replaceAll("_", " ")}`
+        : host
+          ? `Host status: ${host.account_status}`
+          : winner
+            ? `Winner status: ${winner.review_status}`
+            : null,
+      target_href: safeExternalHref(listing?.official_rules_url ?? host?.website_url),
     };
   });
 }
@@ -472,43 +533,55 @@ export async function getPendingClaimsCount(): Promise<number> {
 // Mutations
 // ---------------------------------------------------------------------------
 
-export async function verifyHost(hostId: string): Promise<void> {
+export async function verifyHost(args: {
+  hostId: string;
+  actorUserId: string;
+  notes: string;
+  evidenceUrl: string;
+}): Promise<void> {
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
-    .from("host")
-    .update({ verification_status: "admin_verified" })
-    .eq("id", hostId);
+  const { error } = await supabase.rpc("moderate_host", {
+    p_host_id: args.hostId,
+    p_actor_user_id: args.actorUserId,
+    p_action: "verify",
+    p_notes: args.notes,
+    p_evidence_url: args.evidenceUrl,
+  });
   if (error) {
     throw new Error(`verifyHost failed: ${error.message}`);
   }
 }
 
-// Suspend has no dedicated host status in the schema, so it resets verification
-// to 'none' and hides every listing the host owns.
-export async function suspendHost(hostId: string): Promise<void> {
+export async function suspendHost(args: {
+  hostId: string;
+  actorUserId: string;
+  notes: string;
+}): Promise<void> {
   const supabase = createServiceRoleClient();
-  const hostResult = await supabase
-    .from("host")
-    .update({ verification_status: "none" })
-    .eq("id", hostId);
-  if (hostResult.error) {
-    throw new Error(`suspendHost failed: ${hostResult.error.message}`);
-  }
-  const listingResult = await supabase
-    .from("listing")
-    .update({ visibility_status: "hidden" })
-    .eq("host_id", hostId);
-  if (listingResult.error) {
-    throw new Error(`suspendHost failed: ${listingResult.error.message}`);
+  const { error } = await supabase.rpc("moderate_host", {
+    p_host_id: args.hostId,
+    p_actor_user_id: args.actorUserId,
+    p_action: "suspend",
+    p_notes: args.notes,
+    p_evidence_url: null,
+  });
+  if (error) {
+    throw new Error(`suspendHost failed: ${error.message}`);
   }
 }
 
-export async function dismissReport(reportId: string): Promise<void> {
+export async function dismissReport(args: {
+  reportId: string;
+  reviewerUserId: string;
+  reviewNotes: string;
+}): Promise<void> {
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
-    .from("report")
-    .update({ status: "dismissed", resolved_at: new Date().toISOString() })
-    .eq("id", reportId);
+  const { error } = await supabase.rpc("resolve_content_report", {
+    p_report_id: args.reportId,
+    p_reviewer_user_id: args.reviewerUserId,
+    p_action: "dismiss",
+    p_review_notes: args.reviewNotes,
+  });
   if (error) {
     throw new Error(`dismissReport failed: ${error.message}`);
   }
@@ -519,37 +592,28 @@ export interface ActOnReportResult {
   target_id: string;
 }
 
-export async function actOnReport(reportId: string): Promise<ActOnReportResult> {
+export async function actOnReport(args: {
+  reportId: string;
+  reviewerUserId: string;
+  reviewNotes: string;
+}): Promise<ActOnReportResult> {
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
-    .from("report")
-    .select("id, target_type, target_id")
-    .eq("id", reportId)
-    .maybeSingle<Pick<ReportRow, "id" | "target_type" | "target_id">>();
+    .rpc("resolve_content_report", {
+      p_report_id: args.reportId,
+      p_reviewer_user_id: args.reviewerUserId,
+      p_action: "act",
+      p_review_notes: args.reviewNotes,
+    });
   if (error) {
     throw new Error(`actOnReport failed: ${error.message}`);
   }
-  if (!data) {
-    throw new Error("actOnReport failed: report not found");
+  const result = data as {
+    target_type?: ReportTargetType;
+    target_id?: string;
+  } | null;
+  if (!result?.target_type || !result.target_id) {
+    throw new Error("actOnReport failed: invalid result");
   }
-
-  if (data.target_type === "listing") {
-    const listingResult = await supabase
-      .from("listing")
-      .update({ visibility_status: "hidden" })
-      .eq("id", data.target_id);
-    if (listingResult.error) {
-      throw new Error(`actOnReport failed: ${listingResult.error.message}`);
-    }
-  }
-
-  const reportResult = await supabase
-    .from("report")
-    .update({ status: "action_taken", resolved_at: new Date().toISOString() })
-    .eq("id", reportId);
-  if (reportResult.error) {
-    throw new Error(`actOnReport failed: ${reportResult.error.message}`);
-  }
-
-  return { target_type: data.target_type, target_id: data.target_id };
+  return { target_type: result.target_type, target_id: result.target_id };
 }

@@ -13,15 +13,29 @@ export interface GetPublishedWinnerPostsArgs {
   cursor?: WinnerFeedCursor;
 }
 
-type WinnerPostJoinRow = WinnerPostRow & {
-  app_user: Pick<AppUserRow, "display_name" | "cover_image_url"> | null;
+type WinnerPostJoinRow = Pick<
+  WinnerPostRow,
+  | "id"
+  | "app_user_id"
+  | "listing_id"
+  | "caption"
+  | "photo_url"
+  | "verified_win"
+  | "review_status"
+  | "created_at"
+  | "updated_at"
+> & {
+  app_user: Pick<AppUserRow, "display_name"> | null;
   listing: Pick<ListingRow, "slug" | "title" | "prize_value"> | null;
 };
 
 export async function getPublishedWinnerPosts(
   args: GetPublishedWinnerPostsArgs = {},
 ): Promise<{ posts: WinnerPost[]; nextCursor: WinnerFeedCursor | null }> {
-  const supabase = createServerSupabaseClient();
+  // This server-only service query selects an explicit public projection.
+  // The anonymous role cannot embed app_user, and must never receive winner
+  // moderation notes or evidence fields.
+  const supabase = createServiceRoleClient();
   const limit = args.limit ?? 20;
 
   let base = supabase
@@ -33,10 +47,11 @@ export async function getPublishedWinnerPosts(
         "listing_id",
         "caption",
         "photo_url",
+        "verified_win",
         "review_status",
         "created_at",
         "updated_at",
-        "app_user:app_user(display_name, cover_image_url)",
+        "app_user:app_user(display_name)",
         "listing:listing(slug, title, prize_value)",
       ].join(","),
     )
@@ -71,7 +86,6 @@ export async function getPublishedWinnerPosts(
         reactions: reactionCounts.get(row.id) ?? {},
       }),
       // augment
-      winnerAvatarUrl: row.app_user?.cover_image_url ?? undefined,
       listingTitle: row.listing?.title ?? undefined,
       listingPrizeValue: row.listing?.prize_value ?? null,
     } satisfies WinnerPost;
@@ -107,24 +121,77 @@ export async function getWinnerReactionCounts(
   return map;
 }
 
-export async function listPendingWinnerPostsForModeration(): Promise<WinnerPostRow[]> {
+export interface WinnerModerationQueueItem {
+  id: string;
+  appUserId: string;
+  memberName: string;
+  memberEmail: string | null;
+  listingId: string;
+  listingTitle: string;
+  listingSlug: string;
+  caption: string;
+  photoUrl: string | null;
+  reviewStatus: WinnerReviewStatus;
+  createdAt: string;
+}
+
+type WinnerModerationJoinRow = WinnerPostRow & {
+  app_user: Pick<AppUserRow, "display_name" | "email"> | null;
+  listing: Pick<ListingRow, "title" | "slug"> | null;
+};
+
+export async function listPendingWinnerPostsForModeration(): Promise<WinnerModerationQueueItem[]> {
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("winner_post")
-    .select("*")
+    .select(
+      [
+        "*",
+        "app_user:app_user(display_name, email)",
+        "listing:listing(title, slug)",
+      ].join(","),
+    )
     .in("review_status", ["submitted", "pending_review"])
     .order("created_at", { ascending: true })
-    .returns<WinnerPostRow[]>();
+    .returns<WinnerModerationJoinRow[]>();
   if (error) throw new Error(`listPendingWinnerPostsForModeration failed: ${error.message}`);
-  return data ?? [];
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    appUserId: row.app_user_id,
+    memberName: row.app_user?.display_name ?? "Sweepza member",
+    memberEmail: row.app_user?.email ?? null,
+    listingId: row.listing_id,
+    listingTitle: row.listing?.title ?? "Unavailable listing",
+    listingSlug: row.listing?.slug ?? "",
+    caption: row.caption,
+    photoUrl: row.photo_url,
+    reviewStatus: row.review_status,
+    createdAt: row.created_at,
+  }));
 }
 
 export async function toggleWinnerReaction(args: {
   winnerPostId: string;
   appUserId: string;
   reactionType: ReactionType;
-}): Promise<Partial<Record<ReactionType, number>>> {
+}): Promise<{
+  active: boolean;
+  counts: Partial<Record<ReactionType, number>>;
+}> {
   const supabase = createServiceRoleClient();
+
+  const { data: post, error: postError } = await supabase
+    .from("winner_post")
+    .select("id")
+    .eq("id", args.winnerPostId)
+    .eq("review_status", "published")
+    .maybeSingle<{ id: string }>();
+  if (postError) {
+    throw new Error(`winner reaction target lookup failed: ${postError.message}`);
+  }
+  if (!post) {
+    throw new Error("Winner post is unavailable.");
+  }
 
   const { data: existing } = await supabase
     .from("winner_reaction")
@@ -134,28 +201,48 @@ export async function toggleWinnerReaction(args: {
     .eq("reaction_type", args.reactionType)
     .maybeSingle();
 
+  const active = !existing;
   if (existing) {
-    await supabase.from("winner_reaction").delete().eq("id", existing.id);
+    const { error } = await supabase.from("winner_reaction").delete().eq("id", existing.id);
+    if (error) throw new Error(`winner reaction delete failed: ${error.message}`);
   } else {
-    await supabase.from("winner_reaction").insert({
+    const { error } = await supabase.from("winner_reaction").insert({
       winner_post_id: args.winnerPostId,
       app_user_id: args.appUserId,
       reaction_type: args.reactionType,
     });
+    if (error) throw new Error(`winner reaction insert failed: ${error.message}`);
   }
 
   const counts = await getWinnerReactionCounts([args.winnerPostId]);
-  return counts.get(args.winnerPostId) ?? {};
+  return { active, counts: counts.get(args.winnerPostId) ?? {} };
 }
 
-export async function updateWinnerPostReviewStatus(args: {
+export interface ModeratedWinnerPost {
+  id: string;
+  app_user_id: string;
+  listing_id: string;
+  review_status: WinnerReviewStatus;
+  verified_win: boolean;
+}
+
+export async function moderateWinnerPost(args: {
   winnerPostId: string;
-  reviewStatus: WinnerReviewStatus;
-}): Promise<void> {
+  reviewerUserId: string;
+  action: "publish" | "hide" | "reject";
+  verifiedWin: boolean;
+  reviewNotes?: string;
+  verificationEvidenceUrl?: string;
+}): Promise<ModeratedWinnerPost> {
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
-    .from("winner_post")
-    .update({ review_status: args.reviewStatus })
-    .eq("id", args.winnerPostId);
-  if (error) throw new Error(`updateWinnerPostReviewStatus failed: ${error.message}`);
+  const { data, error } = await supabase.rpc("moderate_winner_post", {
+    p_winner_post_id: args.winnerPostId,
+    p_reviewer_user_id: args.reviewerUserId,
+    p_action: args.action,
+    p_verified_win: args.verifiedWin,
+    p_review_notes: args.reviewNotes ?? null,
+    p_verification_evidence_url: args.verificationEvidenceUrl ?? null,
+  });
+  if (error) throw new Error(`moderateWinnerPost failed: ${error.message}`);
+  return data as ModeratedWinnerPost;
 }

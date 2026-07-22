@@ -11,14 +11,22 @@ import { getListingBySlug, getPublicListings } from "./listings";
  */
 export const PUBLIC_LISTINGS_TAG = "public-listings";
 
-// Background refresh cadence — a defense-in-depth safety net, NOT the primary
-// invalidation path. Every mutation that changes the live set calls
-// `revalidatePublicListings()` for immediate correctness; this TTL only bounds
-// staleness for a path that might be missed. It deliberately does not age out
-// listings whose `end_date` has passed: `getPublicListings` filters on
-// `lifecycle_status`, so an ended-but-still-active row keeps showing until the
-// expire-stale cron flips it to `expired` (and that cron busts this cache).
+// Background refresh cadence — a defense-in-depth safety net. Serving code
+// below also checks the current UTC date after every cache hit, so a listing
+// cannot remain enterable merely because midnight passed before the cron ran.
 const PUBLIC_LISTINGS_TTL_SECONDS = 300;
+
+export function isListingCurrentForPublicCache(
+  listing: Listing,
+  now = new Date(),
+): boolean {
+  const today = now.toISOString().slice(0, 10);
+  return (
+    listing.lifecycleStatus === "active" &&
+    Boolean(listing.endDate) &&
+    listing.endDate >= today
+  );
+}
 
 const cachedDefaultFeed = unstable_cache(
   (limit: number): Promise<Listing[]> => getPublicListings({ limit }),
@@ -37,8 +45,9 @@ const cachedDefaultFeed = unstable_cache(
  * Supabase client and touches no request-scoped state (cookies/headers), so it
  * satisfies `unstable_cache`'s purity contract.
  */
-export function getCachedPublicListings(limit: number): Promise<Listing[]> {
-  return cachedDefaultFeed(limit);
+export async function getCachedPublicListings(limit: number): Promise<Listing[]> {
+  const listings = await cachedDefaultFeed(limit);
+  return listings.filter((listing) => isListingCurrentForPublicCache(listing));
 }
 
 const cachedListingBySlug = unstable_cache(
@@ -62,8 +71,9 @@ const cachedListingBySlug = unstable_cache(
  * public/active/non-moderated predicates and touches no request-scoped state,
  * so the cached value is exactly what an anonymous visitor may see.
  */
-export function getCachedListingBySlug(slug: string): Promise<Listing | null> {
-  return cachedListingBySlug(slug);
+export async function getCachedListingBySlug(slug: string): Promise<Listing | null> {
+  const listing = await cachedListingBySlug(slug);
+  return listing && isListingCurrentForPublicCache(listing) ? listing : null;
 }
 
 /**

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   env: {
     STRIPE_SECRET_KEY: "sk_configured",
+    STRIPE_ACCOUNT_ID: "acct_configured",
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_configured",
     STRIPE_WEBHOOK_SECRET: "configured-webhook-secret",
     STRIPE_PRICE_HOST_BASELINE: "price_configured",
@@ -20,7 +21,9 @@ import {
 describe("billing plans", () => {
   beforeEach(() => {
     Object.assign(mocks.env, {
+      VERCEL_ENV: undefined,
       STRIPE_SECRET_KEY: "sk_configured",
+      STRIPE_ACCOUNT_ID: "acct_configured",
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_configured",
       STRIPE_WEBHOOK_SECRET: "configured-webhook-secret",
       STRIPE_PRICE_HOST_BASELINE: "price_configured",
@@ -28,7 +31,7 @@ describe("billing plans", () => {
     });
   });
 
-  it.each(["no_plan", "past_due", "canceled"])(
+  it.each(["no_plan", "incomplete", "paused", "past_due", "canceled"])(
     "does not grant paid capacity to %s subscriptions",
     (status) => {
       expect(
@@ -59,6 +62,7 @@ describe("billing plans", () => {
 
     for (const key of [
       "STRIPE_SECRET_KEY",
+      "STRIPE_ACCOUNT_ID",
       "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "STRIPE_PRICE_HOST_BASELINE",
@@ -70,4 +74,29 @@ describe("billing plans", () => {
       mocks.env[key] = prior;
     }
   });
+
+  it.each([
+    ["sk_test_sweepza", "pk_live_sweepza", "test secret key"],
+    ["sk_live_sweepza", "pk_test_sweepza", "test publishable key"],
+  ])(
+    "rejects a production billing tuple that contains a %s (%s)",
+    (secretKey, publishableKey) => {
+      mocks.env.VERCEL_ENV = "production";
+      mocks.env.STRIPE_SECRET_KEY = secretKey;
+      mocks.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = publishableKey;
+
+      expect(isBillingConfigured()).toBe(false);
+    },
+  );
+
+  it.each(["sk_live_sweepza", "rk_live_sweepza"])(
+    "accepts a complete production tuple with the valid %s secret prefix",
+    (secretKey) => {
+      mocks.env.VERCEL_ENV = "production";
+      mocks.env.STRIPE_SECRET_KEY = secretKey;
+      mocks.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_sweepza";
+
+      expect(isBillingConfigured()).toBe(true);
+    },
+  );
 });

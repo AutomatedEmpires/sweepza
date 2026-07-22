@@ -386,6 +386,7 @@ const APP_ROUTE_SURFACES: Surface[] = [
   // justification, whereas exempting them would need a verified gate mechanism
   // and would buy nothing.
   routeSurface("app/host/page.tsx"),
+  routeSurface("app/host/claims/page.tsx"),
   routeSurface("app/host/listings/page.tsx"),
   routeSurface("app/host/listings/[listingId]/edit/page.tsx"),
   routeSurface("app/host/analytics/page.tsx"),

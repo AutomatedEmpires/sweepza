@@ -11,15 +11,6 @@ export interface SeekerStateSnapshot {
   activity: Record<string, SeekerListingActivity>;
 }
 
-const ACTION_TIMESTAMP: Partial<
-  Record<Exclude<SeekerUiState, "none">, keyof ListingSeekerStateRow>
-> = {
-  saved: "saved_at",
-  entered: "entered_at",
-  skipped: "skipped_at",
-  won: "won_at",
-};
-
 /** Fetch all seeker-state rows for an app user. */
 export async function getSeekerStatesForAppUser(
   appUserId: string,
@@ -81,54 +72,17 @@ export async function updateSeekerState(args: {
   listingId: string;
   primaryUiState?: SeekerUiState;
   saved?: boolean;
-}): Promise<void> {
-  const { appUserId, listingId, primaryUiState, saved } = args;
+  viewed?: boolean;
+}): Promise<ListingSeekerStateRow> {
+  const { appUserId, listingId, primaryUiState, saved, viewed } = args;
   const supabase = createServiceRoleClient();
-  const row: Record<string, unknown> = {
-    app_user_id: appUserId,
-    listing_id: listingId,
-  };
-
-  const now = new Date().toISOString();
-
-  if (primaryUiState !== undefined) {
-    row.primary_ui_state = primaryUiState;
-    if (primaryUiState !== "none") {
-      const timestampColumn = ACTION_TIMESTAMP[primaryUiState];
-      if (timestampColumn) {
-        row[timestampColumn] = now;
-      }
-    }
-    if (primaryUiState === "saved") {
-      row.is_saved = true;
-    }
-  }
-
-  if (saved !== undefined) {
-    row.is_saved = saved;
-    if (saved) {
-      row.saved_at = now;
-    }
-  }
-
-  const { error } = await supabase
-    .from("listing_seeker_state")
-    .upsert(row, { onConflict: "app_user_id,listing_id" });
+  const { data, error } = await supabase.rpc("update_seeker_state_atomic", {
+    p_app_user_id: appUserId,
+    p_listing_id: listingId,
+    p_primary_ui_state: primaryUiState ?? null,
+    p_saved: saved ?? null,
+    p_viewed: viewed ?? false,
+  });
   if (error) throw new Error(`updateSeekerState failed: ${error.message}`);
-
-  // Record an entry event for streaks/badges. Append-only and idempotent per
-  // day (one row per listing per day). Best-effort: a logging failure must
-  // never fail the core state write.
-  if (primaryUiState === "entered") {
-    const { error: eventError } = await supabase
-      .from("seeker_entry_event")
-      .upsert(
-        { app_user_id: appUserId, listing_id: listingId },
-        { onConflict: "app_user_id,listing_id,entered_on", ignoreDuplicates: true },
-      );
-    if (eventError) {
-      // eslint-disable-next-line no-console
-      console.error(`seeker_entry_event insert failed: ${eventError.message}`);
-    }
-  }
+  return data as ListingSeekerStateRow;
 }

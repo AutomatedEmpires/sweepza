@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { getHostListingsSnapshot, type HostListingSummary } from "@/lib/db/host-dashboard";
-import { deactivateListingAction, submitForReviewAction } from "./actions";
+import { deactivateListingAction, reactivateListingAction, submitForReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -120,9 +120,13 @@ export default async function HostListingsPage() {
           <div className="space-y-3">
             {groups.held_rejected.map((listing) => (
               <ListingCard key={listing.id} listing={listing}>
-                <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
-                  Edit &amp; resubmit
-                </Link>
+                {listing.lifecycleStatus === "held" || listing.moderationStatus === "held" ? (
+                  <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
+                    Edit &amp; resubmit
+                  </Link>
+                ) : (
+                  <span className="text-sm text-graphite">Rejected listings cannot be resubmitted. Create a corrected new promotion only if it has a distinct official identity.</span>
+                )}
               </ListingCard>
             ))}
           </div>
@@ -142,10 +146,34 @@ export default async function HostListingsPage() {
         )}
       </section>
 
+      <section className="mt-8">
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">Inactive</h2>
+        {groups.inactive.length === 0 ? (
+          <EmptySection label="No inactive listings." />
+        ) : (
+          <div className="space-y-3">
+            {groups.inactive.map((listing) => (
+              <ListingCard key={listing.id} listing={listing}>
+                <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
+                  Edit &amp; re-review
+                </Link>
+                <form action={reactivateListingAction}>
+                  <input type="hidden" name="listingId" value={listing.id} />
+                  <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-3 py-1.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90">
+                    Reactivate unchanged
+                  </button>
+                </form>
+              </ListingCard>
+            ))}
+          </div>
+        )}
+      </section>
+
       {groups.active.length === 0 &&
       groups.pending_review.length === 0 &&
       groups.held_rejected.length === 0 &&
-      groups.expired.length === 0 ? (
+      groups.expired.length === 0 &&
+      groups.inactive.length === 0 ? (
         <div className="mt-2 flex flex-col items-center gap-3 rounded-card border border-line bg-surface px-4 py-10 text-center shadow-e1">
           <Icon name="gift" size={22} className="text-graphite" />
           <p className="text-sm leading-relaxed text-graphite">

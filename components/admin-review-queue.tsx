@@ -97,7 +97,7 @@ export function AdminReviewQueue({
       <div className="flex items-center gap-3 rounded-card border border-pine/30 bg-pine/5 p-4">
         <Icon name="check" size={18} className="text-pine" />
         <p className="text-sm font-medium text-pine">
-          Queue clear — no host submissions waiting for review.
+          Queue clear — no listing drafts are waiting for review.
         </p>
       </div>
     );
@@ -123,7 +123,7 @@ export function AdminReviewQueue({
                   {listing.title}
                 </p>
                 <p className="mt-1 text-xs text-graphite">
-                  {listing.host_display_name ?? "Unknown host"}{" · "}Ends{" "}
+                  {listing.host_display_name ?? (listing.source_type === "owner_seeded" ? "Official-source intake" : "Unknown host")}{" · "}Ends{" "}
                   {formatDate(listing.end_date)}
                 </p>
               </div>
@@ -155,7 +155,13 @@ export function AdminReviewQueue({
               <div className="flex items-center justify-between gap-3">
                 <dt>Entry URL</dt>
                 <dd className="max-w-[60%] truncate font-medium text-ink">
-                  {listing.entry_url ?? "Missing"}
+                  {listing.entry_url ? <a href={listing.entry_url} target="_blank" rel="noreferrer" className="text-ember hover:underline">Open entry page</a> : "Missing"}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt>Official rules</dt>
+                <dd className="max-w-[60%] truncate font-medium text-ink">
+                  {listing.official_rules_url ? <a href={listing.official_rules_url} target="_blank" rel="noreferrer" className="text-ember hover:underline">Open rules</a> : "Missing"}
                 </dd>
               </div>
             </dl>
@@ -186,7 +192,7 @@ export function AdminReviewQueue({
                   }))
                 }
                 className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
-                placeholder="Optional notes (saved with reject / keep pending)."
+                placeholder="Required for changes or rejection; visible to the host."
               />
             </label>
 
@@ -201,15 +207,15 @@ export function AdminReviewQueue({
               </button>
               <button
                 type="button"
-                disabled={isBusy}
-                onClick={() => runAction(listing.id, "keep_pending")}
+                onClick={() => runAction(listing.id, "needs_changes")}
+                disabled={isBusy || !(notes[listing.id]?.trim())}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-4 py-2.5 text-sm font-medium text-ink/75 transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Keep pending
+                Request changes
               </button>
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={isBusy || !(notes[listing.id]?.trim())}
                 onClick={() => runAction(listing.id, "reject")}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl border border-flame/40 px-4 py-2.5 text-sm font-semibold text-flame transition hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-60"
               >

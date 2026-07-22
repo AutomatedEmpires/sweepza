@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { EntryFrequency, SourceLabel } from "@/lib/db/enums";
+import type { EntryFrequency } from "@/lib/db/enums";
 import type { DictionaryOption } from "@/lib/db/dictionaries";
 
 const ENTRY_OPTIONS: Array<{ value: EntryFrequency; label: string }> = [
@@ -11,12 +11,6 @@ const ENTRY_OPTIONS: Array<{ value: EntryFrequency; label: string }> = [
   { value: "monthly", label: "Monthly" },
   { value: "instant_win", label: "Instant win" },
   { value: "other", label: "Other" },
-];
-
-const SOURCE_OPTIONS: Array<{ value: SourceLabel; label: string }> = [
-  { value: "found_by_sweepza", label: "Found by Sweepza" },
-  { value: "host_submitted", label: "Host submitted" },
-  { value: "claimed_by_host", label: "Claimed by host" },
 ];
 
 export function AdminListingImportForm({
@@ -37,6 +31,9 @@ export function AdminListingImportForm({
     const payload = {
       title: String(formData.get("title") ?? ""),
       shortDescription: String(formData.get("shortDescription") ?? ""),
+      longDescription: formData.get("longDescription")
+        ? String(formData.get("longDescription"))
+        : null,
       prizeName: String(formData.get("prizeName") ?? ""),
       prizeValue: formData.get("prizeValue")
         ? Number(formData.get("prizeValue"))
@@ -50,14 +47,29 @@ export function AdminListingImportForm({
         : null,
       entryUrl: String(formData.get("entryUrl") ?? ""),
       officialRulesUrl: String(formData.get("officialRulesUrl") ?? ""),
+      startDate: formData.get("startDate")
+        ? String(formData.get("startDate"))
+        : null,
       endDate: String(formData.get("endDate") ?? ""),
       entryFrequency: String(formData.get("entryFrequency") ?? ""),
+      entryLimitNotes: formData.get("entryLimitNotes")
+        ? String(formData.get("entryLimitNotes"))
+        : null,
       eligibilityCountry: String(formData.get("eligibilityCountry") ?? ""),
-      sponsorName: formData.get("sponsorName")
-        ? String(formData.get("sponsorName"))
+      eligibilityStates: String(formData.get("eligibilityStates") ?? "")
+        .split(",")
+        .map((state) => state.trim().toUpperCase())
+        .filter(Boolean),
+      ageRequirement: Number(formData.get("ageRequirement")),
+      noPurchaseNecessary: formData.get("noPurchaseNecessary") === "on",
+      sponsorName: String(formData.get("sponsorName") ?? ""),
+      sponsorUrl: formData.get("sponsorUrl")
+        ? String(formData.get("sponsorUrl"))
+        : null,
+      winnerCount: formData.get("winnerCount")
+        ? Number(formData.get("winnerCount"))
         : null,
       tagCodes: formData.getAll("tagCodes").map(String),
-      sourceLabel: String(formData.get("sourceLabel") ?? ""),
       publish: formData.get("publish") === "on",
       verified: formData.get("verified") === "on",
     };
@@ -112,6 +124,19 @@ export function AdminListingImportForm({
             rows={3}
             className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
           />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Normalized summary</span>
+          <textarea
+            name="longDescription"
+            rows={5}
+            maxLength={2000}
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+          />
+          <span className="text-xs text-graphite">
+            Sweepza summary only; the linked official rules remain authoritative.
+          </span>
         </label>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -181,6 +206,15 @@ export function AdminListingImportForm({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Start date</span>
+            <input
+              name="startDate"
+              type="date"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">End date</span>
             <input
               name="endDate"
@@ -190,12 +224,56 @@ export function AdminListingImportForm({
             />
           </label>
 
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Eligibility country</span>
             <input
               name="eligibilityCountry"
               defaultValue="US"
               required
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Eligible state codes</span>
+            <input
+              name="eligibilityStates"
+              placeholder="Leave blank for nationwide; otherwise CA, NY"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Minimum age</span>
+            <input
+              name="ageRequirement"
+              type="number"
+              min="13"
+              max="120"
+              defaultValue="18"
+              required
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Winner count</span>
+            <input
+              name="winnerCount"
+              type="number"
+              min="1"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Entry limit details</span>
+            <input
+              name="entryLimitNotes"
+              placeholder="e.g. one entry per day"
               className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
@@ -216,22 +294,12 @@ export function AdminListingImportForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Sponsor name</span>
-            <input name="sponsorName" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
+            <input name="sponsorName" required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Source label</span>
-            <select
-              name="sourceLabel"
-              defaultValue="found_by_sweepza"
-              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
-            >
-              {SOURCE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <span className="font-medium text-ink">Sponsor website</span>
+            <input name="sponsorUrl" type="url" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
         </div>
 
@@ -251,6 +319,10 @@ export function AdminListingImportForm({
         </fieldset>
 
         <div className="flex flex-wrap gap-4 text-sm text-ink/75">
+          <label className="inline-flex items-center gap-2">
+            <input name="noPurchaseNecessary" type="checkbox" required />
+            Official rules confirm no purchase is necessary
+          </label>
           <label className="inline-flex items-center gap-2">
             <input name="publish" type="checkbox" defaultChecked />
             Publish immediately

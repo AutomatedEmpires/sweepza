@@ -29,14 +29,29 @@ export async function updateHostStripeCustomerId(
     .from("host")
     .update({ stripe_customer_id: stripeCustomerId })
     .eq("id", hostId)
+    .is("stripe_customer_id", null)
     .select("*")
-    .single<HostRow>();
+    .maybeSingle<HostRow>();
 
   if (error) {
     throw new Error(`updateHostStripeCustomerId failed: ${error.message}`);
   }
+  if (data) return data;
 
-  return data;
+  const { data: current, error: currentError } = await supabase
+    .from("host")
+    .select("*")
+    .eq("id", hostId)
+    .single<HostRow>();
+  if (currentError) {
+    throw new Error(
+      `updateHostStripeCustomerId reconciliation failed: ${currentError.message}`,
+    );
+  }
+  if (current.stripe_customer_id !== stripeCustomerId) {
+    throw new Error("Host is already bound to a different Stripe customer.");
+  }
+  return current;
 }
 
 export interface HostProfileFields {

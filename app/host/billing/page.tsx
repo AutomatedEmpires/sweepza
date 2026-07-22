@@ -80,8 +80,8 @@ export default async function HostBillingPage() {
           </div>
           {paymentsEnabled && billing.isFull ? (
             <p className="mt-3 rounded-card border border-ember/25 bg-ember/5 p-3 text-sm leading-relaxed text-ink/75">
-              All slots are in use. Add capacity for ${billing.addSlotPriceMonthly}/mo
-              per extra listing, or pause a campaign to free a slot.
+              All slots are in use. Manage your subscription or deactivate a
+              campaign before publishing another listing.
             </p>
           ) : paymentsEnabled ? (
             <p className="mt-3 text-xs text-graphite">
@@ -108,7 +108,7 @@ export default async function HostBillingPage() {
             </button>
           </form>
           <p className="mt-2 text-center text-[11px] text-graphite">
-            Payment methods, invoices, plan changes, and cancellation are
+            Payment methods, invoices, and cancellation are
             handled in the secure Stripe portal.
           </p>
         </>

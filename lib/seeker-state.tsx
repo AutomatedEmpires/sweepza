@@ -213,21 +213,19 @@ export function SeekerStateProvider({
       listingId: string;
       primaryUiState?: SeekerUiState;
       saved?: boolean;
-    }) => {
-      try {
-        const response = await fetch("/api/seeker-state", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          throw new Error(`persist failed (${response.status})`);
-        }
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("[seeker-state] remote persistence failed", error);
+    }): Promise<SeekerStateSnapshot> => {
+      const response = await fetch("/api/seeker-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { data?: SeekerStateSnapshot }
+        | null;
+      if (!response.ok || !result?.data) {
+        throw new Error(`persist failed (${response.status})`);
       }
+      return result.data;
     },
     [],
   );
@@ -252,6 +250,9 @@ export function SeekerStateProvider({
 
   const setPrimaryState = useCallback(
     (id: string, state: SeekerUiState) => {
+      const previousPrimary = primary[id];
+      const previousSaved = saved[id];
+      const previousActivity = activity[id];
       setPrimary((current) => ({ ...current, [id]: state }));
       stampActivity(id, state);
 
@@ -264,16 +265,43 @@ export function SeekerStateProvider({
           listingId: id,
           primaryUiState: state,
           ...(state === "saved" ? { saved: true } : {}),
+        }).then((server) => {
+          setPrimary(server.primary);
+          setSaved(server.saved);
+          setActivity(server.activity);
+        }).catch((error) => {
+          setPrimary((current) => {
+            if (current[id] !== state) return current;
+            const next = { ...current };
+            if (previousPrimary) next[id] = previousPrimary;
+            else delete next[id];
+            return next;
+          });
+          setSaved((current) => {
+            const next = { ...current };
+            if (previousSaved) next[id] = true;
+            else delete next[id];
+            return next;
+          });
+          setActivity((current) => {
+            const next = { ...current };
+            if (previousActivity) next[id] = previousActivity;
+            else delete next[id];
+            return next;
+          });
+          // eslint-disable-next-line no-console
+          console.error("[seeker-state] remote persistence failed", error);
         });
       }
     },
-    [persistRemote, persistenceMode, stampActivity],
+    [activity, persistRemote, persistenceMode, primary, saved, stampActivity],
   );
 
   const toggleSaved = useCallback(
     (id: string) => {
       const nextSaved = !Boolean(saved[id]);
       const currentPrimary = primary[id];
+      const previousActivity = activity[id];
       const nextPrimary =
         !nextSaved && currentPrimary === "saved" ? "none" : undefined;
 
@@ -298,10 +326,33 @@ export function SeekerStateProvider({
           listingId: id,
           saved: nextSaved,
           ...(nextPrimary ? { primaryUiState: nextPrimary } : {}),
+        }).then((server) => {
+          setPrimary(server.primary);
+          setSaved(server.saved);
+          setActivity(server.activity);
+        }).catch((error) => {
+          setSaved((current) => {
+            if (Boolean(current[id]) !== nextSaved) return current;
+            const next = { ...current };
+            if (!nextSaved) next[id] = true;
+            else delete next[id];
+            return next;
+          });
+          if (nextPrimary) {
+            setPrimary((current) => ({ ...current, [id]: currentPrimary ?? "saved" }));
+          }
+          setActivity((current) => {
+            const next = { ...current };
+            if (previousActivity) next[id] = previousActivity;
+            else delete next[id];
+            return next;
+          });
+          // eslint-disable-next-line no-console
+          console.error("[seeker-state] remote persistence failed", error);
         });
       }
     },
-    [persistRemote, persistenceMode, primary, saved, stampActivity],
+    [activity, persistRemote, persistenceMode, primary, saved, stampActivity],
   );
 
   const snapshot = useMemo<SeekerStateSnapshot>(

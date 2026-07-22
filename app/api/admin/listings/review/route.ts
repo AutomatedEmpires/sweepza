@@ -34,7 +34,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = listingReviewSchema.safeParse(await request.json());
+  const parsed = listingReviewSchema.safeParse(
+    await request.json().catch(() => null),
+  );
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
@@ -49,55 +51,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Listing not found." }, { status: 404 });
   }
 
-  if (listing.source_type !== "host_submitted") {
+  if (!["host_submitted", "owner_seeded"].includes(listing.source_type)) {
     return NextResponse.json(
-      { error: "Only host-submitted listings can be reviewed here." },
+      { error: "This listing source is not reviewable here." },
       { status: 409 },
     );
   }
 
-  const updates: Record<string, unknown> = {};
-
-  if (reviewNotes !== undefined) {
-    updates.review_notes_internal = reviewNotes ?? null;
-  }
-
-  if (action === "approve") {
-    updates.lifecycle_status = "active";
-    updates.visibility_status = "public";
-    updates.published_at = listing.published_at ?? new Date().toISOString();
-    if (listing.listing_verification_status === "unreviewed") {
-      updates.listing_verification_status = "reviewed";
-    }
-  } else if (action === "reject") {
-    updates.lifecycle_status = "rejected";
-    updates.visibility_status = "private";
-  } else {
-    // keep_pending (hold)
-    updates.lifecycle_status = "pending_review";
-    updates.visibility_status = "private";
-  }
-
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
-    .from("listing")
-    .update(updates)
-    .eq("id", listingId)
-    .select(
-      "id, slug, lifecycle_status, visibility_status, listing_verification_status",
-    )
-    .single<{
-      id: string;
-      slug: string;
-      lifecycle_status: string;
-      visibility_status: string;
-      listing_verification_status: string;
-    }>();
+    .rpc("review_canonical_listing", {
+      p_listing_id: listingId,
+      p_reviewer_user_id: authUser.appUserId,
+      p_action: action,
+      p_review_notes: reviewNotes ?? null,
+    });
 
   if (error) {
     // Surfaces listing_publish_guard / enforce_active_listing_cap trigger errors.
     return NextResponse.json(
-      { error: `Review update failed: ${error.message}` },
+      { error: "Review failed because the listing does not meet the requested state." },
       { status: 422 },
     );
   }
@@ -110,7 +83,7 @@ export async function POST(request: Request) {
   // Email delivery must never block or fail the review action.
   if (
     listing.host_id &&
-    (action === "approve" || action === "keep_pending")
+    (action === "approve" || action === "needs_changes")
   ) {
     try {
       let hostName = "there";

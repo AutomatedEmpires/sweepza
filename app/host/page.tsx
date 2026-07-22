@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Icon, type IconName } from "@/components/icon";
 import { HostPitch } from "@/components/host-pitch";
 import { HostListingSubmissionForm } from "@/components/host-listing-submission-form";
+import { HostApplicationForm } from "@/components/host-application-form";
 import { HostProfileForm } from "@/components/host-profile-form";
 import type { HostProfileFormValues } from "@/components/host-profile-form";
 import {
@@ -19,6 +20,7 @@ import {
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
+import { getLatestHostApplicationForUser } from "@/lib/db/host-applications";
 import { getHostByAppUserId } from "@/lib/db/hosts";
 import { SITE_URL } from "@/lib/site";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
@@ -43,6 +45,7 @@ const QUICK_LINKS: Array<{ href: string; icon: IconName; label: string }> = [
   { href: "/host/listings", icon: "sweeps", label: "Listings" },
   { href: "/host/analytics", icon: "chart", label: "Analytics" },
   { href: "/host/notifications", icon: "bell", label: "Notifications" },
+  { href: "/host/claims", icon: "verified", label: "Claims" },
   { href: "/host/settings", icon: "settings", label: "Settings" },
 ];
 
@@ -84,6 +87,9 @@ export default async function HostPage({
     ? await getHostDashboardSnapshotForAppUser(authUser.appUserId)
     : null;
   const host = dashboard?.host ?? null;
+  const hostApplication = authUser && !isHost
+    ? await getLatestHostApplicationForUser(authUser.appUserId)
+    : null;
   const subscription = dashboard?.subscription ?? null;
   const listingCounts = dashboard?.counts;
   const recentListings = dashboard?.recentListings ?? [];
@@ -96,7 +102,7 @@ export default async function HostPage({
   const baselineIncluded = HOST_BASELINE_PLAN.includedActiveListings;
   const maxAdditional = getMaxAdditionalListings();
   const [categories, tags] =
-    authUser && isHost && host
+    authUser && isHost && host && host.account_status === "active"
       ? await Promise.all([getActiveCategories(), getActiveTags()])
       : [[], []];
 
@@ -217,6 +223,20 @@ export default async function HostPage({
             </div>
             <HostProfileForm mode="create" initialProfile={onboardingProfile} />
           </>
+        ) : host?.account_status === "suspended" ? (
+          <div className="rounded-card border border-flame/30 bg-flame/5 p-5 shadow-e1">
+            <h2 className="text-base font-semibold text-ink">Host account suspended</h2>
+            <p className="mt-2 text-sm leading-relaxed text-graphite">
+              Listing and checkout actions are disabled while this account is under review.
+              You can still open billing to view invoices, update payment details, or cancel.
+            </p>
+            <Link
+              href="/host/billing"
+              className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-on-accent"
+            >
+              Manage billing
+            </Link>
+          </div>
         ) : (
           <>
             <div className="rounded-card border border-line bg-surface p-4 shadow-e1">
@@ -265,6 +285,14 @@ export default async function HostPage({
                 </div>
               </dl>
             </div>
+
+            {!isHost ? (
+              <HostApplicationForm
+                application={hostApplication}
+                accountEmail={authUser.email ?? ""}
+                accountName={authUser.displayName ?? ""}
+              />
+            ) : null}
 
             {host ? (
               <>

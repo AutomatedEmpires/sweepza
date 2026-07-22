@@ -171,7 +171,10 @@ export interface WinnerPostAdapterContext {
 }
 
 export function toWinnerPost(
-  row: WinnerPostRow,
+  row: Pick<
+    WinnerPostRow,
+    "id" | "caption" | "photo_url" | "verified_win" | "review_status" | "created_at"
+  >,
   ctx: WinnerPostAdapterContext,
 ): WinnerPost {
   const reactions = Array.isArray(ctx.reactions)

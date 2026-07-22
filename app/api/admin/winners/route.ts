@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { moderateWinnerPost } from "@/lib/db/winners";
 import { sendWinnerNotification } from "@/lib/email/notifications";
 import { env } from "@/lib/env";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const winnerModerationSchema = z.object({
-  winnerPostId: z.string().uuid("A valid winner post id is required."),
-  action: z.enum(["publish", "hide", "reject"]),
-});
-
-const REVIEW_STATUS_BY_ACTION = {
-  publish: "published",
-  hide: "hidden",
-  reject: "rejected",
-} as const;
+const winnerModerationSchema = z
+  .object({
+    winnerPostId: z.string().uuid("A valid winner post id is required."),
+    action: z.enum(["publish", "hide", "reject"]),
+    verifiedWin: z.boolean().default(false),
+    reviewNotes: z.string().trim().max(2000).optional(),
+    verificationEvidenceUrl: z.string().trim().url().startsWith("https://").optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (["hide", "reject"].includes(value.action) && !value.reviewNotes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reviewNotes"],
+        message: "Review notes are required for this action.",
+      });
+    }
+    if (value.verifiedWin && !value.verificationEvidenceUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["verificationEvidenceUrl"],
+        message: "Verified wins require an HTTPS evidence URL.",
+      });
+    }
+  });
 
 function winnersUrl(): string {
   const base = env.NEXT_PUBLIC_APP_URL ?? "https://sweepza.com";
@@ -43,7 +59,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = winnerModerationSchema.safeParse(await request.json());
+  const parsed = winnerModerationSchema.safeParse(
+    await request.json().catch(() => null),
+  );
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
@@ -52,39 +70,36 @@ export async function POST(request: Request) {
   }
 
   const { winnerPostId, action } = parsed.data;
-  const supabase = createServiceRoleClient();
-
-  const { data, error } = await supabase
-    .from("winner_post")
-    .update({ review_status: REVIEW_STATUS_BY_ACTION[action] })
-    .eq("id", winnerPostId)
-    .select("id, app_user_id, listing_id, review_status")
-    .single<{
-      id: string;
-      app_user_id: string;
-      listing_id: string | null;
-      review_status: string;
-    }>();
-
-  if (error) {
+  let data;
+  try {
+    data = await moderateWinnerPost({
+      winnerPostId,
+      reviewerUserId: authUser.appUserId,
+      action,
+      verifiedWin: action === "publish" ? parsed.data.verifiedWin : false,
+      reviewNotes: parsed.data.reviewNotes,
+      verificationEvidenceUrl: parsed.data.verificationEvidenceUrl,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
     return NextResponse.json(
-      { error: `Winner moderation update failed: ${error.message}` },
+      { error: "The winner post could not be moderated in its current state." },
       { status: 422 },
     );
   }
+
+  const supabase = createServiceRoleClient();
 
   // Only a publish triggers the celebratory email; failures never block.
   if (action === "publish") {
     try {
       let listingTitle = "";
-      if (data.listing_id) {
-        const { data: listing } = await supabase
-          .from("listing")
-          .select("title")
-          .eq("id", data.listing_id)
-          .maybeSingle<{ title: string | null }>();
-        listingTitle = listing?.title ?? "";
-      }
+      const { data: listing } = await supabase
+        .from("listing")
+        .select("title")
+        .eq("id", data.listing_id)
+        .maybeSingle<{ title: string | null }>();
+      listingTitle = listing?.title ?? "";
 
       let displayName = "there";
       const { data: appUser } = await supabase

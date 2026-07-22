@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AdminHostActions } from "@/components/admin-host-actions";
+import { AdminHostApplicationQueue } from "@/components/admin-host-application-queue";
 import { getAdminHosts, type HostFilter } from "@/lib/db/admin";
+import { listPendingHostApplications } from "@/lib/db/host-applications";
 
 export const metadata = {
   title: "Admin Hosts",
@@ -51,7 +53,10 @@ export default async function AdminHostsPage({
 }) {
   const { filter } = await searchParams;
   const active = parseFilter(filter);
-  const hosts = await getAdminHosts(active);
+  const [hosts, applications] = await Promise.all([
+    getAdminHosts(active),
+    listPendingHostApplications(),
+  ]);
 
   return (
     <section className="px-5 pb-10 pt-8">
@@ -67,6 +72,8 @@ export default async function AdminHostsPage({
           listings.
         </p>
       </header>
+
+      <AdminHostApplicationQueue items={applications} />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {FILTERS.map((tab) => {
@@ -90,7 +97,7 @@ export default async function AdminHostsPage({
       </div>
 
       <div className="mt-5 overflow-x-auto rounded-card border border-line bg-surface shadow-e1">
-        <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-line text-xs uppercase tracking-wide text-graphite">
               <th className="px-4 py-3 font-semibold">Host name</th>

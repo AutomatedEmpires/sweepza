@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { toggleWinnerReaction } from "@/lib/db/winners";
 import { REACTION_TYPES, type ReactionType } from "@/lib/db/enums";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { clientKey, rateLimitShared } from "@/lib/rate-limit";
 
 const reactionSchema = z.object({
   reactionType: z.enum(REACTION_TYPES),
@@ -15,7 +15,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ winnerPostId: string }> },
 ) {
-  const { ok, retryAfterSec } = rateLimit(clientKey(request), {
+  const { ok, retryAfterSec } = await rateLimitShared(clientKey(request), {
     namespace: "winner-reactions",
     limit: 20,
     windowMs: 60_000,
@@ -49,11 +49,19 @@ export async function POST(
     );
   }
 
-  const reactions = await toggleWinnerReaction({
-    winnerPostId,
-    appUserId: authUser.appUserId,
-    reactionType: parsed.data.reactionType as ReactionType,
-  });
+  let reactions;
+  try {
+    reactions = await toggleWinnerReaction({
+      winnerPostId,
+      appUserId: authUser.appUserId,
+      reactionType: parsed.data.reactionType as ReactionType,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Winner post is unavailable." },
+      { status: 404 },
+    );
+  }
 
   return NextResponse.json({ ok: true, reactions });
 }

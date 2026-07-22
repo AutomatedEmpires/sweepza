@@ -64,15 +64,24 @@ describe("public listings cache", () => {
   });
 
   it("forwards the requested limit to the unfiltered public query", async () => {
-    const feed = [{ id: "a" }];
+    const feed = [{
+      id: "a",
+      lifecycleStatus: "active",
+      endDate: "2999-12-31",
+    }] as never;
     mocks.getPublicListings.mockResolvedValueOnce(feed);
 
-    await expect(getCachedPublicListings(60)).resolves.toBe(feed);
+    await expect(getCachedPublicListings(60)).resolves.toEqual(feed);
     expect(mocks.getPublicListings).toHaveBeenCalledWith({ limit: 60 });
   });
 
   it("forwards the slug to the single-listing query", async () => {
-    const listing = { id: "a", slug: "prize-sweep" };
+    const listing = {
+      id: "a",
+      slug: "prize-sweep",
+      lifecycleStatus: "active",
+      endDate: "2999-12-31",
+    } as never;
     mocks.getListingBySlug.mockResolvedValueOnce(listing);
 
     await expect(getCachedListingBySlug("prize-sweep")).resolves.toBe(listing);
