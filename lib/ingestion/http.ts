@@ -45,6 +45,15 @@ export function isRetryable(failure: FetchFailureClass): boolean {
   return RETRYABLE.has(failure);
 }
 
+/**
+ * Failures that should keep persisted work eligible for a later run. A spent
+ * per-run request budget cannot be retried inside the current run, but it is
+ * transient once the next bounded run receives a fresh budget.
+ */
+export function isRetryableOnLaterRun(failure: FetchFailureClass): boolean {
+  return isRetryable(failure) || failure === "budget_exhausted";
+}
+
 export interface ConditionalState {
   etag?: string | null;
   lastModified?: string | null;

@@ -2,50 +2,16 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { ListingImagePipelineResult } from "@/lib/ingestion/image-pipeline";
-import {
-  listingMediaObjectPath,
-  type ValidatedImageAsset,
-} from "@/lib/ingestion/image-validation";
+import type { ValidatedImageAsset } from "@/lib/ingestion/image-validation";
 
-export const LISTING_MEDIA_BUCKET = "listing-media";
-
-export async function storeListingMedia(asset: ValidatedImageAsset): Promise<{
+export function storeListingMedia(_asset: ValidatedImageAsset): Promise<{
   storedUrl: string;
   objectPath: string;
   deduplicated: boolean;
 }> {
-  const supabase = createServiceRoleClient();
-  const objectPath = listingMediaObjectPath(asset);
-  const { error } = await supabase.storage
-    .from(LISTING_MEDIA_BUCKET)
-    .upload(objectPath, asset.bytes, {
-      contentType: asset.mimeType,
-      cacheControl: "31536000",
-      upsert: false,
-      metadata: {
-        sha256: asset.contentHash,
-        width: String(asset.width),
-        height: String(asset.height),
-      },
-    });
-
-  const storageError = error as null | { message?: string; statusCode?: string | number; error?: string };
-  const duplicate = Boolean(
-    storageError
-    && (
-      String(storageError.statusCode ?? "") === "409"
-      || /duplicate|already exists|resource exists/i.test(
-        `${storageError.message ?? ""} ${storageError.error ?? ""}`,
-      )
-    ),
-  );
-  if (storageError && !duplicate) {
-    throw new Error(`listing media upload failed: ${storageError.message ?? storageError.error ?? "unknown storage error"}`);
-  }
-
-  const { data } = supabase.storage.from(LISTING_MEDIA_BUCKET).getPublicUrl(objectPath);
-  if (!data.publicUrl) throw new Error("listing media upload did not return a public URL");
-  return { storedUrl: data.publicUrl, objectPath, deduplicated: duplicate };
+  return Promise.reject(new Error(
+    "listing media storage is not configured; retaining the generated Sweepza fallback",
+  ));
 }
 
 /** Persist diagnostics and update the canonical listing in one DB transaction. */

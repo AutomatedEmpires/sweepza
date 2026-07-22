@@ -5,6 +5,7 @@ import {
   createPinnedLookup,
   createSourceHttpClient,
   isRetryable,
+  isRetryableOnLaterRun,
   isUrlAllowed,
 } from "@/lib/ingestion/http";
 import type { SourceDescriptor } from "@/lib/ingestion/source";
@@ -206,6 +207,12 @@ describe("policy client — failure classification", () => {
     expect(isRetryable("access_denied")).toBe(false);
     expect(isRetryable("bot_challenge")).toBe(false);
     expect(isRetryable("blocked_by_policy")).toBe(false);
+    expect(isRetryable("budget_exhausted")).toBe(false);
+
+    // A fresh scheduled run receives a fresh request budget.
+    expect(isRetryableOnLaterRun("budget_exhausted")).toBe(true);
+    expect(isRetryableOnLaterRun("timeout")).toBe(true);
+    expect(isRetryableOnLaterRun("not_found")).toBe(false);
   });
 });
 

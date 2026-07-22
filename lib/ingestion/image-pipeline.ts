@@ -1,4 +1,4 @@
-import { isRetryable, type SourceHttpClient } from "@/lib/ingestion/http";
+import { isRetryableOnLaterRun, type SourceHttpClient } from "@/lib/ingestion/http";
 import type {
   ImageCandidate,
   ImageCandidateDiscovery,
@@ -161,7 +161,7 @@ export async function processListingImage(input: {
 
     const fetched = await input.http.getAsset(candidate.url);
     if (fetched.status === "failed") {
-      if (isRetryable(fetched.failure) || fetched.failure === "budget_exhausted") {
+      if (isRetryableOnLaterRun(fetched.failure)) {
         retryable = true;
       }
       diagnostics.push(diagnostic(candidate, {

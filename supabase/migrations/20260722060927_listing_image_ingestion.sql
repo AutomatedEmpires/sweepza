@@ -79,32 +79,35 @@ alter table public.listing_image_attempt enable row level security;
 revoke all on table public.listing_media_asset from anon, authenticated;
 revoke all on table public.listing_media_source from anon, authenticated;
 revoke all on table public.listing_image_attempt from anon, authenticated;
+revoke all on table public.listing_media_asset from service_role;
+revoke all on table public.listing_media_source from service_role;
+revoke all on table public.listing_image_attempt from service_role;
 grant select, insert, update on table public.listing_media_asset to service_role;
 grant select, insert, update on table public.listing_media_source to service_role;
 grant select, insert on table public.listing_image_attempt to service_role;
 
-insert into storage.buckets (
-  id,
-  name,
-  public,
-  file_size_limit,
-  allowed_mime_types
-)
-values (
-  'listing-media',
-  'listing-media',
-  true,
-  8388608,
-  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']::text[]
-)
-on conflict (id) do update
-set public = excluded.public,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists listing_media_asset_operator_read on public.listing_media_asset;
+create policy listing_media_asset_operator_read on public.listing_media_asset
+  for select to authenticated
+  using ((select private.is_owner()) or (select private.is_admin()));
 
--- Only the trusted service-role client writes this bucket. Public buckets make
--- object GETs public; they do not make upload/update/delete public. With no
--- anon/authenticated storage.objects write policy, browser writes fail closed.
+drop policy if exists listing_media_source_operator_read on public.listing_media_source;
+create policy listing_media_source_operator_read on public.listing_media_source
+  for select to authenticated
+  using ((select private.is_owner()) or (select private.is_admin()));
+
+drop policy if exists listing_image_attempt_operator_read on public.listing_image_attempt;
+create policy listing_image_attempt_operator_read on public.listing_image_attempt
+  for select to authenticated
+  using ((select private.is_owner()) or (select private.is_admin()));
+
+grant select on table public.listing_media_asset to authenticated;
+grant select on table public.listing_media_source to authenticated;
+grant select on table public.listing_image_attempt to authenticated;
+
+-- No object storage is created here. The schema and transaction are provider
+-- neutral; selected-asset writes remain dormant while Sweepza's provider
+-- contract is storage=none. Generated fallback URLs need no persisted object.
 
 create or replace function public.finalize_listing_image(
   p_listing_id uuid,
@@ -199,7 +202,10 @@ begin
     )
     on conflict (listing_id, original_image_url) do update
       set asset_id = excluded.asset_id,
+          source_page_url = excluded.source_page_url,
           final_source_url = excluded.final_source_url,
+          source_domain = excluded.source_domain,
+          extraction_method = excluded.extraction_method,
           retrieved_at = excluded.retrieved_at,
           attribution = excluded.attribution,
           license_url = excluded.license_url,

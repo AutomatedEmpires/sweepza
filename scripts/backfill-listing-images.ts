@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { listingFallbackImageUrl } from "@/lib/listing-media";
-import { listingMediaObjectPath } from "@/lib/ingestion/image-validation";
 import type {
   ImageCandidateDiagnostic,
   ListingImagePipelineResult,
@@ -15,31 +13,6 @@ export const SWEEPZA_SUPABASE_PROJECT_REF = "ojwhsntcpmoxnzisuomq";
 // Use the supported maximum so a bounded image batch does not lose its lease
 // while validating and storing multiple remote assets.
 export const SOURCE_BACKFILL_LEASE_SECONDS = 3600;
-
-/**
- * The repository environment is authoritative for this privileged command.
- * This prevents unrelated machine-level provider variables from cross-wiring
- * a Sweepza backfill. Values are never printed; only replaced key names are.
- */
-export function loadRepoLocalEnv(
-  path = ".env.local",
-  environment: NodeJS.ProcessEnv = process.env,
-): string[] {
-  if (!existsSync(path)) return [];
-  const replacedKeys: string[] = [];
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    if (!line || line.trimStart().startsWith("#") || !line.includes("=")) continue;
-    const index = line.indexOf("=");
-    const key = line.slice(0, index).trim();
-    const value = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
-    if (!key) continue;
-    if (environment[key] !== undefined && environment[key] !== value) {
-      replacedKeys.push(key);
-    }
-    environment[key] = value;
-  }
-  return replacedKeys;
-}
 
 function flagValue(argv: readonly string[], name: string): string | null {
   const prefix = `${name}=`;
@@ -84,6 +57,15 @@ export function requireSweepzaBackfillProvider(environment: NodeJS.ProcessEnv = 
   // violation, so identity validation is unconditional and precedes the client.
   assertSweepzaSupabaseUrl(url);
   return { url, key };
+}
+
+/** Source assets stay dormant until the provider contract adopts media. */
+export function assertApprovedBackfillMode(fallbackOnly: boolean): void {
+  if (!fallbackOnly) {
+    throw new Error(
+      "Source image backfill is disabled: Sweepza has no approved media storage provider.",
+    );
+  }
 }
 
 export type SourceLeaseSettlement =
@@ -171,16 +153,12 @@ type BackfillRow = {
 };
 
 async function run(argv = process.argv.slice(2)) {
-  const replacedKeys = loadRepoLocalEnv();
-  if (replacedKeys.length > 0) {
-    console.warn(`Using repo .env.local instead of inherited values for: ${replacedKeys.sort().join(", ")}`);
-  }
-
   const apply = argv.includes("--apply");
   const fallbackOnly = argv.includes("--fallback-only");
   const retryFallbacks = argv.includes("--retry-fallbacks");
   const limit = Math.max(1, Math.min(100, Number.parseInt(flagValue(argv, "--limit") ?? "25", 10) || 25));
   const after = flagValue(argv, "--after");
+  assertApprovedBackfillMode(fallbackOnly);
   const { url, key } = requireSweepzaBackfillProvider();
 
   const supabase = createClient(url, key, {
@@ -272,9 +250,14 @@ async function run(argv = process.argv.slice(2)) {
     return;
   }
 
-  // Imports are delayed until after .env.local has been loaded. These modules
-  // are network-capable but do not import Next's server-only boundary.
-  const [{ getSourceDescriptor }, { evaluateSourceGate }, { createSourceHttpClient, isRetryable }, { discoverImageCandidates }, { processListingImage }] = await Promise.all([
+  // Network-capable imports stay delayed until provider identity is validated.
+  const [
+    { getSourceDescriptor },
+    { evaluateSourceGate },
+    { createSourceHttpClient, isRetryable, isRetryableOnLaterRun },
+    { discoverImageCandidates },
+    { processListingImage },
+  ] = await Promise.all([
     import("@/lib/ingestion/source"),
     import("@/lib/ingestion/gate"),
     import("@/lib/ingestion/http"),
@@ -388,9 +371,10 @@ async function run(argv = process.argv.slice(2)) {
           sourcePageUrl = candidatePage;
           networkStarted = true;
           const fetched = await http!.get(candidatePage, { persistFetchState: false });
-          const retryableFetchFailure = fetched.status === "failed" && isRetryable(fetched.failure);
+          const availabilityFailure = fetched.status === "failed" && isRetryable(fetched.failure);
+          const retryableFetchFailure = fetched.status === "failed" && isRetryableOnLaterRun(fetched.failure);
           if (fetched.status === "failed") {
-            if (retryableFetchFailure) {
+            if (availabilityFailure) {
               availabilityFailures += 1;
             }
           } else {
@@ -416,23 +400,9 @@ async function run(argv = process.argv.slice(2)) {
             prizeName: row.prize_name,
             http: http!,
             storage: {
-              store: async (asset) => {
-                const objectPath = listingMediaObjectPath(asset);
-                if (!apply) {
-                  return { storedUrl: `dry-run://listing-media/${objectPath}`, objectPath, deduplicated: false };
-                }
-                const { error: uploadError } = await supabase.storage
-                  .from("listing-media")
-                  .upload(objectPath, asset.bytes, {
-                    contentType: asset.mimeType,
-                    cacheControl: "31536000",
-                    upsert: false,
-                  });
-                const duplicate = Boolean(uploadError && /duplicate|already exists|resource exists/i.test(uploadError.message));
-                if (uploadError && !duplicate) throw new Error(uploadError.message);
-                const { data: publicUrl } = supabase.storage.from("listing-media").getPublicUrl(objectPath);
-                return { storedUrl: publicUrl.publicUrl, objectPath, deduplicated: duplicate };
-              },
+              store: () => Promise.reject(new Error(
+                "listing media storage is not configured",
+              )),
             },
           });
           candidatePageResult = accumulateCandidatePageResult(candidatePageResult, pageResult);

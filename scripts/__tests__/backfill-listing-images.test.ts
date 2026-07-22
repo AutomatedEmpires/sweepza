@@ -1,13 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   SOURCE_BACKFILL_LEASE_SECONDS,
   SWEEPZA_SUPABASE_PROJECT_REF,
   accumulateCandidatePageResult,
+  assertApprovedBackfillMode,
   assertSweepzaSupabaseUrl,
-  loadRepoLocalEnv,
   planSourceLeaseSettlement,
   requireSweepzaBackfillProvider,
   shouldSkipExistingAttempt,
@@ -16,45 +13,6 @@ import type {
   ImageCandidateDiagnostic,
   ListingImagePipelineResult,
 } from "../../lib/ingestion/image-pipeline";
-
-const temporaryDirectories: string[] = [];
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-describe("backfill environment authority", () => {
-  it("makes repo .env.local authoritative over inherited provider values", () => {
-    const directory = mkdtempSync(join(tmpdir(), "sweepza-backfill-env-"));
-    temporaryDirectories.push(directory);
-    const path = join(directory, ".env.local");
-    const serviceRoleVariable = ["SUPABASE", "SERVICE", "ROLE", "KEY"].join("_");
-    writeFileSync(path, [
-      `NEXT_PUBLIC_SUPABASE_URL=https://${SWEEPZA_SUPABASE_PROJECT_REF}.supabase.co`,
-      `${serviceRoleVariable}=repo-test-value`,
-      "INGESTION_ENABLED=false",
-    ].join("\n"));
-    const environment: NodeJS.ProcessEnv = {
-      NODE_ENV: "test",
-      NEXT_PUBLIC_SUPABASE_URL: "https://wrong-project.supabase.co",
-      SUPABASE_SERVICE_ROLE_KEY: "machine-key",
-      UNRELATED_MACHINE_VALUE: "preserved",
-    };
-
-    expect(loadRepoLocalEnv(path, environment).sort()).toEqual([
-      "NEXT_PUBLIC_SUPABASE_URL",
-      "SUPABASE_SERVICE_ROLE_KEY",
-    ]);
-    expect(environment).toMatchObject({
-      NEXT_PUBLIC_SUPABASE_URL: `https://${SWEEPZA_SUPABASE_PROJECT_REF}.supabase.co`,
-      SUPABASE_SERVICE_ROLE_KEY: "repo-test-value",
-      INGESTION_ENABLED: "false",
-      UNRELATED_MACHINE_VALUE: "preserved",
-    });
-  });
-});
 
 describe("Sweepza project boundary", () => {
   it("accepts only the exact canonical hosted project URL", () => {
@@ -80,6 +38,16 @@ describe("Sweepza project boundary", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://wrongprojectref0000.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-only-value",
     })).toThrow(/Refusing service-role write/);
+  });
+});
+
+describe("media provider gate", () => {
+  it("allows intentional generated-fallback work", () => {
+    expect(() => assertApprovedBackfillMode(true)).not.toThrow();
+  });
+
+  it("refuses source asset work while storage remains locked to none", () => {
+    expect(() => assertApprovedBackfillMode(false)).toThrow(/no approved media storage provider/);
   });
 });
 
