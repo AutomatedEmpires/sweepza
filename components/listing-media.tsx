@@ -58,41 +58,35 @@ export function ListingMedia({
         <div
           role="img"
           aria-label={`Sweepza fallback artwork for ${prizeName}${sponsorName ? ` from ${sponsorName}` : ""}`}
-          className="relative flex h-full w-full flex-col justify-between overflow-hidden p-5 text-white sm:p-6"
-          style={{ background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}
+          className="relative flex h-full w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-surface-2 via-surface to-paper p-5 text-ink sm:p-6"
         >
           <span
             aria-hidden
-            className="absolute -right-16 -top-20 h-64 w-64 rounded-full border opacity-40"
-            style={{ borderColor: theme.accent }}
+            className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-gold/40"
           />
           <span
             aria-hidden
-            className="absolute -bottom-14 right-10 h-40 w-40 rounded-full opacity-10"
-            style={{ backgroundColor: theme.accent }}
+            className="absolute -bottom-14 right-10 h-40 w-40 rounded-full bg-ember/10"
           />
 
           <div className="relative flex items-center justify-between gap-3">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/85">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-graphite">
               Sweepza
             </span>
-            <span
-              className="rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em]"
-              style={{ borderColor: `${theme.accent}99`, color: theme.accent }}
-            >
+            <span className="rounded-full border border-gold/60 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-gold">
               Sweepza fallback
             </span>
           </div>
 
           <div className="relative min-w-0 max-w-full pr-2">
-            <p className="max-w-full break-words text-[10px] font-bold uppercase leading-relaxed tracking-[0.12em] text-white/65 sm:tracking-[0.16em]">
+            <p className="max-w-full break-words text-[10px] font-bold uppercase leading-relaxed tracking-[0.12em] text-graphite sm:tracking-[0.16em]">
               {theme.eyebrow}
             </p>
             <p className="mt-1.5 line-clamp-2 max-w-full break-words text-lg font-bold leading-tight tracking-tight sm:text-2xl">
               {prizeName}
             </p>
             {sponsorName ? (
-              <p className="mt-2 line-clamp-1 max-w-full break-words text-xs font-medium text-white/75">
+              <p className="mt-2 line-clamp-1 max-w-full break-words text-xs font-medium text-graphite">
                 Sponsor: {sponsorName}
               </p>
             ) : null}

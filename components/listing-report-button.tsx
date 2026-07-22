@@ -45,6 +45,11 @@ export function ListingReportButton({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const panelRef = useRef<HTMLDivElement>(null);
+  const successRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (submitted) successRef.current?.focus();
+  }, [submitted]);
 
   useEffect(() => {
     if (!open) return;
@@ -220,7 +225,9 @@ export function ListingReportButton({
   if (submitted) {
     return (
       <span
+        ref={successRef}
         role="status"
+        tabIndex={-1}
         className="absolute right-3 top-16 inline-flex min-h-11 items-center gap-1 rounded-full bg-ember px-3 py-2 text-xs font-semibold text-on-accent shadow-sm"
       >
         <Icon name="flag" size={14} />

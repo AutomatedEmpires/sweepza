@@ -3,13 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  SOURCE_BACKFILL_LEASE_SECONDS,
   SWEEPZA_SUPABASE_PROJECT_REF,
+  accumulateCandidatePageResult,
   assertSweepzaSupabaseUrl,
   loadRepoLocalEnv,
   planSourceLeaseSettlement,
   requireSweepzaBackfillProvider,
   shouldSkipExistingAttempt,
 } from "../backfill-listing-images";
+import type {
+  ImageCandidateDiagnostic,
+  ListingImagePipelineResult,
+} from "../../lib/ingestion/image-pipeline";
 
 const temporaryDirectories: string[] = [];
 
@@ -78,6 +84,10 @@ describe("Sweepza project boundary", () => {
 });
 
 describe("official source lease settlement", () => {
+  it("uses the maximum lease duration supported by the source lease RPC", () => {
+    expect(SOURCE_BACKFILL_LEASE_SECONDS).toBe(3600);
+  });
+
   it("releases a dry-run lease even after network requests", () => {
     expect(planSourceLeaseSettlement({
       apply: false,
@@ -136,6 +146,75 @@ describe("official source lease settlement", () => {
       ok: false,
       failureClass: "every observable official response failed (3 failures)",
     });
+  });
+});
+
+function pageDiagnostic(url: string, rejectionReason: string): ImageCandidateDiagnostic {
+  return {
+    url,
+    method: "dom_hero",
+    score: 0,
+    role: "primary",
+    rightsStatus: "unknown",
+    status: "rejected",
+    rejectionReason,
+    httpStatus: null,
+    finalUrl: null,
+    validation: null,
+    storageStatus: "not_attempted",
+  };
+}
+
+function pageFallback(
+  url: string,
+  rejectionReason: string,
+  retryable: boolean,
+): ListingImagePipelineResult {
+  return {
+    finalStatus: "generated_fallback",
+    selected: null,
+    fallbackUrl: "/api/images/listing-fallback/other",
+    diagnostics: [pageDiagnostic(url, rejectionReason)],
+    retryable,
+  };
+}
+
+describe("candidate page result accumulation", () => {
+  it("retains diagnostics from every fallback page and ORs retryability", () => {
+    const first = pageFallback("https://example.com/entry", "no_permitted_candidate", false);
+    const second = pageFallback("https://example.com/rules", "source_fetch_timeout", true);
+
+    const result = accumulateCandidatePageResult(
+      accumulateCandidatePageResult(null, first),
+      second,
+    );
+
+    expect(result).toEqual({
+      finalStatus: "generated_fallback",
+      selected: null,
+      fallbackUrl: "/api/images/listing-fallback/other",
+      diagnostics: [first.diagnostics[0], second.diagnostics[0]],
+      retryable: true,
+    });
+  });
+
+  it("treats a selected image as terminal instead of downgrading it", () => {
+    const selected = {
+      finalStatus: "source_image",
+      selected: {},
+      fallbackUrl: null,
+      diagnostics: [pageDiagnostic("https://example.com/image.jpg", "selected")],
+      retryable: false,
+    } as unknown as ListingImagePipelineResult;
+
+    expect(accumulateCandidatePageResult(
+      pageFallback("https://example.com/entry", "source_fetch_timeout", true),
+      selected,
+    )).toBe(selected);
+    expect(accumulateCandidatePageResult(
+      selected,
+      pageFallback("https://example.com/rules", "no_permitted_candidate", false),
+    )).toBe(selected);
   });
 });
 

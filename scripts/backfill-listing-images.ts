@@ -11,6 +11,10 @@ import type {
 } from "@/lib/ingestion/image-pipeline";
 
 export const SWEEPZA_SUPABASE_PROJECT_REF = "ojwhsntcpmoxnzisuomq";
+// acquire_source_run_lease accepts 30-3600 seconds and has no renewal RPC.
+// Use the supported maximum so a bounded image batch does not lose its lease
+// while validating and storing multiple remote assets.
+export const SOURCE_BACKFILL_LEASE_SECONDS = 3600;
 
 /**
  * The repository environment is authoritative for this privileged command.
@@ -97,6 +101,29 @@ export function shouldSkipExistingAttempt(
       && !previous.retryable
       && !retryFallbacks
     );
+}
+
+/**
+ * Preserve every terminal fallback observation across candidate source pages.
+ * A selected asset is conclusive: it replaces earlier fallback state and
+ * prevents a later fallback from downgrading the listing.
+ */
+export function accumulateCandidatePageResult(
+  current: ListingImagePipelineResult | null,
+  next: ListingImagePipelineResult,
+): ListingImagePipelineResult {
+  if (current?.finalStatus !== "generated_fallback") {
+    return current ?? next;
+  }
+  if (next.finalStatus !== "generated_fallback") return next;
+
+  return {
+    finalStatus: "generated_fallback",
+    selected: null,
+    fallbackUrl: next.fallbackUrl,
+    diagnostics: [...current.diagnostics, ...next.diagnostics],
+    retryable: current.retryable || next.retryable,
+  };
 }
 
 function conciseFailure(error: unknown): string {
@@ -289,7 +316,7 @@ async function run(argv = process.argv.slice(2)) {
       const { data: lease, error: leaseError } = await supabase.rpc("acquire_source_run_lease", {
         p_source_id: "official_direct",
         p_refresh_interval_minutes: descriptor?.refreshIntervalMinutes ?? 1440,
-        p_lease_seconds: 600,
+        p_lease_seconds: SOURCE_BACKFILL_LEASE_SECONDS,
       });
       if (leaseError) throw new Error(`source lease acquisition failed: ${leaseError.message}`);
       if (!lease?.ok || !lease.token) {
@@ -322,26 +349,29 @@ async function run(argv = process.argv.slice(2)) {
           row.official_rules_url,
         ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
 
-        result = fallbackResult(row, "source_page_unavailable");
+        let candidatePageResult: ListingImagePipelineResult | null = null;
         for (const candidatePage of candidates) {
           sourcePageUrl = candidatePage;
           networkStarted = true;
           const fetched = await http!.get(candidatePage, { persistFetchState: false });
+          const retryableFetchFailure = fetched.status === "failed" && isRetryable(fetched.failure);
           if (fetched.status === "failed") {
-            if (isRetryable(fetched.failure)) {
+            if (retryableFetchFailure) {
               availabilityFailures += 1;
-              result.retryable = true;
             }
           } else {
             healthyResponses += 1;
           }
           if (fetched.status !== "ok") {
             const reason = fetched.status === "failed" ? `source_fetch_${fetched.failure}` : "source_not_modified_without_cached_html";
-            result.diagnostics.push({
+            const fetchResult = fallbackResult(row, reason);
+            fetchResult.retryable = retryableFetchFailure;
+            fetchResult.diagnostics[0] = {
               ...fallbackResult(row, reason).diagnostics[0],
               url: candidatePage,
               httpStatus: fetched.status === "failed" ? fetched.httpStatus : 304,
-            });
+            };
+            candidatePageResult = accumulateCandidatePageResult(candidatePageResult, fetchResult);
             continue;
           }
 
@@ -371,10 +401,11 @@ async function run(argv = process.argv.slice(2)) {
               },
             },
           });
-          result = pageResult;
+          candidatePageResult = accumulateCandidatePageResult(candidatePageResult, pageResult);
           sourcePageUrl = fetched.finalUrl;
-          if (pageResult.finalStatus !== "generated_fallback") break;
+          if (candidatePageResult.finalStatus !== "generated_fallback") break;
         }
+        result = candidatePageResult ?? fallbackResult(row, "source_page_unavailable");
       }
 
       await persistResult(row, sourcePageUrl, result);

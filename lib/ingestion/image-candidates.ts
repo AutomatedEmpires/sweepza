@@ -130,10 +130,12 @@ function assessRights(input: {
   const candidateLicenseUrl = cleanText(input.licenseUrl, 500);
   const pageLicenseUrl = cleanText(input.pageLicenseUrl, 500);
   const licenseUrls = [candidateLicenseUrl, pageLicenseUrl].filter((value): value is string => Boolean(value));
-  const licenseUrl = candidateLicenseUrl ?? pageLicenseUrl;
   const attribution = cleanText(input.attribution, 500);
-  const text = cleanText(`${input.rightsText ?? ""} ${input.pageRightsText ?? ""}`, 800) ?? "";
+  const candidateText = cleanText(input.rightsText, 500) ?? "";
+  const pageText = cleanText(input.pageRightsText, 500) ?? "";
+  const text = `${candidateText} ${pageText}`.trim();
   const evidence = `${licenseUrls.join(" ")} ${text}`;
+  const candidateEvidence = `${candidateLicenseUrl ?? ""} ${candidateText}`;
   const attributionRequiredLicense = licenseUrls.find((value) =>
     /creativecommons\.org\/licenses\/(?:by|by-sa)(?:\/|$)/i.test(value),
   ) ?? null;
@@ -155,7 +157,7 @@ function assessRights(input: {
   ) {
     return {
       status: "restricted",
-      licenseUrl: restrictedLicense ?? licenseUrl,
+      licenseUrl: restrictedLicense ?? candidateLicenseUrl ?? pageLicenseUrl,
       attribution,
       reason: "page rights text does not permit automatic Sweepza reuse",
     };
@@ -164,29 +166,31 @@ function assessRights(input: {
   if (attributionRequiredLicense || attributionRequiredText) {
     return {
       status: "restricted",
-      licenseUrl: attributionRequiredLicense ?? licenseUrl,
+      licenseUrl: attributionRequiredLicense ?? candidateLicenseUrl ?? pageLicenseUrl,
       attribution,
       reason: "attribution-required licenses are not eligible until Sweepza publishes the required license notice",
     };
   }
 
   // Automatic reuse is deliberately limited to rights that require neither
-  // attribution nor a downstream license notice.
+  // attribution nor a downstream license notice. Permissive page-level
+  // declarations describe the document, not every embedded asset, so only
+  // candidate-bound evidence can authorize reuse.
   if (
-    /creativecommons\.org\/publicdomain\/(?:zero|mark)(?:\/|$)|creativecommons\.org\/public-domain/i.test(evidence)
-    || /(?:^|\s)cc0(?:\s*1\.0)?(?:\s|$)|\bpublic domain\b/i.test(evidence)
+    /creativecommons\.org\/publicdomain\/(?:zero|mark)(?:\/|$)|creativecommons\.org\/public-domain/i.test(candidateEvidence)
+    || /(?:^|\s)cc0(?:\s*1\.0)?(?:\s|$)|\bpublic domain\b/i.test(candidateEvidence)
   ) {
     return {
       status: "permitted",
-      licenseUrl,
+      licenseUrl: candidateLicenseUrl,
       attribution,
-      reason: "page declares a CC0 or public-domain image license",
+      reason: "asset declares a CC0 or public-domain image license",
     };
   }
 
   return {
     status: "unknown",
-    licenseUrl,
+    licenseUrl: candidateLicenseUrl,
     attribution,
     reason: "no reusable image license or host authorization was found",
   };
@@ -391,6 +395,12 @@ export function discoverImageCandidates(html: string, pageUrl: string): ImageCan
       }
       if (typeof value !== "object") return;
       const object = value as Record<string, unknown>;
+      const objectTypes = Array.isArray(object["@type"])
+        ? object["@type"]
+        : [object["@type"]];
+      const objectIsImageObject = objectTypes.some((type) =>
+        typeof type === "string" && /(?:^|[/:])ImageObject$/.test(type)
+      );
       for (const key of ["image", "primaryImageOfPage", "thumbnailUrl", "associatedMedia"]) {
         if (!(key in object)) continue;
         for (const image of valuesFromJsonLdImage(object[key])) {
@@ -401,9 +411,9 @@ export function discoverImageCandidates(html: string, pageUrl: string): ImageCan
             context: cleanText(`${String(object.name ?? "")} ${String(object.headline ?? "")}`),
             widthHint: image.width,
             heightHint: image.height,
-            licenseUrl: image.licenseUrl ?? (typeof object.license === "string" ? object.license : null),
-            attribution: image.attribution ?? (typeof object.creditText === "string" ? object.creditText : null),
-            rightsText: image.rightsText ?? (typeof object.copyrightNotice === "string" ? object.copyrightNotice : null),
+            licenseUrl: image.licenseUrl ?? (objectIsImageObject && typeof object.license === "string" ? object.license : null),
+            attribution: image.attribution ?? (objectIsImageObject && typeof object.creditText === "string" ? object.creditText : null),
+            rightsText: image.rightsText ?? (objectIsImageObject && typeof object.copyrightNotice === "string" ? object.copyrightNotice : null),
           });
         }
       }

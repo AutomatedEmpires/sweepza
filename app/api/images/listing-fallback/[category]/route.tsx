@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { listingFallbackTheme } from "@/lib/listing-media";
+import { OG_EMBER, OG_GRAPHITE, OG_INK, OG_PAPER } from "@/lib/og-theme";
 
 export const runtime = "edge";
 
@@ -19,8 +20,8 @@ export async function GET(
           display: "flex",
           position: "relative",
           overflow: "hidden",
-          color: "#fffaf0",
-          background: `linear-gradient(135deg, ${theme.from}, ${theme.to})`,
+          color: OG_INK,
+          background: OG_PAPER,
           fontFamily: "Arial, sans-serif",
         }}
       >
@@ -30,7 +31,8 @@ export async function GET(
             width: 520,
             height: 520,
             borderRadius: 520,
-            border: `3px solid ${theme.accent}55`,
+            border: `3px solid ${OG_EMBER}`,
+            opacity: 0.3,
             right: -120,
             top: -150,
             display: "flex",
@@ -42,7 +44,8 @@ export async function GET(
             width: 280,
             height: 280,
             borderRadius: 280,
-            background: `${theme.accent}18`,
+            background: OG_EMBER,
+            opacity: 0.12,
             right: 70,
             bottom: -110,
             display: "flex",
@@ -66,8 +69,8 @@ export async function GET(
                 width: 58,
                 height: 58,
                 borderRadius: 18,
-                border: `2px solid ${theme.accent}`,
-                color: theme.accent,
+                border: `2px solid ${OG_EMBER}`,
+                color: OG_EMBER,
                 fontSize: 34,
               }}
             >
@@ -82,7 +85,7 @@ export async function GET(
             <div
               style={{
                 display: "flex",
-                color: theme.accent,
+                color: OG_EMBER,
                 fontSize: 23,
                 fontWeight: 700,
                 letterSpacing: 3,
@@ -96,7 +99,7 @@ export async function GET(
             </div>
           </div>
 
-          <div style={{ display: "flex", fontSize: 20, color: "#fffaf0bb" }}>
+          <div style={{ display: "flex", fontSize: 20, color: OG_GRAPHITE }}>
             Sweepza fallback art · no sponsor image provided
           </div>
         </div>
@@ -111,4 +114,3 @@ export async function GET(
     },
   );
 }
-

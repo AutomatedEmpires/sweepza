@@ -10,9 +10,14 @@ describe("discoverImageCandidates", () => {
         {
           "@type":"Article",
           "headline":"Summer travel sweepstakes",
-          "license":"https://creativecommons.org/publicdomain/zero/1.0/",
-          "creditText":"Sponsor Media Team",
-          "image":{"url":"/media/grand-prize.jpg","width":1600,"height":900,"caption":"Grand prize vacation"}
+          "image":{
+            "url":"/media/grand-prize.jpg",
+            "width":1600,
+            "height":900,
+            "caption":"Grand prize vacation",
+            "license":"https://creativecommons.org/publicdomain/zero/1.0/",
+            "creditText":"Sponsor Media Team"
+          }
         }
       </script>
     `, PAGE);
@@ -38,9 +43,13 @@ describe("discoverImageCandidates", () => {
         {
           "@type":"Article",
           "headline":"Summer sweepstakes grand prize",
-          "license":"${license}",
-          "creditText":"Sponsor Media Team",
-          "image":{"url":"/media/prize.jpg","width":1600,"height":900}
+          "image":{
+            "url":"/media/prize.jpg",
+            "width":1600,
+            "height":900,
+            "license":"${license}",
+            "creditText":"Sponsor Media Team"
+          }
         }
       </script>
     `, PAGE);
@@ -54,10 +63,17 @@ describe("discoverImageCandidates", () => {
 
   it("lets restrictive page evidence override a public-domain declaration", () => {
     const result = discoverImageCandidates(`
-      <link rel="license" href="https://creativecommons.org/publicdomain/zero/1.0/">
       <meta name="rights" content="All rights reserved. Permission required for reuse.">
-      <meta property="og:image" content="/prize.jpg">
-      <meta property="og:image:alt" content="Sweepstakes grand prize">
+      <script type="application/ld+json">
+        {
+          "@type":"Article",
+          "headline":"Summer sweepstakes grand prize",
+          "image":{
+            "url":"/prize.jpg",
+            "license":"https://creativecommons.org/publicdomain/zero/1.0/"
+          }
+        }
+      </script>
     `, PAGE);
 
     expect(result.candidates[0].rights).toMatchObject({
@@ -87,14 +103,22 @@ describe("discoverImageCandidates", () => {
           {
             "@type":"Article",
             "headline":"Summer sweepstakes grand prize",
-            "license":"https://creativecommons.org/publicdomain/zero/1.0/",
-            "image":{"url":"/same-prize.jpg","width":1600,"height":900}
+            "image":{
+              "url":"/same-prize.jpg",
+              "width":1600,
+              "height":900,
+              "license":"https://creativecommons.org/publicdomain/zero/1.0/"
+            }
           },
           {
             "@type":"Article",
             "headline":"Summer sweepstakes grand prize",
-            "copyrightNotice":"All rights reserved",
-            "image":{"url":"/same-prize.jpg","width":1600,"height":900}
+            "image":{
+              "url":"/same-prize.jpg",
+              "width":1600,
+              "height":900,
+              "copyrightNotice":"All rights reserved"
+            }
           }
         ]
       </script>
@@ -102,6 +126,66 @@ describe("discoverImageCandidates", () => {
 
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].rights.status).toBe("restricted");
+  });
+
+  it("does not apply a permissive page license to an embedded image", () => {
+    const result = discoverImageCandidates(`
+      <link rel="license" href="https://creativecommons.org/publicdomain/zero/1.0/">
+      <meta property="og:image" content="/prize.jpg">
+      <meta property="og:image:alt" content="Sweepstakes grand prize">
+    `, PAGE);
+
+    expect(result.candidates[0].rights).toMatchObject({
+      status: "unknown",
+      licenseUrl: null,
+      attribution: null,
+      reason: "no reusable image license or host authorization was found",
+    });
+  });
+
+  it.each(["Article", "WebPage"])(
+    "does not inherit %s rights metadata into its child image",
+    (type) => {
+      const result = discoverImageCandidates(`
+        <script type="application/ld+json">
+          {
+            "@type":"${type}",
+            "headline":"Summer sweepstakes grand prize",
+            "license":"https://creativecommons.org/publicdomain/zero/1.0/",
+            "creditText":"Page editorial team",
+            "copyrightNotice":"Public domain",
+            "image":{"url":"/article-prize.jpg","width":1600,"height":900}
+          }
+        </script>
+      `, PAGE);
+
+      expect(result.candidates[0].rights).toMatchObject({
+        status: "unknown",
+        licenseUrl: null,
+        attribution: null,
+      });
+    },
+  );
+
+  it("accepts rights metadata bound to a JSON-LD ImageObject", () => {
+    const result = discoverImageCandidates(`
+      <script type="application/ld+json">
+        {
+          "@type":"ImageObject",
+          "name":"Summer sweepstakes grand prize",
+          "thumbnailUrl":"/licensed-prize.jpg",
+          "license":"https://creativecommons.org/publicdomain/zero/1.0/",
+          "creditText":"Sponsor Media Team"
+        }
+      </script>
+    `, PAGE);
+
+    expect(result.candidates[0].rights).toMatchObject({
+      status: "permitted",
+      licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+      attribution: "Sponsor Media Team",
+      reason: "asset declares a CC0 or public-domain image license",
+    });
   });
 
   it("groups Open Graph dimensions and alt text with the declared image", () => {
