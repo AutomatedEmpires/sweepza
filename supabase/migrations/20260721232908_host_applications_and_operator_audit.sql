@@ -205,7 +205,7 @@ begin
       v_application.applicant_user_id,
       v_application.public_display_name,
       v_application.website_url,
-      left(v_application.authority_evidence, 300),
+      null,
       'admin_verified',
       'active',
       v_application.authority_evidence_url,
