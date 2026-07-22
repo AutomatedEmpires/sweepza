@@ -50,7 +50,23 @@ const cachedDefaultFeed = unstable_cache(
  */
 export async function getCachedPublicListings(limit: number): Promise<Listing[]> {
   const listings = await cachedDefaultFeed(limit);
-  return listings.filter((listing) => isListingCurrentForPublicCache(listing));
+  const currentListings = listings.filter((listing) =>
+    isListingCurrentForPublicCache(listing),
+  );
+
+  // A cache entry can straddle the canonical UTC-12 cutoff. Filtering keeps
+  // expired promotions hidden, but returning that shortened snapshot would
+  // leave Discover under-filled until the cache TTL lapses. Bypass only the
+  // stale read to refill from the current public query; healthy cache hits
+  // retain their normal one-read path and TTL/tag semantics.
+  if (currentListings.length !== listings.length) {
+    const refreshedListings = await getPublicListings({ limit });
+    return refreshedListings.filter((listing) =>
+      isListingCurrentForPublicCache(listing),
+    );
+  }
+
+  return currentListings;
 }
 
 const cachedListingBySlug = unstable_cache(

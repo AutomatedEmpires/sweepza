@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import {
   CanonicalListingConflictError,
+  CanonicalListingPendingReviewError,
   createCanonicalListing,
 } from "@/lib/db/canonical-listing-write";
 import { getHostByAppUserId } from "@/lib/db/hosts";
@@ -59,6 +60,18 @@ export async function POST(request: Request) {
       url: "/host/listings",
     });
   } catch (error) {
+    if (error instanceof CanonicalListingPendingReviewError) {
+      return NextResponse.json(
+        {
+          ok: true,
+          id: error.listingId,
+          slug: error.slug,
+          url: "/host/listings",
+          pendingReview: true,
+        },
+        { status: error.created ? 201 : 200 },
+      );
+    }
     if (error instanceof CanonicalListingConflictError) {
       return NextResponse.json(
         {

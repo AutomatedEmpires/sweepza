@@ -121,6 +121,12 @@ export async function POST(req: Request) {
       .select("*")
       .single<WinnerPostRow>();
 
+    if (error?.code === "23505") {
+      return NextResponse.json(
+        { error: "You already have a Winner Wall post for this sweepstakes." },
+        { status: 409 },
+      );
+    }
     if (error) {
       throw new Error(`winner submission insert failed: ${error.message}`);
     }

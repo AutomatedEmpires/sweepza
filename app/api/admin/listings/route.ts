@@ -4,6 +4,7 @@ import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { adminListingImportSchema } from "@/lib/admin-listing-schema";
 import {
   CanonicalListingConflictError,
+  CanonicalListingPendingReviewError,
   createCanonicalListing,
 } from "@/lib/db/canonical-listing-write";
 import { revalidatePublicListings } from "@/lib/db/listings-cache";
@@ -53,6 +54,17 @@ export async function POST(request: Request) {
       url: `/sweeps/${listing.slug}`,
     });
   } catch (error) {
+    if (error instanceof CanonicalListingPendingReviewError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          listingId: error.listingId,
+          slug: error.slug,
+          pendingReview: true,
+        },
+        { status: 409 },
+      );
+    }
     if (error instanceof CanonicalListingConflictError) {
       return NextResponse.json(
         { error: error.message, listingId: error.listingId },

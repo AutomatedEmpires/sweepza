@@ -64,6 +64,20 @@ export class CanonicalListingConflictError extends Error {
   }
 }
 
+export class CanonicalListingPendingReviewError extends Error {
+  readonly code = "canonical_listing_pending_review";
+
+  constructor(
+    message: string,
+    readonly listingId: string,
+    readonly slug: string,
+    readonly created: boolean,
+  ) {
+    super(message);
+    this.name = "CanonicalListingPendingReviewError";
+  }
+}
+
 async function assertControlledValues(
   prizeCategory: string,
   tagCodes: string[],
@@ -216,14 +230,16 @@ export async function createCanonicalListing(
       result.listing_id,
     );
   }
-  if ((result.suspected_duplicate_ids?.length ?? 0) > 0) {
-    throw new CanonicalListingConflictError(
-      "Potential duplicate evidence requires review before this listing can publish.",
-      result.listing_id,
-    );
-  }
   if (!result.slug) {
     throw new Error("Canonical listing transaction returned no slug.");
+  }
+  if ((result.suspected_duplicate_ids?.length ?? 0) > 0) {
+    throw new CanonicalListingPendingReviewError(
+      "Potential duplicate evidence requires review before this listing can publish.",
+      result.listing_id,
+      result.slug,
+      result.created === true,
+    );
   }
   return {
     id: result.listing_id,

@@ -77,6 +77,62 @@ describe("public listings cache", () => {
     expect(mocks.getPublicListings).toHaveBeenCalledWith({ limit: 60 });
   });
 
+  it("keeps a current cache hit on the single cached-read path", async () => {
+    const feed = [{
+      id: "current",
+      lifecycleStatus: "active",
+      endDate: "2999-12-31",
+    }] as never;
+    mocks.getPublicListings.mockResolvedValueOnce(feed);
+
+    await expect(getCachedPublicListings(30)).resolves.toEqual(feed);
+    expect(mocks.getPublicListings).toHaveBeenCalledTimes(1);
+    expect(mocks.getPublicListings).toHaveBeenCalledWith({ limit: 30 });
+  });
+
+  it("refills from the live query when cutoff filtering removes cached rows", async () => {
+    const staleFeed = [
+      {
+        id: "expired",
+        lifecycleStatus: "active",
+        endDate: "2000-01-01",
+      },
+    ] as never;
+    const refreshedFeed = [
+      {
+        id: "replacement",
+        lifecycleStatus: "active",
+        endDate: "2999-12-31",
+      },
+    ] as never;
+    mocks.getPublicListings
+      .mockResolvedValueOnce(staleFeed)
+      .mockResolvedValueOnce(refreshedFeed);
+
+    await expect(getCachedPublicListings(30)).resolves.toEqual(refreshedFeed);
+    expect(mocks.getPublicListings).toHaveBeenCalledTimes(2);
+    expect(mocks.getPublicListings).toHaveBeenNthCalledWith(1, { limit: 30 });
+    expect(mocks.getPublicListings).toHaveBeenNthCalledWith(2, { limit: 30 });
+  });
+
+  it("reapplies the safety filter to a cutoff-triggered refill", async () => {
+    const staleListing = {
+      id: "expired",
+      lifecycleStatus: "active",
+      endDate: "2000-01-01",
+    };
+    const currentListing = {
+      id: "current",
+      lifecycleStatus: "active",
+      endDate: "2999-12-31",
+    };
+    mocks.getPublicListings
+      .mockResolvedValueOnce([staleListing])
+      .mockResolvedValueOnce([staleListing, currentListing]);
+
+    await expect(getCachedPublicListings(30)).resolves.toEqual([currentListing]);
+  });
+
   it("forwards the slug to the single-listing query", async () => {
     const listing = {
       id: "a",
