@@ -67,6 +67,21 @@ export function assertSweepzaSupabaseUrl(rawUrl: string): void {
   }
 }
 
+export function requireSweepzaBackfillProvider(environment: NodeJS.ProcessEnv = process.env): {
+  url: string;
+  key: string;
+} {
+  const url = environment.NEXT_PUBLIC_SUPABASE_URL ?? environment.SUPABASE_URL;
+  const key = environment.SUPABASE_SERVICE_ROLE_KEY ?? environment.SUPABASE_SERVICE_ROLE;
+  if (!url || !key) throw new Error("Missing Sweepza Supabase URL or service-role key.");
+
+  // Every mode creates a privileged client. Dry-run is read-only, but reading
+  // another venture with an inherited machine credential is still a boundary
+  // violation, so identity validation is unconditional and precedes the client.
+  assertSweepzaSupabaseUrl(url);
+  return { url, key };
+}
+
 export type SourceLeaseSettlement =
   | { action: "release" }
   | { action: "finish"; ok: boolean; failureClass: string | null };
@@ -139,13 +154,7 @@ async function run(argv = process.argv.slice(2)) {
   const retryFallbacks = argv.includes("--retry-fallbacks");
   const limit = Math.max(1, Math.min(100, Number.parseInt(flagValue(argv, "--limit") ?? "25", 10) || 25));
   const after = flagValue(argv, "--after");
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE;
-  if (!url || !key) throw new Error("Missing Sweepza Supabase URL or service-role key.");
-
-  // --apply writes listing/storage state; source mode also writes its lease even
-  // during a dry-run. Validate the provider boundary before either can happen.
-  if (apply || !fallbackOnly) assertSweepzaSupabaseUrl(url);
+  const { url, key } = requireSweepzaBackfillProvider();
 
   const supabase = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },

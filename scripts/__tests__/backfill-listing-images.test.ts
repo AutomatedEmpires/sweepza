@@ -7,6 +7,7 @@ import {
   assertSweepzaSupabaseUrl,
   loadRepoLocalEnv,
   planSourceLeaseSettlement,
+  requireSweepzaBackfillProvider,
   shouldSkipExistingAttempt,
 } from "../backfill-listing-images";
 
@@ -65,6 +66,14 @@ describe("Sweepza project boundary", () => {
     "not-a-url",
   ])("refuses a privileged write URL outside the Sweepza project (%s)", (url) => {
     expect(() => assertSweepzaSupabaseUrl(url)).toThrow(/Refusing service-role write/);
+  });
+
+  it("refuses a wrong-project fallback-only dry-run before creating a client", () => {
+    expect(() => requireSweepzaBackfillProvider({
+      NODE_ENV: "test",
+      NEXT_PUBLIC_SUPABASE_URL: "https://wrongprojectref0000.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "test-only-value",
+    })).toThrow(/Refusing service-role write/);
   });
 });
 
