@@ -18,7 +18,7 @@ export function SideRail() {
           Sweepza
         </span>
         <span className="mt-1 block text-[11px] text-graphite">
-          The sweepstakes operating system
+          Sweepstakes Simplified
         </span>
       </Link>
 

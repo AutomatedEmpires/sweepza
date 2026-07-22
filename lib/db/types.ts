@@ -85,6 +85,7 @@ export interface ListingRow {
   main_image_url: string | null;
   image_source_type: ImageSourceType | null;
   image_alt_text: string | null;
+  image_attribution?: string | null;
   category_fallback_image: string | null;
   entry_url: string | null;
   official_rules_url: string | null;

@@ -377,6 +377,7 @@ const APP_ROUTE_SURFACES: Surface[] = [
   // The per-listing social card: an ImageResponse, so its words leave the site
   // exactly like app/opengraph-image.tsx did.
   routeSurface("app/api/og/sweeps/[slug]/route.tsx"),
+  routeSurface("app/api/images/listing-fallback/[category]/route.tsx"),
   routeSurface("app/profile/page.tsx"),
   routeSurface("app/profile/notifications/page.tsx"),
   routeSurface("app/sign-in/[[...sign-in]]/page.tsx"),

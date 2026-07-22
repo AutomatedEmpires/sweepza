@@ -109,7 +109,9 @@ export interface Listing {
 
   // Media
   mainImageUrl?: string;
+  imageSourceType?: "host_upload" | "owner_upload" | "photo_bucket" | "external_reference";
   imageAltText?: string;
+  imageAttribution?: string;
   categoryFallbackImageUrl?: string;
 
   // Entry & rules

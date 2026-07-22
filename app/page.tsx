@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
@@ -224,38 +225,55 @@ export default async function TodayPage() {
     <div className="flex flex-col gap-12 pb-10 lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-6">
       <SiteJsonLd />
       {/* Hero scene */}
-      <header className="px-5 pt-10 lg:px-0 lg:pt-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ember">
-          The sweepstakes operating system
-        </p>
-        <h1 className="mt-3 max-w-[16ch] font-display text-[44px] font-medium leading-[1.03] tracking-tightest text-ink lg:text-[68px]">
-          Sweepza remembers so you don&apos;t have to.
-        </h1>
-        <p className="mt-4 max-w-[54ch] text-[16px] leading-relaxed text-graphite lg:text-lg">
-          Sweepstakes are scattered across brands, blogs, and daily-entry pages.
-          Sweepza gathers the ones worth entering and quietly keeps track of what
-          you saved, entered, can enter again, and won — so every day you open one
-          screen and know exactly what to do.
-        </p>
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link
-            href="/discover"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ember px-6 py-3 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
-          >
-            Browse sweepstakes <Icon name="send" size={16} />
-          </Link>
-          <Link
-            href="/sign-up"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold text-ink transition hover:bg-ink/5"
-          >
-            Start my routine
-          </Link>
-          {/* Was: "Free for seekers · no purchase necessary" — the second half spoke
-              for the sponsor. Sweepza's own fee is Sweepza's to state; the sponsor's isn't. */}
-          <span className="text-xs font-medium text-graphite">
-            Free for seekers — Sweepza never charges you to enter
-          </span>
+      <header className="px-5 pt-8 lg:px-0 lg:pt-6">
+        <div className="grid items-center gap-7 lg:grid-cols-[1.08fr_.92fr] lg:gap-10">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ember">
+              Sweepstakes simplified
+            </p>
+            <h1 className="mt-3 max-w-[16ch] font-display text-[44px] font-medium leading-[1.03] tracking-tightest text-ink lg:text-[64px]">
+              Sweepza remembers so you don&apos;t have to.
+            </h1>
+            <p className="mt-4 max-w-[54ch] text-[16px] leading-relaxed text-graphite lg:text-lg">
+              Discover legitimate promotions, check the sponsor&apos;s official
+              details, and keep track of what you saved, entered, can enter
+              again, and won — all from one daily screen.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Link
+                href="/discover"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-ember px-6 py-3 text-sm font-semibold text-on-accent transition hover:bg-ember/90"
+              >
+                Browse sweepstakes <Icon name="send" size={16} />
+              </Link>
+              <Link
+                href="/sign-up"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-ink/15 px-6 py-3 text-sm font-semibold text-ink transition hover:bg-ink/5"
+              >
+                Start my routine
+              </Link>
+              <span className="text-xs font-medium text-graphite">
+                Free for seekers — Sweepza never charges you to enter
+              </span>
+            </div>
+          </div>
+
+          <div className="order-first overflow-hidden rounded-sheet border border-line bg-surface shadow-e2 lg:order-last">
+            <Image
+              src="/brand/sweepza-logo.png"
+              alt="Sweepza — Sweepstakes Simplified"
+              width={2500}
+              height={1696}
+              priority
+              className="h-auto w-full"
+              sizes="(min-width: 1024px) 440px, (min-width: 640px) 620px, calc(100vw - 40px)"
+            />
+          </div>
         </div>
+        <p className="mt-4 text-xs leading-relaxed text-graphite lg:max-w-[46%] lg:ml-auto">
+          Sweepza is a discovery and tracking service. Third-party sponsors run
+          their own promotions; always follow the linked official rules.
+        </p>
       </header>
 
       {/* Lifecycle — the memory moat, shown not told */}

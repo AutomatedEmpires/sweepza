@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { CardCelebration } from "@/components/card-celebration";
 import { ContextTag } from "@/components/context-tag";
 import { Icon } from "@/components/icon";
+import { ListingMedia } from "@/components/listing-media";
 import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
-import { canOptimizeImage } from "@/lib/image";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { pickListingContext } from "@/lib/listing-context";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
@@ -155,7 +154,6 @@ export function ListingCard({
     [listing, uiState, saved, store, now],
   );
 
-  const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
   const attributionName = listing.host?.name ?? listing.originalSponsorName;
   const hostVerified =
@@ -206,25 +204,21 @@ export function ListingCard({
           tone === "featured" ? "aspect-[16/9]" : "aspect-[16/11]",
         )}
       >
-        {imageUrl ? (
-          <Image
-            src={imageUrl}
-            alt={listing.imageAltText ?? listing.prizeName}
-            fill
-            priority={priority}
-            className="object-cover transition duration-500 group-hover:scale-[1.03]"
-            sizes={
-              tone === "featured"
-                ? "(min-width:1024px) 720px, 100vw"
-                : "(min-width:1536px) 360px, (min-width:1024px) 460px, 100vw"
-            }
-            unoptimized={!canOptimizeImage(imageUrl)}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-line to-paper text-ink/25">
-            <Icon name="gift" size={44} />
-          </div>
-        )}
+        <ListingMedia
+          sourceUrl={listing.mainImageUrl || listing.categoryFallbackImageUrl}
+          altText={listing.imageAltText}
+          prizeName={listing.prizeName}
+          sponsorName={attributionName}
+          category={listing.prizeCategory}
+          attribution={listing.imageAttribution}
+          priority={priority}
+          imageClassName="transition duration-500 group-hover:scale-[1.03]"
+          sizes={
+            tone === "featured"
+              ? "(min-width:1024px) 720px, 100vw"
+              : "(min-width:1536px) 360px, (min-width:1024px) 460px, 100vw"
+          }
+        />
 
         {/* Legibility scrim only where the chip sits. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-ink/45 to-transparent" />
@@ -321,7 +315,7 @@ export function ListingCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="mt-3 inline-flex w-fit items-center gap-1 text-xs font-medium text-graphite underline-offset-2 transition hover:text-ink hover:underline"
+            className="mt-1 inline-flex min-h-11 w-fit items-center gap-1 pr-3 text-xs font-medium text-graphite underline-offset-2 transition hover:text-ink hover:underline"
           >
             Official rules
             <Icon name="externalLink" size={11} />

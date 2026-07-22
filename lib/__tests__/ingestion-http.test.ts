@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFixtureFetch, createFixtureHttpClient } from "@/lib/ingestion/fixtures/http";
 import { BOT_CHALLENGE_HTML } from "@/lib/ingestion/fixtures/scenarios";
-import { createSourceHttpClient, isRetryable, isUrlAllowed } from "@/lib/ingestion/http";
+import {
+  createPinnedLookup,
+  createSourceHttpClient,
+  isRetryable,
+  isRetryableOnLaterRun,
+  isUrlAllowed,
+} from "@/lib/ingestion/http";
 import type { SourceDescriptor } from "@/lib/ingestion/source";
 
 function descriptor(overrides: Partial<SourceDescriptor> = {}): SourceDescriptor {
@@ -63,6 +69,59 @@ describe("isUrlAllowed", () => {
     });
     expect(isUrlAllowed(open, "https://any-sponsor.example.org/rules")).toBe(true);
     expect(isUrlAllowed(open, "ftp://sponsor.example.org/rules")).toBe(false);
+  });
+});
+
+describe("pinned Node transport", () => {
+  it("returns an address array when Node requests all lookup results", async () => {
+    const { createServer, request } = await import("node:http");
+    const server = createServer((_request, response) => response.end("ok"));
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("test server has no TCP address");
+
+    try {
+      const body = await new Promise<string>((resolve, reject) => {
+        const outgoing = request({
+          hostname: "sponsor.example.test",
+          port: address.port,
+          path: "/",
+          lookup: createPinnedLookup({ address: "127.0.0.1", family: 4 }),
+        }, (incoming) => {
+          incoming.setEncoding("utf8");
+          let value = "";
+          incoming.on("data", (chunk) => { value += chunk; });
+          incoming.on("end", () => resolve(value));
+        });
+        outgoing.once("error", reject);
+        outgoing.end();
+      });
+      expect(body).toBe("ok");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("cancels an unread redirect body before following the next hop", async () => {
+    const cancel = vi.fn();
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url) === "https://example.com/start") {
+        return new Response(new ReadableStream({ cancel }), {
+          status: 302,
+          headers: { location: "/final" },
+        });
+      }
+      return new Response("official rules", { status: 200 });
+    });
+    const client = createSourceHttpClient(descriptor(), { fetchImpl });
+
+    const result = await client.get("https://example.com/start");
+
+    expect(result.status).toBe("ok");
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -148,6 +207,12 @@ describe("policy client — failure classification", () => {
     expect(isRetryable("access_denied")).toBe(false);
     expect(isRetryable("bot_challenge")).toBe(false);
     expect(isRetryable("blocked_by_policy")).toBe(false);
+    expect(isRetryable("budget_exhausted")).toBe(false);
+
+    // A fresh scheduled run receives a fresh request budget.
+    expect(isRetryableOnLaterRun("budget_exhausted")).toBe(true);
+    expect(isRetryableOnLaterRun("timeout")).toBe(true);
+    expect(isRetryableOnLaterRun("not_found")).toBe(false);
   });
 });
 
@@ -279,6 +344,61 @@ describe("policy client — conditional requests", () => {
     await client.get("https://example.com/p", { conditional: { etag: 'W/"abc"' } });
 
     expect(sent?.get("if-none-match")).toBeNull();
+  });
+});
+
+describe("policy client — bounded image assets", () => {
+  it("returns bytes and image response metadata", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const client = createFixtureHttpClient(descriptor(), {
+      "https://example.com/prize.png": {
+        body: bytes,
+        headers: { "content-type": "image/png", etag: '"image-v1"' },
+      },
+    });
+
+    const result = await client.getAsset("https://example.com/prize.png");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect([...result.bytes]).toEqual([...bytes]);
+      expect(result.contentType).toBe("image/png");
+      expect(result.contentLength).toBe(4);
+      expect(result.etag).toBe('"image-v1"');
+    }
+  });
+
+  it("follows and re-guards image redirects", async () => {
+    const log: string[] = [];
+    const client = createFixtureHttpClient(descriptor(), {
+      "https://example.com/image": { finalUrl: "https://cdn.example.com/prize.jpg" },
+      "https://cdn.example.com/prize.jpg": {
+        body: new Uint8Array([1, 2, 3]),
+        headers: { "content-type": "image/jpeg" },
+      },
+    }, { log });
+
+    const result = await client.getAsset("https://example.com/image");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.finalUrl).toBe("https://cdn.example.com/prize.jpg");
+    expect(log).toEqual([
+      "https://example.com/image",
+      "https://cdn.example.com/prize.jpg",
+    ]);
+  });
+
+  it("stops reading when the asset exceeds its byte cap", async () => {
+    const client = createFixtureHttpClient(descriptor({ maxRetries: 0 }), {
+      "https://example.com/huge.jpg": {
+        body: new Uint8Array(64),
+        headers: { "content-type": "image/jpeg", "content-length": "64" },
+      },
+    });
+
+    const result = await client.getAsset("https://example.com/huge.jpg", { maxBytes: 32 });
+
+    expect(result.status === "failed" && result.failure).toBe("body_too_large");
   });
 });
 

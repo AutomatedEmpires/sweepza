@@ -61,6 +61,10 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  .sweep-search::-webkit-search-cancel-button {
+    display: none;
+    appearance: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

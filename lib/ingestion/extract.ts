@@ -4,6 +4,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { stableHash } from "@/lib/ingestion/fingerprint";
 import { stripHtmlTagsQuoteAware } from "@/lib/ingestion/html-text";
+import {
+  discoverImageCandidates,
+  type ImageCandidateDiscovery,
+} from "@/lib/ingestion/image-candidates";
 import type {
   ConditionalState,
   FetchFailureClass,
@@ -46,7 +50,10 @@ export function htmlToText(html: string): string {
 }
 
 export interface FetchedPage {
+  /** Original bounded HTML, retained for deterministic media extraction. */
+  html: string;
   text: string;
+  imageDiscovery: ImageCandidateDiscovery;
   /** Cheap hash of the readable text — "changed since last run?" check. */
   contentHash: string;
   /** Actual response URL. Redirected validators must never be keyed to the request URL. */
@@ -97,7 +104,9 @@ export async function fetchOfficialPage(
   return {
     status: "ok",
     page: {
+      html: result.body,
       text,
+      imageDiscovery: discoverImageCandidates(result.body, result.finalUrl),
       contentHash: stableHash(text),
       finalUrl: result.finalUrl,
       fetchState: {
@@ -135,8 +144,6 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
       noPurchaseNecessary: { type: ["boolean", "null"], description: "True only if the page affirms no purchase is necessary." },
       sponsorName: { type: ["string", "null"] },
       sponsorUrl: { type: ["string", "null"] },
-      mainImageUrl: { type: ["string", "null"] },
-      imageAltText: { type: ["string", "null"] },
     },
     required: [],
   },
@@ -154,6 +161,7 @@ const SYSTEM_PROMPT = [
 export interface Extraction {
   raw: RawExtraction;
   pageText: string;
+  imageDiscovery: ImageCandidateDiscovery;
   contentHash: string;
   finalUrl: string;
   fetchState: FetchedPage["fetchState"];
@@ -242,6 +250,7 @@ export async function extractOfficialPage(
     extraction: {
       raw: toolUse.input as RawExtraction,
       pageText: page.text,
+      imageDiscovery: page.imageDiscovery,
       contentHash: page.contentHash,
       finalUrl: page.finalUrl,
       fetchState: page.fetchState,

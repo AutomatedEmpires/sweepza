@@ -12,7 +12,7 @@ export function buildOrganizationJsonLd() {
     name: APP_NAME,
     url: SITE_URL.toString(),
     description: APP_DESCRIPTION,
-    logo: `${APP_URL}/icon.svg`,
+    logo: `${APP_URL}/brand/sweepza-logo.png`,
   };
 }
 

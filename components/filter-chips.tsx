@@ -11,7 +11,7 @@ export function FilterChips({
   onToggle: (id: FilterChipId) => void;
 }) {
   return (
-    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    <div className="no-scrollbar mask-fade-r -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 pr-8">
       {FILTER_CHIPS.map((chip) => {
         const on = active.includes(chip.id);
         return (
