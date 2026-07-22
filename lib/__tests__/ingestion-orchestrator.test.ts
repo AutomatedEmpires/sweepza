@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   getFetchState: vi.fn(),
   saveFetchState: vi.fn(),
   finalizeListingImage: vi.fn(),
-  storeListingMedia: vi.fn(),
   processListingImage: vi.fn(),
 }));
 
@@ -107,7 +106,6 @@ vi.mock("@/lib/db/ingestion", () => ({
 
 vi.mock("@/lib/db/listing-media", () => ({
   finalizeListingImage: mocks.finalizeListingImage,
-  storeListingMedia: mocks.storeListingMedia,
 }));
 
 vi.mock("@/lib/ingestion/image-pipeline", () => ({
@@ -198,11 +196,6 @@ beforeEach(() => {
   });
   mocks.finishIngestionRun.mockResolvedValue(undefined);
   mocks.finalizeListingImage.mockResolvedValue(undefined);
-  mocks.storeListingMedia.mockResolvedValue({
-    storedUrl: "https://project.supabase.co/storage/v1/object/public/listing-media/test.jpg",
-    objectPath: "test.jpg",
-    deduplicated: false,
-  });
   mocks.processListingImage.mockResolvedValue({
     finalStatus: "generated_fallback",
     selected: null,
@@ -546,6 +539,16 @@ describe("runIngestion publishable gate", () => {
     expect(mocks.completeWork).not.toHaveBeenCalledWith("work-1");
     expect(summaries[0]).toMatchObject({ created: 1, failed: 1 });
     expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain("media retry:");
+  });
+
+  it("passes a null storage port while the provider contract remains storage=none", async () => {
+    await runIngestion();
+
+    expect(mocks.processListingImage).toHaveBeenCalledWith(expect.objectContaining({
+      storage: null,
+    }));
+    expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
   });
 
   it("does not persist a final-hop validator under a redirecting request URL", async () => {

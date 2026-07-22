@@ -112,7 +112,7 @@ export async function processListingImage(input: {
   prizeCategory: string | null;
   prizeName: string;
   http: SourceHttpClient;
-  storage: ListingMediaStoragePort;
+  storage: ListingMediaStoragePort | null;
   authorizedUrls?: ReadonlySet<string>;
   authorizedAttribution?: string | null;
   maxCandidates?: number;
@@ -130,6 +130,24 @@ export async function processListingImage(input: {
     validation: null,
     storageStatus: "not_attempted",
   }));
+
+  // Sweepza's provider contract is currently storage=none. Make that a durable
+  // product state, not a simulated outage: do not fetch bytes that cannot be
+  // persisted, and let the page validator commit after the intentional
+  // generated fallback is recorded. Adopting media requires supplying a real
+  // approved storage port here.
+  if (input.storage === null) {
+    diagnostics.push(...input.discovery.candidates.map((candidate) => diagnostic(candidate, {
+      rejectionReason: "media_storage_not_configured",
+    })));
+    return {
+      finalStatus: "generated_fallback",
+      selected: null,
+      fallbackUrl: listingFallbackImageUrl(input.prizeCategory),
+      diagnostics,
+      retryable: false,
+    };
+  }
 
   // The hierarchy is semantic before numerical: exhaust prize/sweep images,
   // then try a sponsor logo. A high-scoring logo never displaces a real prize.

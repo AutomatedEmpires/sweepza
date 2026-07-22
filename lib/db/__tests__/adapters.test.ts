@@ -23,6 +23,7 @@ function makeListingRow(overrides: Partial<ListingRow> = {}): ListingRow {
     main_image_url: null,
     image_source_type: null,
     image_alt_text: null,
+    image_attribution: null,
     category_fallback_image: null,
     entry_url: "https://example.com/enter",
     official_rules_url: null,
@@ -183,6 +184,20 @@ describe("toListing", () => {
     expect(listing.originalSponsorName).toBe("Acme Corp");
     expect(listing.publishedAt).toBe("2026-07-05T00:00:00.000Z");
     expect(listing.winnerCount).toBe(3);
+  });
+
+  it("exposes attribution only for the stored image it describes", () => {
+    expect(toListing(makeListingRow({
+      main_image_url: "https://media.example/prize.jpg",
+      image_source_type: "photo_bucket",
+      image_attribution: "Official sponsor image",
+    })).imageAttribution).toBe("Official sponsor image");
+
+    expect(toListing(makeListingRow({
+      main_image_url: "https://host.example/replacement.jpg",
+      image_source_type: "external_reference",
+      image_attribution: "Stale ingestion credit",
+    })).imageAttribution).toBeUndefined();
   });
 
   it("maps prize_category through the code -> display string projection", () => {

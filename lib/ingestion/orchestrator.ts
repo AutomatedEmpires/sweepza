@@ -29,10 +29,7 @@ import {
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
 import { discoveryWorkQueue } from "@/lib/db/discovery-work";
-import {
-  finalizeListingImage,
-  storeListingMedia,
-} from "@/lib/db/listing-media";
+import { finalizeListingImage } from "@/lib/db/listing-media";
 import {
   acquireSourceRunLease,
   finishSourceRunLease,
@@ -407,7 +404,9 @@ export async function runIngestion(
           prizeCategory: candidate.prizeCategory,
           prizeName: candidate.prizeName,
           http: activeOfficialHttp,
-          storage: { store: storeListingMedia },
+          // The repository contract is storage=none. A null port produces a
+          // terminal generated fallback before any image bytes are fetched.
+          storage: null,
         });
         await finalizeListingImage({
           listingId: claim.listingId,

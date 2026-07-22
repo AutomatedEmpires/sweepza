@@ -121,7 +121,9 @@ export function toListing(
     mainImageUrl: opt(row.main_image_url),
     imageSourceType: opt(row.image_source_type),
     imageAltText: opt(row.image_alt_text),
-    imageAttribution: opt(row.image_attribution),
+    imageAttribution: row.image_source_type === "photo_bucket"
+      ? opt(row.image_attribution)
+      : undefined,
     categoryFallbackImageUrl: opt(row.category_fallback_image),
 
     entryUrl: row.entry_url ?? "",

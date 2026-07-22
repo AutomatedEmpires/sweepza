@@ -49,6 +49,36 @@ function http(result: Awaited<ReturnType<SourceHttpClient["getAsset"]>>) {
 }
 
 describe("processListingImage", () => {
+  it("uses a terminal generated fallback before fetching when storage is unconfigured", async () => {
+    const transport = http({
+      status: "failed",
+      url: "https://sponsor.example.com/prize.jpg",
+      failure: "network",
+      httpStatus: null,
+      attempts: 1,
+      message: "must not be reached",
+    });
+
+    const result = await processListingImage({
+      discovery: discovery([candidate()]),
+      prizeCategory: "travel",
+      prizeName: "Vacation package",
+      http: transport.client,
+      storage: null,
+    });
+
+    expect(result).toMatchObject({
+      finalStatus: "generated_fallback",
+      fallbackUrl: "/api/images/listing-fallback/travel",
+      retryable: false,
+    });
+    expect(transport.getAsset).not.toHaveBeenCalled();
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      rejectionReason: "media_storage_not_configured",
+      storageStatus: "not_attempted",
+    }));
+  });
+
   it("fetches, validates, stores, and selects a permitted source image", async () => {
     const bytes = await prizeBytes();
     const transport = http({

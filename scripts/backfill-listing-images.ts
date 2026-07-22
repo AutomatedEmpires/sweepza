@@ -399,11 +399,7 @@ async function run(argv = process.argv.slice(2)) {
             prizeCategory: row.prize_category,
             prizeName: row.prize_name,
             http: http!,
-            storage: {
-              store: () => Promise.reject(new Error(
-                "listing media storage is not configured",
-              )),
-            },
+            storage: null,
           });
           candidatePageResult = accumulateCandidatePageResult(candidatePageResult, pageResult);
           sourcePageUrl = fetched.finalUrl;

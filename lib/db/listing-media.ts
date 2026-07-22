@@ -2,17 +2,6 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { ListingImagePipelineResult } from "@/lib/ingestion/image-pipeline";
-import type { ValidatedImageAsset } from "@/lib/ingestion/image-validation";
-
-export function storeListingMedia(_asset: ValidatedImageAsset): Promise<{
-  storedUrl: string;
-  objectPath: string;
-  deduplicated: boolean;
-}> {
-  return Promise.reject(new Error(
-    "listing media storage is not configured; retaining the generated Sweepza fallback",
-  ));
-}
 
 /** Persist diagnostics and update the canonical listing in one DB transaction. */
 export async function finalizeListingImage(input: {

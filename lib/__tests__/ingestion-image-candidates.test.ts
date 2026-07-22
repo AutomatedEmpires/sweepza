@@ -317,4 +317,20 @@ describe("discoverImageCandidates", () => {
       reason: "no reusable image license or host authorization was found",
     });
   });
+
+  it("bounds DOM image inspection on image-heavy untrusted pages", () => {
+    const noisyImages = Array.from({ length: 200 }, (_value, index) =>
+      `<img src="/tracking-pixel-${index}.gif" width="1" height="1">`
+    ).join("");
+    const result = discoverImageCandidates(`
+      <main>
+        ${noisyImages}
+        <img src="/beyond-bound.jpg" alt="Sweepstakes grand prize" width="1600" height="900">
+      </main>
+    `, PAGE);
+
+    expect(result.candidates).not.toContainEqual(expect.objectContaining({
+      url: "https://sponsor.example.com/beyond-bound.jpg",
+    }));
+  });
 });

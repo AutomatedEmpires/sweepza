@@ -80,6 +80,7 @@ const LOGO_TERMS = /(?:^|[\s_\-/])(logo|brandmark|wordmark)(?:[\s_.\-/]|$)/i;
 const IRRELEVANT_TERMS =
   /tracking|pixel|spacer|beacon|favicon|sprite|emoji|avatar|profile|cookie|consent|captcha|spinner|loader|loading|social[\s_-]*icon|facebook|instagram|pinterest|tiktok|youtube|doubleclick|advert|adserver|related[\s_-]*(?:story|article)|recommended[\s_-]*(?:story|article)/i;
 const PLACEHOLDER_TERMS = /placeholder|transparent(?:\.gif)?|blank(?:\.gif)?|no[\s_-]*image|image[\s_-]*missing/i;
+const MAX_DOM_IMAGE_NODES = 200;
 
 function cleanText(value: string | null | undefined, max = 360): string | null {
   const cleaned = value?.replace(/\s+/g, " ").trim();
@@ -450,13 +451,26 @@ export function discoverImageCandidates(html: string, pageUrl: string): ImageCan
   });
   Object.values(social).flat().forEach(add);
 
-  // 4-6. Visible, responsive, and lazy DOM imagery.
-  $("img").each((position, element) => {
+  // 4-6. Visible, responsive, and lazy DOM imagery. Bound the untrusted DOM
+  // work and cache shared ancestor text so image-heavy pages cannot force the
+  // same large section to be traversed once per child image.
+  const ancestorTextCache = new Map<object, string>();
+  $("img").slice(0, MAX_DOM_IMAGE_NODES).each((position, element) => {
     const image = $(element);
     const alt = image.attr("alt") ?? image.attr("title") ?? null;
+    const ancestor = image.closest("figure,article,section,header,main").first();
+    const ancestorNode = ancestor.get(0);
+    let ancestorText = "";
+    if (ancestorNode) {
+      ancestorText = ancestorTextCache.get(ancestorNode) ?? "";
+      if (!ancestorTextCache.has(ancestorNode)) {
+        ancestorText = cleanText(ancestor.text(), 500) ?? "";
+        ancestorTextCache.set(ancestorNode, ancestorText);
+      }
+    }
     const context = cleanText([
       image.attr("class"), image.attr("id"), alt,
-      image.closest("figure,article,section,header,main").first().text().slice(0, 500),
+      ancestorText,
     ].filter(Boolean).join(" "));
     const widthHint = positiveInteger(image.attr("width"));
     const heightHint = positiveInteger(image.attr("height"));
