@@ -4,6 +4,7 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase/server";
 import type { Listing, PrizeCategory } from "@/lib/types/listing";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 import { PRIZE_CATEGORY_TO_CATEGORY_CODE, toListing } from "./adapters";
 import type { EntryFrequency, LifecycleStatus } from "./enums";
 import type { HostPublicRow, ListingRow, WinnerPostRow } from "./types";
@@ -149,6 +150,8 @@ export async function getPublicListings(
     .select("*")
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
+    .gte("end_date", dateOnlyVisibilityFloor())
+    .not("moderation_status", "in", '("under_review","action_taken")')
     .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES);
 
   if (filters.categories?.length) {
@@ -215,6 +218,7 @@ export async function getListingBySlug(slug: string): Promise<Listing | null> {
     .select("*")
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
+    .gte("end_date", dateOnlyVisibilityFloor())
     .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES)
     .not("moderation_status", "in", '("under_review","action_taken")')
     .eq("slug", slug)

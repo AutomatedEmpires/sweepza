@@ -65,9 +65,9 @@ export function WinnerCard({
           {post.caption}
         </p>
 
-        {listing ? (
+        {listing || post.listingTitle ? (
           <Link
-            href={`/sweeps/${listing.slug}`}
+            href={`/sweeps/${listing?.slug ?? post.listingSlug}`}
             className="flex items-center gap-3 rounded-xl border border-line bg-paper p-2.5 transition hover:border-ember/40 focus-visible:border-ember focus-visible:outline-none"
           >
             {imageUrl ? (
@@ -86,14 +86,20 @@ export function WinnerCard({
                 Won from
               </span>
               <span className="line-clamp-1 text-sm font-medium text-ink">
-                {listing.title}
+                {listing?.title ?? post.listingTitle}
               </span>
-              <span className="block text-xs text-graphite">
-                {listing.prizeName}
-                {listing.prizeValue
-                  ? ` · ${formatPrizeValue(listing.prizeValue, listing.prizeCurrency)}`
-                  : ""}
-              </span>
+              {listing ? (
+                <span className="block text-xs text-graphite">
+                  {listing.prizeName}
+                  {listing.prizeValue
+                    ? ` · ${formatPrizeValue(listing.prizeValue, listing.prizeCurrency)}`
+                    : ""}
+                </span>
+              ) : post.listingPrizeValue ? (
+                <span className="block text-xs text-graphite">
+                  {formatPrizeValue(post.listingPrizeValue, "USD")}
+                </span>
+              ) : null}
             </span>
             <Icon name="caretRight" size={16} className="flex-none text-ink/40" />
           </Link>

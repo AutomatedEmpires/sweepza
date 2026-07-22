@@ -9,6 +9,7 @@ import { describeEligibility } from "@/lib/eligibility";
 import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingReportButton } from "@/components/listing-report-button";
+import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { pickListingContext } from "@/lib/listing-context";
@@ -25,9 +26,12 @@ import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
-  found_by_sweepza: "Curated and listed by the Sweepza team from an official source.",
-  host_submitted: "Submitted directly by the host running this sweepstakes.",
-  claimed_by_host: "Originally found by Sweepza and later claimed by the host.",
+  found_by_sweepza:
+    "Normalized by Sweepza from the linked source and reviewed before publication.",
+  host_submitted:
+    "Submitted by the host and reviewed by Sweepza before publication.",
+  claimed_by_host:
+    "Originally found by Sweepza, then claimed by a host whose authority was reviewed.",
 };
 
 function countdownLabel(listing: Listing, now: Date): string {
@@ -87,6 +91,8 @@ export function ListingDetail({
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [shareFlash, setShareFlash] = useState(false);
+  const [confirmEntry, setConfirmEntry] = useState(false);
+  const [reopened, setReopened] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -104,6 +110,13 @@ export function ListingDetail({
 
   useEffect(() => {
     track("listing_viewed", { ...baseProps, category: listing.prizeCategory });
+    if (isSignedIn) {
+      void fetch("/api/seeker-state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, viewed: true }),
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -123,7 +136,12 @@ export function ListingDetail({
     if (typeof window !== "undefined") {
       window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
     }
+    setConfirmEntry(true);
+  }
+  function handleMarkEntered() {
     setPrimary("entered");
+    setReopened(false);
+    setConfirmEntry(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
   function handleMarkWon() {
@@ -157,7 +175,6 @@ export function ListingDetail({
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
   const attributionName = listing.host?.name ?? listing.originalSponsorName;
   const hostVerified =
-    listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
   const countdown = countdownLabel(listing, now);
@@ -176,18 +193,30 @@ export function ListingDetail({
     eligibility.facets[3],
   ];
 
-  // Ready-again integration for entered recurring sweeps.
-  const readyAgainAt = entered
-    ? nextEntryAt(store?.getActivity(listing.id)?.enteredAt ?? "", listing.entryFrequency)
+  // Ready-again integration for entered recurring sweeps. Re-confirming an
+  // entry writes the same `entered` state again, intentionally refreshing the
+  // authoritative enteredAt timestamp for the next cadence window.
+  const enteredAt =
+    store?.getActivity(listing.id)?.enteredAt ??
+    listing.seekerState?.enteredAt;
+  const readyAgainAt = entered && enteredAt
+    ? nextEntryAt(enteredAt, listing.entryFrequency)
     : null;
+  const readyAgainAtInitialRender = Boolean(
+    readyAgainAt && readyAgainAt.getTime() <= now.getTime(),
+  );
+  const readyAgain = readyAgainAtInitialRender || reopened;
 
   const enterLabel = won
     ? "You won this"
     : expired
       ? "Sweepstakes ended"
-      : entered
-        ? "Entered — enter again"
+      : entered && readyAgain
+        ? "Enter again"
+        : entered
+          ? "Entry recorded"
         : "Enter now";
+  const enterDisabled = expired || won || (entered && !readyAgain);
 
   // ---- Action block, reused in the sticky rail (desktop) and inline (mobile) ----
   const actionBlock = (
@@ -215,15 +244,17 @@ export function ListingDetail({
       <button
         type="button"
         onClick={handleEnter}
-        disabled={expired || won}
+        disabled={enterDisabled}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-base font-semibold transition",
           won
             ? "cursor-default bg-pine text-on-trust"
             : expired
               ? "cursor-not-allowed bg-line text-graphite"
-              : entered
+              : entered && readyAgain
                 ? "bg-pine/12 text-pine hover:bg-pine/18"
+                : entered
+                  ? "cursor-default bg-pine/12 text-pine"
                 : "bg-ember text-on-accent hover:bg-ember/90",
         )}
       >
@@ -231,9 +262,13 @@ export function ListingDetail({
           <>
             <Icon name="trophy" size={18} weight="fill" /> {enterLabel}
           </>
-        ) : entered && !expired ? (
+        ) : entered && readyAgain ? (
           <>
             <Icon name="repeat" size={17} /> {enterLabel}
+          </>
+        ) : entered ? (
+          <>
+            <Icon name="check" size={17} /> {enterLabel}
           </>
         ) : expired ? (
           enterLabel
@@ -245,8 +280,32 @@ export function ListingDetail({
       </button>
 
       <p className="text-center text-[11px] text-graphite">
-        Opens the host&apos;s official entry page · Sweepza never charges to enter
+        Opens the entry page provided for this listing · Sweepza never charges to enter
       </p>
+
+      {entered && !readyAgain && enteredAt && readyAgainAt ? (
+        <p className="text-center text-xs text-graphite" role="timer">
+          <ReentryCountdown
+            enteredAt={enteredAt}
+            frequency={listing.entryFrequency}
+            onReady={() => setReopened(true)}
+          />
+        </p>
+      ) : null}
+
+      {confirmEntry && (!entered || readyAgain) ? (
+        <div className="hidden rounded-xl border border-pine/25 bg-pine/5 p-3 lg:block" role="status">
+          <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+              Yes, mark entered
+            </button>
+            <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
+              Not yet
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex gap-2">
         <button
@@ -281,7 +340,7 @@ export function ListingDetail({
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-1.5 rounded-xl bg-ink/[0.04] py-2.5 text-sm font-semibold text-ink/80 transition hover:bg-ink/[0.07]"
         >
-          <Icon name="rules" size={15} /> Read the official rules
+          <Icon name="rules" size={15} /> Official rules (authoritative)
           <Icon name="externalLink" size={12} />
         </a>
       )}
@@ -306,7 +365,7 @@ export function ListingDetail({
 
       {readyAgainAt && (
         <p className="rounded-xl bg-pine/[0.06] px-3 py-2 text-center text-xs font-medium text-pine">
-          {readyAgainAt.getTime() <= now.getTime()
+          {readyAgain
             ? "Ready to enter again now"
             : `Ready again ${formatRelativeTime(readyAgainAt.toISOString(), now).replace(" ago", "")}`}
         </p>
@@ -393,6 +452,9 @@ export function ListingDetail({
           {/* Long description */}
           <div className="mt-8">
             <SectionHeading>About this prize</SectionHeading>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-graphite">
+              Sweepza normalized summary
+            </p>
             <p className="whitespace-pre-line text-[15px] leading-relaxed text-ink/80">
               {listing.longDescription ?? listing.shortDescription}
             </p>
@@ -490,9 +552,7 @@ export function ListingDetail({
               </div>
               <p className="mt-3 text-sm leading-relaxed text-ink/75">
                 {SOURCE_LABEL_NOTE[listing.sourceLabel]}
-                {hostVerified
-                  ? " This host has completed Sweepza verification."
-                  : ""}
+                {hostVerified ? " Sweepza reviewed this host's authority." : ""}
               </p>
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-graphite">
                 {listing.originalSponsorName && (
@@ -503,6 +563,14 @@ export function ListingDetail({
                 )}
                 {expired && <span className="text-flame">Closed for entry</span>}
               </div>
+              {listing.sourceLabel === "found_by_sweepza" && !listing.host ? (
+                <Link
+                  href={`/host/claims?listingId=${encodeURIComponent(listing.id)}`}
+                  className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
+                >
+                  Sponsor or administrator? Claim this listing
+                </Link>
+              ) : null}
             </div>
           </div>
 
@@ -525,18 +593,8 @@ export function ListingDetail({
             </Link>
           )}
 
-          {/*
-            Was: "No purchase necessary · See official rules" — printed on EVERY
-            listing, sourced from nothing. `no_purchase_necessary` is nullable,
-            unenforced by listing_publish_guard(), and absent from both write
-            schemas, so this asserted the one fact that separates a lawful
-            sweepstakes from an illegal lottery on behalf of a third party we
-            never asked. The official rules ARE the authority (and every
-            published listing now carries a rules URL — the guard requires it),
-            so point at them rather than summarizing them.
-          */}
           <p className="mt-8 text-center text-[10px] uppercase tracking-[0.18em] text-graphite lg:text-left">
-            Eligibility, odds, and entry terms are set by the official rules
+            Review the official rules for purchase requirements, eligibility, odds, and entry terms
           </p>
         </div>
 
@@ -551,31 +609,53 @@ export function ListingDetail({
       {/* ---- Mobile sticky enter bar ---- */}
       {!won && (
         <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
-          <button
-            type="button"
-            onClick={handleEnter}
-            disabled={expired}
-            className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
-              expired
-                ? "cursor-not-allowed bg-line text-graphite"
-                : entered
-                  ? "bg-pine text-on-trust"
-                  : "bg-ember text-on-accent",
-            )}
-          >
-            {expired ? (
-              "Sweepstakes ended"
-            ) : entered ? (
-              <>
-                <Icon name="repeat" size={17} /> Enter again
-              </>
-            ) : (
-              <>
-                Enter now <Icon name="send" size={16} />
-              </>
-            )}
-          </button>
+          {confirmEntry && (!entered || readyAgain) ? (
+            <div className="rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
+              <p className="text-center text-sm font-medium text-ink">
+                Did you complete the sponsor&apos;s entry?
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+                  Yes, mark entered
+                </button>
+                <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
+                  Not yet
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleEnter}
+              disabled={enterDisabled}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
+                expired
+                  ? "cursor-not-allowed bg-line text-graphite"
+                  : entered && readyAgain
+                    ? "bg-pine text-on-trust"
+                    : entered
+                      ? "cursor-default bg-pine/12 text-pine"
+                    : "bg-ember text-on-accent",
+              )}
+            >
+              {expired ? (
+                "Sweepstakes ended"
+              ) : entered && readyAgain ? (
+                <>
+                  <Icon name="repeat" size={17} /> Enter again
+                </>
+              ) : entered ? (
+                <>
+                  <Icon name="check" size={17} /> Entry recorded
+                </>
+              ) : (
+                <>
+                  Enter now <Icon name="send" size={16} />
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

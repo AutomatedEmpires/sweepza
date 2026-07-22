@@ -19,9 +19,9 @@ export function WinnerSubmissionForm(props: {
   listings: WinnerListingOption[];
 }) {
   const [listingId, setListingId] = useState(props.listings[0]?.id ?? "");
-  const [photoUrl, setPhotoUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
   const store = useSeekerState();
 
   async function onSubmit(e: React.FormEvent) {
@@ -29,22 +29,33 @@ export function WinnerSubmissionForm(props: {
 
     track("winner_submission_started", { listing_id: listingId || null });
     setStatus("submitting");
+    setErrorMessage("");
 
     try {
       const res = await fetch("/api/winners", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: listingId || undefined, photoUrl, caption }),
+        body: JSON.stringify({ listingId, caption }),
       });
-      if (!res.ok) throw new Error("Submission failed");
+      const payload = (await res.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (!res.ok) {
+        throw new Error(payload?.error ?? "Submission failed");
+      }
 
       setStatus("success");
       track("winner_submission_completed", { listing_id: listingId || null });
       // Reporting a win from a tracked listing also marks it Won in the
       // seeker's own state, so My Sweeps and Today stay consistent.
       if (listingId && store) store.setPrimaryState(listingId, "won");
-    } catch {
+    } catch (error) {
       setStatus("error");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "We could not submit your win. Please try again.",
+      );
       track("winner_submission_failed", { listing_id: listingId || null, error_type: "network" });
     }
   }
@@ -91,6 +102,7 @@ export function WinnerSubmissionForm(props: {
             value={listingId}
             onChange={(e) => setListingId(e.target.value)}
             className={inputClass}
+            required
           >
             <option value="">— Select one —</option>
             {props.listings.map((opt) => (
@@ -100,20 +112,14 @@ export function WinnerSubmissionForm(props: {
             ))}
           </select>
         </div>
-      ) : null}
-      <div>
-        <label htmlFor="winner-photo-url" className="text-xs font-medium text-graphite">
-          Photo URL
-        </label>
-        <input
-          id="winner-photo-url"
-          value={photoUrl}
-          onChange={(e) => setPhotoUrl(e.target.value)}
-          className={inputClass}
-          placeholder="https://..."
-          inputMode="url"
-        />
-      </div>
+      ) : (
+        <div className="rounded-xl border border-line bg-paper p-3 text-sm leading-relaxed text-graphite">
+          Mark a sweepstakes as entered in My Sweeps before sharing a win.
+          <Link href="/my-sweeps" className="ml-1 font-semibold text-ember">
+            Go to My Sweeps
+          </Link>
+        </div>
+      )}
       <div>
         <label htmlFor="winner-caption" className="text-xs font-medium text-graphite">
           Caption
@@ -124,18 +130,20 @@ export function WinnerSubmissionForm(props: {
           onChange={(e) => setCaption(e.target.value)}
           className={inputClass}
           maxLength={500}
+          minLength={10}
+          required
           rows={4}
           placeholder="Won this!"
         />
       </div>
       {status === "error" ? (
         <p role="alert" className="text-xs font-medium text-flame">
-          Something went wrong. Try again.
+          {errorMessage || "Something went wrong. Try again."}
         </p>
       ) : null}
       <button
         type="submit"
-        disabled={status === "submitting"}
+        disabled={status === "submitting" || props.listings.length === 0}
         className="inline-flex min-h-11 items-center justify-center w-full rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:opacity-60"
       >
         {status === "submitting" ? "Submitting…" : "Submit win"}

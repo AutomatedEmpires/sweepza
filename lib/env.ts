@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const schema = z.object({
+  VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().optional(),
   CLERK_SECRET_KEY: z.string().optional(),
@@ -9,6 +10,7 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_ACCOUNT_ID: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_PRICE_HOST_BASELINE: z.string().optional(),
@@ -38,6 +40,12 @@ const schema = z.object({
    * never authorize email delivery.
    */
   OUTBOUND_EMAIL_ENABLED: z.string().optional(),
+  /**
+   * Set only after the durable email-outbox migrations are applied. This lets
+   * disabled transport crons purge expired payloads without making code deploy
+   * order imply database activation.
+   */
+  EMAIL_OUTBOX_SCHEMA_READY: z.string().optional(),
   /** Bearer secret Vercel Cron sends to /api/cron/* routes. */
   CRON_SECRET: z.string().optional(),
   /** "true" flips CSP from report-only to enforcing (nonce-based). Redeploy required. */

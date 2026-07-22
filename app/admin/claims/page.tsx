@@ -1,4 +1,5 @@
-import { getPendingClaimsCount } from "@/lib/db/admin";
+import { AdminListingClaimQueue } from "@/components/admin-listing-claim-queue";
+import { listPendingListingClaims } from "@/lib/db/listing-claims";
 
 export const metadata = {
   title: "Admin Claims",
@@ -8,7 +9,7 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminClaimsPage() {
-  const pending = await getPendingClaimsCount();
+  const claims = await listPendingListingClaims();
 
   return (
     <section className="px-5 pb-10 pt-8">
@@ -24,21 +25,7 @@ export default async function AdminClaimsPage() {
         </p>
       </header>
 
-      <div className="mt-6 rounded-card border border-line bg-surface p-5 shadow-e1">
-        <p
-          className={`font-display nums text-3xl font-bold ${pending > 0 ? "text-ember" : "text-ink"}`}
-        >
-          {pending}
-        </p>
-        <p className="mt-1 text-xs font-medium uppercase tracking-wide text-graphite">
-          Claims awaiting review
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-graphite">
-          A full claim approval workflow is coming next. For now this surfaces
-          the count of pending listing claims so it is visible alongside the
-          rest of the command center.
-        </p>
-      </div>
+      <AdminListingClaimQueue claims={claims} />
     </section>
   );
 }

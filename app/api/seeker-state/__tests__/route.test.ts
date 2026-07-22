@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   ensureCurrentAppUser: vi.fn(),
   getSeekerStateSnapshotForAppUser: vi.fn(),
   updateSeekerState: vi.fn(),
+  rateLimitShared: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -15,6 +16,11 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/db/seeker-state", () => ({
   getSeekerStateSnapshotForAppUser: mocks.getSeekerStateSnapshotForAppUser,
   updateSeekerState: mocks.updateSeekerState,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  clientKey: () => "test-client",
+  rateLimitShared: mocks.rateLimitShared,
 }));
 
 import { GET, POST } from "@/app/api/seeker-state/route";
@@ -35,6 +41,7 @@ beforeEach(() => {
   mocks.ensureCurrentAppUser.mockResolvedValue({ appUserId: "user-1" });
   mocks.getSeekerStateSnapshotForAppUser.mockResolvedValue(SNAPSHOT);
   mocks.updateSeekerState.mockResolvedValue(undefined);
+  mocks.rateLimitShared.mockResolvedValue({ ok: true, retryAfterSec: 0 });
 });
 
 describe("GET /api/seeker-state", () => {
@@ -94,6 +101,7 @@ describe("POST /api/seeker-state", () => {
       listingId: LISTING_ID,
       primaryUiState: "entered",
       saved: true,
+      viewed: undefined,
     });
     expect(await response.json()).toMatchObject({ ok: true, data: SNAPSHOT });
   });

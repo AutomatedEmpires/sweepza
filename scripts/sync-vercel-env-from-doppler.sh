@@ -108,6 +108,7 @@ sync_env_group() {
     CLERK_SECRET_KEY
     CLERK_WEBHOOK_SECRET
     STRIPE_SECRET_KEY
+    STRIPE_ACCOUNT_ID
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     STRIPE_WEBHOOK_SECRET
     STRIPE_PRICE_HOST_BASELINE
@@ -132,6 +133,8 @@ sync_env_group() {
   # only through a separate founder-approved operation.
   # OUTBOUND_EMAIL_ENABLED is excluded for the same reason. Provisioning the
   # Resend tuple must never become authority to send mail.
+  # EMAIL_OUTBOX_SCHEMA_READY is also excluded: it is set only after the two
+  # durable email migrations and runtime authorization checks are verified.
 
   for key in "${base_keys[@]}"; do
     sync_secret_from_doppler "$key" "$vercel_env" "$doppler_config"

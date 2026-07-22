@@ -44,8 +44,22 @@ export function WinnerReactionBar(props: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reactionType: type }),
       });
-      if (!res.ok) throw new Error("Failed to react");
-      setReacted((prev) => new Set(prev).add(type));
+      const payload = (await res.json().catch(() => null)) as
+        | {
+            reactions?: {
+              active: boolean;
+              counts: Partial<Record<ReactionType, number>>;
+            };
+          }
+        | null;
+      if (!res.ok || !payload?.reactions) throw new Error("Failed to react");
+      setCounts(payload.reactions.counts);
+      setReacted((prev) => {
+        const next = new Set(prev);
+        if (payload.reactions?.active) next.add(type);
+        else next.delete(type);
+        return next;
+      });
       track("winner_post_reacted", { winner_post_id: props.winnerPostId, reaction_type: type });
     } catch {
       setCounts((prev) => ({ ...prev, [type]: Math.max(0, (prev[type] ?? 1) - 1) }));

@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireAdminApi: vi.fn(),
+  ensureCurrentAppUser: vi.fn(),
   suspendHost: vi.fn(),
   revalidatePublicListings: vi.fn(),
 }));
 
 vi.mock("@/lib/admin-guard", () => ({ requireAdminApi: mocks.requireAdminApi }));
+vi.mock("@/lib/auth", () => ({
+  ensureCurrentAppUser: mocks.ensureCurrentAppUser,
+}));
 vi.mock("@/lib/db/admin", () => ({ suspendHost: mocks.suspendHost }));
 vi.mock("@/lib/db/listings-cache", () => ({
   revalidatePublicListings: mocks.revalidatePublicListings,
@@ -19,14 +23,16 @@ const HOST_ID = "11111111-1111-1111-1111-111111111111";
 function suspendRequest(): Request {
   return new Request("http://test.local/api/admin/hosts/x/suspend", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ notes: "Authority evidence was invalid." }),
   });
 }
 
 beforeEach(() => {
   mocks.requireAdminApi.mockReset();
+  mocks.ensureCurrentAppUser.mockReset();
   mocks.suspendHost.mockReset();
   mocks.revalidatePublicListings.mockReset();
+  mocks.ensureCurrentAppUser.mockResolvedValue({ appUserId: "reviewer-1" });
 });
 
 describe("POST /api/admin/hosts/[hostId]/suspend", () => {
@@ -39,7 +45,11 @@ describe("POST /api/admin/hosts/[hostId]/suspend", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.suspendHost).toHaveBeenCalledWith(HOST_ID);
+    expect(mocks.suspendHost).toHaveBeenCalledWith({
+      hostId: HOST_ID,
+      actorUserId: "reviewer-1",
+      notes: "Authority evidence was invalid.",
+    });
     expect(mocks.revalidatePublicListings).toHaveBeenCalledOnce();
   });
 

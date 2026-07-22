@@ -23,8 +23,8 @@ Stripe staging account: `sweepza_sandbox` / `acct_1TeqgHD7Yqq488pB`.
 | application | `NEXT_PUBLIC_APP_URL` | configured |
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | configured; dedicated project verified |
 | Clerk | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | Doppler keys are development-family; webhook empty; dark lane not ready |
-| Payments | `PAYMENTS_ENABLED`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | provider tuple may be configured; `PAYMENTS_ENABLED` remains unset/dark until separate founder approval |
-| Email | `OUTBOUND_EMAIL_ENABLED`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL` | no dedicated provider or reply loop is proven; configuration may be staged only with the gate unset |
+| Payments | `PAYMENTS_ENABLED`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_ACCOUNT_ID`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | provider tuple may be configured; `STRIPE_ACCOUNT_ID` is a non-activation binding to the reviewed account, and `PAYMENTS_ENABLED` remains unset/dark until separate founder approval |
+| Email | `EMAIL_OUTBOX_SCHEMA_READY`, `OUTBOUND_EMAIL_ENABLED`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL` | no dedicated provider or reply loop is proven; apply and verify the outbox migrations before the schema gate, and keep the provider gate unset |
 | PostHog | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | dedicated project pair configured; host is `https://us.i.posthog.com` |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | DSN/token/org empty; project name alone is insufficient |
 
@@ -34,11 +34,14 @@ Stripe staging account: `sweepza_sandbox` / `acct_1TeqgHD7Yqq488pB`.
 - Preview must fail closed when an auth, payment, webhook, or telemetry tuple is incomplete.
 - `NEXT_PUBLIC_POSTHOG_HOST` must parse as an absolute `https://` URL.
 - Clerk publishable and secret keys must come from the same application and key family.
-- Stripe publishable/secret keys, price IDs, and webhook signing secret must belong to the same mode and account.
+- Stripe publishable/secret keys, price IDs, and webhook signing secret must belong to the same mode and account. `STRIPE_ACCOUNT_ID` must be the immutable id returned for the platform account authenticated by the secret key; setting it never activates payments.
 - Provider credentials never authorize payment behavior. Only the literal
   `PAYMENTS_ENABLED="true"` opens the checked-in gate; every other value is dark.
-- Resend credentials never authorize delivery. Only the literal
-  `OUTBOUND_EMAIL_ENABLED="true"` opens the checked-in gate, and both From and
+- `EMAIL_OUTBOX_SCHEMA_READY="true"` may be set only after both durable email
+  migrations replay and their queue/authorization checks pass. It authorizes
+  cron database access, never provider transport.
+- Resend credentials never authorize delivery. Only the separate literal
+  `OUTBOUND_EMAIL_ENABLED="true"` opens provider transport, and both From and
   Reply-To must parse as explicit `sweepza.com` or subdomain identities.
 - Bulk environment sync excludes both activation gates.
 - Production variables remain unchanged until dark-lane evidence is complete.

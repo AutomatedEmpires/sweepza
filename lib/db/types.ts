@@ -54,6 +54,13 @@ export interface HostRow {
   short_description: string | null;
   verification_status: HostVerificationStatus;
   stripe_customer_id: string | null;
+  account_status: "active" | "suspended";
+  verification_evidence_url: string | null;
+  verified_by: string | null;
+  verified_at: Timestamptz | null;
+  suspended_reason: string | null;
+  suspended_by: string | null;
+  suspended_at: Timestamptz | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }
@@ -134,11 +141,15 @@ export interface ListingSeekerStateRow {
 export interface WinnerPostRow {
   id: string;
   app_user_id: string;
-  listing_id: string | null;
-  caption: string | null;
+  listing_id: string;
+  caption: string;
   photo_url: string | null;
   verified_win: boolean;
   review_status: WinnerReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: Timestamptz | null;
+  review_notes: string | null;
+  verification_evidence_url: string | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
 }
@@ -161,6 +172,9 @@ export interface ReportRow {
   status: ReportStatus;
   ai_severity: ReportAiSeverity | null;
   assigned_admin_id: string | null;
+  reviewed_by: string | null;
+  review_notes: string | null;
+  resolution_code: string | null;
   created_at: Timestamptz;
   resolved_at: Timestamptz | null;
 }

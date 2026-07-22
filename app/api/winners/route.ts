@@ -1,23 +1,17 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { WinnerPostRow } from "@/lib/db/types";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { clientKey, rateLimitShared } from "@/lib/rate-limit";
 import { winnerSubmissionSchema } from "@/lib/winner-submission-schema";
 
-// NOTE: Clerk auth wiring is Lane B. For now we require an access token header.
-function getAccessToken(req: Request): string | null {
-  const auth = req.headers.get("authorization");
-  if (!auth) return null;
-  const [type, token] = auth.split(" ");
-  if (type?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
-}
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const { ok, retryAfterSec } = rateLimit(clientKey(req), {
+    const { ok, retryAfterSec } = await rateLimitShared(clientKey(req), {
       namespace: "winners",
       limit: 3,
       windowMs: 60_000,
@@ -29,9 +23,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const accessToken = getAccessToken(req);
-    if (!accessToken) {
-      return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!isClerkConfigured()) {
+      return NextResponse.json(
+        { error: "Winner submissions are unavailable in this environment." },
+        { status: 503 },
+      );
+    }
+
+    const authUser = await ensureCurrentAppUser();
+    if (!authUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json().catch(() => null);
@@ -43,26 +44,99 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createServerSupabaseClient(accessToken);
+    const supabase = createServiceRoleClient();
+
+    const { data: seekerState, error: seekerError } = await supabase
+      .from("listing_seeker_state")
+      .select("listing_id, entered_at, won_at")
+      .eq("app_user_id", authUser.appUserId)
+      .eq("listing_id", parsed.data.listingId)
+      .maybeSingle<{
+        listing_id: string;
+        entered_at: string | null;
+        won_at: string | null;
+      }>();
+
+    if (seekerError) {
+      throw new Error(`winner eligibility lookup failed: ${seekerError.message}`);
+    }
+    if (!seekerState?.entered_at) {
+      return NextResponse.json(
+        { error: "Mark this sweepstakes as entered before sharing a win." },
+        { status: 422 },
+      );
+    }
+
+    const { data: listing, error: listingError } = await supabase
+      .from("listing")
+      .select("id, listing_verification_status")
+      .eq("id", parsed.data.listingId)
+      .maybeSingle<{ id: string; listing_verification_status: string }>();
+
+    if (listingError) {
+      throw new Error(`winner listing lookup failed: ${listingError.message}`);
+    }
+    if (
+      !listing ||
+      !["reviewed", "verified"].includes(listing.listing_verification_status)
+    ) {
+      return NextResponse.json(
+        { error: "That listing is not eligible for the Winner Wall." },
+        { status: 422 },
+      );
+    }
+
+    const { data: existing, error: duplicateError } = await supabase
+      .from("winner_post")
+      .select("id")
+      .eq("app_user_id", authUser.appUserId)
+      .eq("listing_id", parsed.data.listingId)
+      .in("review_status", ["submitted", "pending_review", "published"])
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (duplicateError) {
+      throw new Error(`winner duplicate lookup failed: ${duplicateError.message}`);
+    }
+    if (existing) {
+      return NextResponse.json(
+        { error: "You already have a Winner Wall post for this sweepstakes." },
+        { status: 409 },
+      );
+    }
 
     const { data, error } = await supabase
       .from("winner_post")
       .insert({
-        listing_id: parsed.data.listingId ?? null,
-        photo_url: parsed.data.photoUrl ?? null,
-        caption: parsed.data.caption ?? null,
+        app_user_id: authUser.appUserId,
+        listing_id: parsed.data.listingId,
+        // Remote user-controlled images are intentionally disabled until a
+        // first-party upload path can validate bytes, MIME, dimensions, and
+        // storage ownership without leaking viewer IPs to third parties.
+        photo_url: null,
+        caption: parsed.data.caption,
         review_status: "submitted",
+        verified_win: false,
       })
       .select("*")
       .single<WinnerPostRow>();
 
+    if (error?.code === "23505") {
+      return NextResponse.json(
+        { error: "You already have a Winner Wall post for this sweepstakes." },
+        { status: 409 },
+      );
+    }
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      throw new Error(`winner submission insert failed: ${error.message}`);
     }
 
     return NextResponse.json({ id: data.id }, { status: 201 });
   } catch (err) {
     Sentry.captureException(err);
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "We could not submit your win. Please try again." },
+      { status: 500 },
+    );
   }
 }

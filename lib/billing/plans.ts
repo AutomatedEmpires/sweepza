@@ -95,8 +95,16 @@ export function computePlanAllowance(additionalListings: number): PlanAllowance 
 // True when the required Stripe tuple is present. This is configuration only;
 // PAYMENTS_ENABLED remains the separate activation authority.
 export function isBillingConfigured(): boolean {
+  if (
+    env.VERCEL_ENV === "production" &&
+    (!/^(?:sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? "") ||
+      !env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_live_"))
+  ) {
+    return false;
+  }
   return Boolean(
     env.STRIPE_SECRET_KEY &&
+      env.STRIPE_ACCOUNT_ID &&
       env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY &&
       env.STRIPE_WEBHOOK_SECRET &&
       env.NEXT_PUBLIC_APP_URL &&

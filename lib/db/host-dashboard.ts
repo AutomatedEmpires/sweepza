@@ -6,6 +6,7 @@ import { getEffectiveListingAllowance } from "@/lib/billing/plans";
 import { createStripePortalSession as createStripePortalUrl } from "@/lib/stripe/checkout";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { hostListingEditSchema } from "@/lib/host-listing-schema";
+import { dedupKeys, stableHash } from "@/lib/ingestion/fingerprint";
 import { getHostByAppUserId } from "./hosts";
 import type { HostRow, ListingRow, NotificationPrefRow, SubscriptionRow } from "./types";
 
@@ -135,12 +136,17 @@ export interface HostIdentity {
   host: HostRow;
 }
 
-export async function getHostIdentity(): Promise<HostIdentity> {
+export async function getHostIdentity(
+  options: { allowSuspended?: boolean } = {},
+): Promise<HostIdentity> {
   const authUser = await ensureCurrentAppUser();
   if (!authUser) throw new HostAccessError("Unauthorized.", 401);
   if (!authUser.appUser.is_host) throw new HostAccessError("Host access required.", 403);
   const host = await getHostByAppUserId(authUser.appUserId);
   if (!host) throw new HostAccessError("Host profile is missing for this account.", 409);
+  if (host.account_status === "suspended" && !options.allowSuspended) {
+    throw new HostAccessError("This host account is suspended.", 403);
+  }
   return { appUserId: authUser.appUserId, hostId: host.id, host };
 }
 
@@ -227,6 +233,7 @@ export interface HostListingGroups {
   pending_review: HostListingSummary[];
   held_rejected: HostListingSummary[];
   expired: HostListingSummary[];
+  inactive: HostListingSummary[];
 }
 
 export async function getHostListingsSnapshot(): Promise<{ groups: HostListingGroups }> {
@@ -234,7 +241,13 @@ export async function getHostListingsSnapshot(): Promise<{ groups: HostListingGr
   const listings = await getOwnedListings(hostId);
   const stats = await getListingStats(listings.map((l) => l.id));
 
-  const groups: HostListingGroups = { active: [], pending_review: [], held_rejected: [], expired: [] };
+  const groups: HostListingGroups = {
+    active: [],
+    pending_review: [],
+    held_rejected: [],
+    expired: [],
+    inactive: [],
+  };
 
   for (const l of listings) {
     const summary: HostListingSummary = {
@@ -252,6 +265,7 @@ export async function getHostListingsSnapshot(): Promise<{ groups: HostListingGr
     // appears in two groups (e.g. active + moderation held).
     if (
       l.lifecycle_status === "held" ||
+      l.lifecycle_status === "paused" ||
       l.lifecycle_status === "rejected" ||
       l.moderation_status === "held" ||
       l.moderation_status === "rejected"
@@ -259,6 +273,8 @@ export async function getHostListingsSnapshot(): Promise<{ groups: HostListingGr
       groups.held_rejected.push(summary);
     } else if (l.lifecycle_status === "expired") {
       groups.expired.push(summary);
+    } else if (l.lifecycle_status === "inactive") {
+      groups.inactive.push(summary);
     } else if (l.lifecycle_status === "active") {
       groups.active.push(summary);
     } else if (l.lifecycle_status === "draft" || l.lifecycle_status === "pending_review") {
@@ -303,6 +319,8 @@ function isEditable(listing: ListingRow): boolean {
   return (
     listing.lifecycle_status === "draft" ||
     listing.lifecycle_status === "held" ||
+    listing.lifecycle_status === "active" ||
+    listing.lifecycle_status === "inactive" ||
     listing.moderation_status === "held"
   );
 }
@@ -310,8 +328,21 @@ function isEditable(listing: ListingRow): boolean {
 export async function getHostListingForEdit(listingId: string): Promise<ListingRow> {
   const { hostId } = await getHostIdentity();
   const listing = await getOwnedListing(hostId, listingId);
-  if (!isEditable(listing)) throw new HostAccessError("Only draft or held listings can be edited.", 400);
+  if (!isEditable(listing)) throw new HostAccessError("This listing cannot be edited in its current state.", 400);
   return listing;
+}
+
+export async function getHostListingTagCodes(listingId: string): Promise<string[]> {
+  const { hostId } = await getHostIdentity();
+  await getOwnedListing(hostId, listingId);
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("listing_tag")
+    .select("tag_code")
+    .eq("listing_id", listingId)
+    .returns<Array<{ tag_code: string }>>();
+  if (error) throw new Error(`getHostListingTagCodes failed: ${error.message}`);
+  return (data ?? []).map((row) => row.tag_code);
 }
 
 export async function saveHostListingEdit(formData: FormData): Promise<void> {
@@ -320,38 +351,98 @@ export async function saveHostListingEdit(formData: FormData): Promise<void> {
 
   const { hostId } = await getHostIdentity();
   const current = await getOwnedListing(hostId, listingId);
-  if (!isEditable(current)) throw new HostAccessError("Only draft or held listings can be edited.", 400);
+  if (!isEditable(current)) throw new HostAccessError("This listing cannot be edited in its current state.", 400);
 
-  const rawPrize = String(formData.get("prize_value") ?? "").trim();
+  const nullable = (key: string) => {
+    const value = String(formData.get(key) ?? "").trim();
+    return value === "" ? null : value;
+  };
+  const eligibilityStates = String(formData.get("eligibility_states") ?? "")
+    .split(",")
+    .map((state) => state.trim().toUpperCase())
+    .filter(Boolean);
   const parsed = hostListingEditSchema.parse({
     title: formData.get("title"),
     short_description: formData.get("short_description"),
+    long_description: nullable("long_description"),
     prize_name: formData.get("prize_name"),
-    prize_value: rawPrize === "" ? null : rawPrize,
-    entry_url: String(formData.get("entry_url") ?? "").trim(),
+    prize_value: nullable("prize_value"),
+    prize_category: formData.get("prize_category"),
+    winner_count: nullable("winner_count"),
+    main_image_url: formData.get("main_image_url"),
+    image_alt_text: nullable("image_alt_text"),
+    entry_url: formData.get("entry_url"),
+    official_rules_url: formData.get("official_rules_url"),
+    start_date: nullable("start_date"),
+    end_date: formData.get("end_date"),
+    entry_frequency: formData.get("entry_frequency"),
+    entry_limit_notes: nullable("entry_limit_notes"),
+    eligibility_country: formData.get("eligibility_country"),
+    eligibility_states: eligibilityStates,
+    age_requirement: formData.get("age_requirement"),
+    no_purchase_necessary: formData.get("no_purchase_necessary") === "on",
+    sponsor_name: formData.get("sponsor_name"),
+    sponsor_url: nullable("sponsor_url"),
+    tag_codes: formData.getAll("tag_codes").map(String),
   });
 
-  const updates: Record<string, unknown> = {
+  const payload = {
     title: parsed.title,
-    short_description: parsed.short_description,
-    prize_name: parsed.prize_name,
-    prize_value: parsed.prize_value ?? null,
-    entry_url: parsed.entry_url ?? null,
+    shortDescription: parsed.short_description,
+    longDescription: parsed.long_description ?? null,
+    prizeName: parsed.prize_name,
+    prizeValue: parsed.prize_value ?? null,
+    prizeCategory: parsed.prize_category,
+    winnerCount: parsed.winner_count ?? null,
+    mainImageUrl: parsed.main_image_url,
+    imageAltText: parsed.image_alt_text ?? null,
+    entryUrl: parsed.entry_url,
+    officialRulesUrl: parsed.official_rules_url,
+    startDate: parsed.start_date ?? null,
+    endDate: parsed.end_date,
+    entryFrequency: parsed.entry_frequency,
+    entryLimitNotes: parsed.entry_limit_notes ?? null,
+    eligibilityCountry: parsed.eligibility_country.toUpperCase(),
+    eligibilityStates: parsed.eligibility_states.map((state) => state.toUpperCase()),
+    ageRequirement: parsed.age_requirement,
+    noPurchaseNecessary: true,
+    sponsorName: parsed.sponsor_name,
+    sponsorUrl: parsed.sponsor_url ?? null,
   };
-
-  // Re-enter review only via the narrow held -> draft transitions the trigger
-  // permits. Guard each field independently against its own current value so a
-  // non-held moderation/lifecycle state is never pushed into an invalid one.
-  if (current.moderation_status === "held") updates.moderation_status = "draft";
-  if (current.lifecycle_status === "held") updates.lifecycle_status = "draft";
+  const identity = dedupKeys({
+    officialRulesUrl: payload.officialRulesUrl,
+    entryUrl: payload.entryUrl,
+    sponsorName: payload.sponsorName,
+    prizeName: payload.prizeName,
+    endDate: payload.endDate,
+    eligibilityCountry: payload.eligibilityCountry,
+    eligibilityStates: payload.eligibilityStates,
+  });
 
   const supabase = createServiceRoleClient();
-  const { error } = await supabase
-    .from("listing")
-    .update(updates)
-    .eq("id", listingId)
-    .eq("host_id", hostId);
+  const { error } = await supabase.rpc("update_host_listing_draft", {
+    p_listing_id: listingId,
+    p_host_id: hostId,
+    p_payload: payload,
+    p_identity: {
+      officialUrlKey: identity.urlKey,
+      contentFingerprint: identity.contentKey,
+      variantKey: identity.variantKey,
+      contentHash: stableHash(JSON.stringify({ payload, tagCodes: parsed.tag_codes.slice().sort() })),
+    },
+    p_tag_codes: [...new Set(parsed.tag_codes)],
+  });
   if (error) throw new Error(`saveHostListingEdit failed: ${error.message}`);
+}
+
+export async function reactivateListing(listingId: string): Promise<void> {
+  const { hostId } = await getHostIdentity();
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase.rpc("reactivate_host_listing", {
+    p_listing_id: listingId,
+    p_host_id: hostId,
+  });
+  if (error) throw new HostAccessError(`Listing could not be reactivated: ${error.message}`, 422);
 }
 
 export interface HostAnalytics {
@@ -496,11 +587,10 @@ export interface HostBillingSnapshot {
   activeListingCount: number;
   includedActiveListings: number;
   isFull: boolean;
-  addSlotPriceMonthly: number;
 }
 
 export async function getHostBillingSnapshot(): Promise<HostBillingSnapshot> {
-  const { hostId } = await getHostIdentity();
+  const { hostId } = await getHostIdentity({ allowSuspended: true });
   const supabase = createServiceRoleClient();
   const [subscriptionResult, activeCountResult] = await Promise.all([
     supabase
@@ -542,13 +632,15 @@ export async function getHostBillingSnapshot(): Promise<HostBillingSnapshot> {
     activeListingCount: used,
     includedActiveListings,
     isFull: used >= includedActiveListings,
-    addSlotPriceMonthly: 5,
   };
 }
 
 export async function createHostBillingPortalUrl(): Promise<string> {
   assertPaymentsEnabled();
-  const { host } = await getHostIdentity();
+  const { host } = await getHostIdentity({ allowSuspended: true });
   if (!host.stripe_customer_id) throw new HostAccessError("No Stripe customer on file yet.", 400);
-  return createStripePortalUrl({ customerId: host.stripe_customer_id });
+  return createStripePortalUrl({
+    customerId: host.stripe_customer_id,
+    hostId: host.id,
+  });
 }

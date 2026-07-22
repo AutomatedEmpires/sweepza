@@ -7,7 +7,7 @@ import { withPublicFallback } from "@/lib/db/resilient";
 import { APP_NAME } from "@/lib/site";
 
 const WINNERS_DESCRIPTION =
-  "Real Sweepza members sharing the prizes they've won.";
+  "Community-submitted prize wins reviewed by Sweepza before publication.";
 
 export const metadata = {
   title: "Winners",
@@ -42,8 +42,8 @@ export default async function WinnersPage() {
             Winner Wall
           </h1>
           <p className="text-sm text-graphite">
-            Real members, real wins. Every post is a sweep someone found and
-            entered right here.
+            Community-submitted wins reviewed by Sweepza before publication.
+            A verified badge appears only when supporting evidence was checked.
           </p>
         </div>
         {clerkConfigured ? (

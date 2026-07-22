@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assessChange,
   assessExpiration,
+  dateOnlyVisibilityFloor,
   dispositionForFailure,
   endOfDayInstant,
   planReverification,
@@ -12,6 +13,11 @@ import {
 const NOW = new Date("2026-07-16T12:00:00Z");
 
 describe("assessExpiration — timezone-honest", () => {
+  it("keeps yesterday as the inclusive SQL date floor until the UTC-12 grace lapses", () => {
+    expect(dateOnlyVisibilityFloor(new Date("2026-07-17T11:59:59.999Z"))).toBe("2026-07-16");
+    expect(dateOnlyVisibilityFloor(new Date("2026-07-17T12:00:00.000Z"))).toBe("2026-07-17");
+  });
+
   it("keeps a sweep open through its stated last day, allowing for US timezones", () => {
     // Ends 2026-07-16; at noon UTC it is emphatically still open, and even a
     // west-coast 11:59pm has not passed. Must not read as expired.

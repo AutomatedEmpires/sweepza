@@ -54,6 +54,7 @@ export function ListingCard({
 
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
+  const [confirmEntry, setConfirmEntry] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -130,8 +131,13 @@ export function ListingCard({
     if (typeof window !== "undefined") {
       window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
     }
+    setConfirmEntry(true);
+  }
+
+  function markEntered() {
     setPrimary("entered");
     setReopened(false);
+    setConfirmEntry(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
 
@@ -153,7 +159,6 @@ export function ListingCard({
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
   const attributionName = listing.host?.name ?? listing.originalSponsorName;
   const hostVerified =
-    listing.host?.verificationStatus === "self_verified" ||
     listing.host?.verificationStatus === "admin_verified";
 
   const prizeValue = formatPrizeValue(listing.prizeValue, listing.prizeCurrency);
@@ -344,7 +349,7 @@ export function ListingCard({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={expired || won}
+              disabled={expired || won || enterState === "entered"}
             className={cn(
               "relative flex min-h-11 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 text-sm font-semibold transition",
               enterState === "won"
@@ -352,7 +357,7 @@ export function ListingCard({
                 : enterState === "expired"
                   ? "cursor-not-allowed bg-line text-graphite"
                   : enterState === "entered"
-                    ? "bg-pine/12 text-pine hover:bg-pine/18"
+                    ? "cursor-default bg-pine/12 text-pine"
                     : "bg-ember text-on-accent hover:bg-ember/90",
               // The recurrence invitation: a calm breathing ring while a
               // re-entry window is open again.
@@ -402,6 +407,19 @@ export function ListingCard({
             <Icon name="info" size={18} />
           </Link>
         </div>
+        {confirmEntry && (!entered || readyAgain) ? (
+          <div className="mt-3 rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
+            <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={markEntered} className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+                Yes, mark entered
+              </button>
+              <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
+                Not yet
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </article>
   );

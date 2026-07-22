@@ -34,8 +34,8 @@ production deploy needs all of them:
 | App | `NEXT_PUBLIC_APP_URL` | Canonical origin; Stripe redirects require it. |
 | Clerk | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | Webhook endpoint: `/api/webhooks/clerk`. |
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Service role stays server-only. |
-| Payments | `PAYMENTS_ENABLED`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | No production provider is approved. Keep `PAYMENTS_ENABLED` unset. Credentials and prices are configuration only; the literal `"true"` is a separate founder-authorized gate for customer creation, Checkout, portal sessions, and webhook mutation. Never use another venture's Stripe account. |
-| Email | `OUTBOUND_EMAIL_ENABLED`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL` | No provider is approved. Credentials are configuration only; keep the literal activation gate unset. From and Reply-To must both be explicit Sweepza-owned identities. |
+| Payments | `PAYMENTS_ENABLED`, `STRIPE_SECRET_KEY`, `STRIPE_ACCOUNT_ID`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_PRICE_HOST_BASELINE`, `STRIPE_PRICE_ADDITIONAL_LISTING` | No production provider is approved. `STRIPE_ACCOUNT_ID` binds credentials to the reviewed Sweepza account but does not activate payments. Keep `PAYMENTS_ENABLED` unset; only the literal `"true"` authorizes customer creation, Checkout, portal sessions, and webhook mutation. Never use another venture's Stripe account. |
+| Email | `EMAIL_OUTBOX_SCHEMA_READY`, `OUTBOUND_EMAIL_ENABLED`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL` | No provider is approved. Apply and verify the durable outbox migrations before setting the schema-ready gate. Keep the separate outbound activation gate unset. From and Reply-To must both be explicit Sweepza-owned identities. |
 | Observability | `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` | Auth token is build-time (source maps). Stripe webhook failures are reported to Sentry — watch that project during the first live checkout. |
 
 Pre-launch data step: purge dev inventory with
@@ -48,7 +48,12 @@ Scheduled jobs (`vercel.json` crons, authorized with `CRON_SECRET`):
 | Cron | Schedule | Purpose |
 | --- | --- | --- |
 | `/api/cron/expire-stale` | daily 06:10 UTC | Expire active listings past their end date. |
-| `/api/cron/seeker-reminders` | daily 14:00 UTC | Plans one digest per eligible seeker. After cron auth it returns a successful, observable no-op unless `OUTBOUND_EMAIL_ENABLED` is the literal `"true"`; enabled-but-incomplete configuration fails before database or provider work. |
+| `/api/cron/seeker-reminders` | daily 14:00 UTC | Claims one bounded, acknowledged seeker-scan wave and creates at most one durable digest per seeker/UTC day. It is database-free until both email gates are ready. |
+
+`/api/cron/email-deliveries` is implemented but intentionally unscheduled and
+dormant until a dedicated Sweepza provider is configured and separately
+activated. Provider calls still require the literal
+`OUTBOUND_EMAIL_ENABLED="true"` gate.
 
 ## Build pipeline
 

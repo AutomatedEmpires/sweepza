@@ -17,6 +17,10 @@ export function isOutboundEmailEnabled(): boolean {
   return env.OUTBOUND_EMAIL_ENABLED === "true";
 }
 
+export function isEmailOutboxSchemaReady(): boolean {
+  return env.EMAIL_OUTBOX_SCHEMA_READY === "true";
+}
+
 function extractMailbox(identity: string): string | null {
   const trimmed = identity.trim();
   if (!trimmed || /[\r\n]/.test(trimmed)) return null;

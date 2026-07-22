@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   env: {
     NEXT_PUBLIC_APP_URL: "https://sweepza.com",
     STRIPE_SECRET_KEY: "sk_configured",
+    STRIPE_ACCOUNT_ID: "acct_configured",
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_configured",
     STRIPE_WEBHOOK_SECRET: "configured-webhook-secret",
     STRIPE_PRICE_HOST_BASELINE: "price_configured",
@@ -86,6 +87,7 @@ describe("health payment status", () => {
 
   it.each([
     "STRIPE_SECRET_KEY",
+    "STRIPE_ACCOUNT_ID",
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_PRICE_HOST_BASELINE",

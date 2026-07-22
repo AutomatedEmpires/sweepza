@@ -1,4 +1,6 @@
 import { getWinnerSnapshot } from "@/lib/db/admin";
+import { AdminWinnerQueue } from "@/components/admin-winner-queue";
+import { listPendingWinnerPostsForModeration } from "@/lib/db/winners";
 
 export const metadata = {
   title: "Admin Winners",
@@ -8,7 +10,10 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminWinnersPage() {
-  const winners = await getWinnerSnapshot();
+  const [winners, pendingPosts] = await Promise.all([
+    getWinnerSnapshot(),
+    listPendingWinnerPostsForModeration(),
+  ]);
 
   return (
     <section className="px-5 pb-10 pt-8">
@@ -43,11 +48,7 @@ export default async function AdminWinnersPage() {
         </div>
       </div>
 
-      <p className="mt-4 text-sm leading-relaxed text-graphite">
-        A full winner post review workflow (approve / publish / reject) is coming
-        next. This snapshot keeps the pending queue visible in the command
-        center.
-      </p>
+      <AdminWinnerQueue items={pendingPosts} />
     </section>
   );
 }

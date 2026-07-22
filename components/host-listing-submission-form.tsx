@@ -31,6 +31,9 @@ export function HostListingSubmissionForm({
     const payload = {
       title: String(formData.get("title") ?? ""),
       shortDescription: String(formData.get("shortDescription") ?? ""),
+      longDescription: formData.get("longDescription")
+        ? String(formData.get("longDescription"))
+        : null,
       prizeName: String(formData.get("prizeName") ?? ""),
       prizeValue: formData.get("prizeValue")
         ? Number(formData.get("prizeValue"))
@@ -44,11 +47,27 @@ export function HostListingSubmissionForm({
         : null,
       entryUrl: String(formData.get("entryUrl") ?? ""),
       officialRulesUrl: String(formData.get("officialRulesUrl") ?? ""),
+      startDate: formData.get("startDate")
+        ? String(formData.get("startDate"))
+        : null,
       endDate: String(formData.get("endDate") ?? ""),
       entryFrequency: String(formData.get("entryFrequency") ?? ""),
+      entryLimitNotes: formData.get("entryLimitNotes")
+        ? String(formData.get("entryLimitNotes"))
+        : null,
       eligibilityCountry: String(formData.get("eligibilityCountry") ?? ""),
-      sponsorName: formData.get("sponsorName")
-        ? String(formData.get("sponsorName"))
+      eligibilityStates: String(formData.get("eligibilityStates") ?? "")
+        .split(",")
+        .map((state) => state.trim().toUpperCase())
+        .filter(Boolean),
+      ageRequirement: Number(formData.get("ageRequirement")),
+      noPurchaseNecessary: formData.get("noPurchaseNecessary") === "on",
+      sponsorName: String(formData.get("sponsorName") ?? ""),
+      sponsorUrl: formData.get("sponsorUrl")
+        ? String(formData.get("sponsorUrl"))
+        : null,
+      winnerCount: formData.get("winnerCount")
+        ? Number(formData.get("winnerCount"))
         : null,
       tagCodes: formData.getAll("tagCodes").map(String),
     };
@@ -116,6 +135,19 @@ export function HostListingSubmissionForm({
             rows={3}
             className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
           />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-ink">Promotion summary</span>
+          <textarea
+            name="longDescription"
+            rows={5}
+            maxLength={2000}
+            className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
+          />
+          <span className="text-xs text-graphite">
+            Sweepza will label this as a normalized summary; official rules stay authoritative.
+          </span>
         </label>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -198,6 +230,15 @@ export function HostListingSubmissionForm({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Start date</span>
+            <input
+              name="startDate"
+              type="date"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">End date</span>
             <input
               name="endDate"
@@ -207,6 +248,9 @@ export function HostListingSubmissionForm({
             />
           </label>
 
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">Eligibility country</span>
             <input
@@ -214,6 +258,51 @@ export function HostListingSubmissionForm({
               defaultValue="US"
               required
               className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Eligible region codes (U.S./Canada)</span>
+            <input
+              name="eligibilityStates"
+              placeholder="CA, NY, DC, ON, QC"
+              aria-describedby="host-eligibility-states-help"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
+            />
+            <span id="host-eligibility-states-help" className="text-xs text-graphite">
+              Comma-separated U.S. state/DC or Canadian province/territory
+              codes. Leave blank when the rules cover the whole stated country.
+            </span>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Minimum age</span>
+            <input
+              name="ageRequirement"
+              type="number"
+              min="13"
+              max="120"
+              defaultValue="18"
+              required
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Winner count</span>
+            <input
+              name="winnerCount"
+              type="number"
+              min="1"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Entry limit details</span>
+            <input
+              name="entryLimitNotes"
+              placeholder="e.g. one entry per day"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none"
             />
           </label>
         </div>
@@ -224,6 +313,7 @@ export function HostListingSubmissionForm({
             <input
               name="mainImageUrl"
               type="url"
+              required
               className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
@@ -242,25 +332,44 @@ export function HostListingSubmissionForm({
             <span className="font-medium text-ink">Sponsor name</span>
             <input
               name="sponsorName"
+              required
               className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
           </label>
 
-          <fieldset className="flex flex-col gap-2 text-sm">
-            <legend className="font-medium text-ink">Tags</legend>
-            <div className="grid max-h-40 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-line bg-paper p-3">
-              {tags.map((tag) => (
-                <label
-                  key={tag.code}
-                  className="flex items-center gap-2 text-xs text-ink/75"
-                >
-                  <input type="checkbox" name="tagCodes" value={tag.code} className="text-pine focus:ring-pine" />
-                  <span>{tag.label}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-ink">Sponsor website</span>
+            <input
+              name="sponsorUrl"
+              type="url"
+              className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
+            />
+          </label>
         </div>
+
+        <fieldset className="flex flex-col gap-2 text-sm">
+          <legend className="font-medium text-ink">Tags</legend>
+          <div className="grid max-h-40 grid-cols-2 gap-2 overflow-y-auto rounded-xl border border-line bg-paper p-3">
+            {tags.map((tag) => (
+              <label
+                key={tag.code}
+                className="flex items-center gap-2 text-xs text-ink/75"
+              >
+                <input type="checkbox" name="tagCodes" value={tag.code} className="text-pine focus:ring-pine" />
+                <span>{tag.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <label className="inline-flex items-start gap-2 rounded-xl border border-line bg-paper p-3 text-sm text-ink/80">
+          <input name="noPurchaseNecessary" type="checkbox" required className="mt-0.5" />
+          <span>
+            I confirm the official rules state that no purchase is necessary
+            and that the sponsor, dates, eligibility, and entry details above
+            are accurate.
+          </span>
+        </label>
       </div>
 
       <div className="flex items-center gap-3">

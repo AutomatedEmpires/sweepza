@@ -24,15 +24,17 @@ export interface ReviewQueueListing {
   created_at: string;
   host_id: string | null;
   host_display_name: string | null;
+  source_type: string;
 }
 
-const REVIEW_QUEUE_STATUSES = ["draft", "pending_review"] as const;
+const REVIEW_QUEUE_STATUSES = ["draft", "pending_review", "held"] as const;
 
 type RawReviewRow = Omit<ReviewQueueListing, "host_display_name"> & {
   host: { display_name: string } | { display_name: string }[] | null;
 };
 
-// Owner/admin review queue: host-submitted listings still awaiting a decision.
+// Owner/admin review queue: host and official-source ingestion drafts awaiting
+// a human publication decision.
 // Service-role read; callers MUST verify is_admin/is_owner before invoking.
 export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
   const supabase = createServiceRoleClient();
@@ -44,10 +46,9 @@ export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
        main_image_url, official_rules_url, entry_url,
        end_date, entry_frequency, eligibility_country, lifecycle_status,
        visibility_status, moderation_status, listing_verification_status,
-       review_notes_internal, created_at, host_id,
+       review_notes_internal, created_at, host_id, source_type,
        host:host_id ( display_name )`,
     )
-    .eq("source_type", "host_submitted")
     .in("lifecycle_status", REVIEW_QUEUE_STATUSES)
     .order("created_at", { ascending: true });
 
@@ -78,6 +79,7 @@ export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
       created_at: row.created_at,
       host_id: row.host_id,
       host_display_name: host?.display_name ?? null,
+      source_type: row.source_type,
     };
   });
 }

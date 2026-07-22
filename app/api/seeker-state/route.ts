@@ -5,7 +5,7 @@ import {
   getSeekerStateSnapshotForAppUser,
   updateSeekerState,
 } from "@/lib/db/seeker-state";
-import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { clientKey, rateLimitShared } from "@/lib/rate-limit";
 
 const requestSchema = z.object({
   listingId: z.string().uuid(),
@@ -13,6 +13,7 @@ const requestSchema = z.object({
     .enum(["none", "saved", "entered", "skipped", "won"])
     .optional(),
   saved: z.boolean().optional(),
+  viewed: z.boolean().optional(),
 });
 
 export const dynamic = "force-dynamic";
@@ -35,18 +36,6 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { ok, retryAfterSec } = rateLimit(clientKey(request), {
-    namespace: "seeker-state",
-    limit: 60,
-    windowMs: 60_000,
-  });
-  if (!ok) {
-    return NextResponse.json(
-      { error: "Too many requests" },
-      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
-    );
-  }
-
   if (!isClerkConfigured()) {
     return NextResponse.json(
       { error: "Clerk is not configured for this environment." },
@@ -68,11 +57,24 @@ export async function POST(request: Request) {
     );
   }
 
+  const { ok, retryAfterSec } = await rateLimitShared(clientKey(request), {
+    namespace: "seeker-state",
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    );
+  }
+
   await updateSeekerState({
     appUserId: user.appUserId,
     listingId: parsed.data.listingId,
     primaryUiState: parsed.data.primaryUiState,
     saved: parsed.data.saved,
+    viewed: parsed.data.viewed,
   });
 
   const snapshot = await getSeekerStateSnapshotForAppUser(user.appUserId);

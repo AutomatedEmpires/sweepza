@@ -84,6 +84,7 @@ export default async function AdminReportsPage() {
                       <tr className="border-b border-line text-xs uppercase tracking-wide text-graphite">
                         <th className="px-4 py-3 font-semibold">Reporter</th>
                         <th className="px-4 py-3 font-semibold">Reason</th>
+                        <th className="px-4 py-3 font-semibold">Details / target</th>
                         <th className="px-4 py-3 font-semibold">Severity</th>
                         <th className="px-4 py-3 font-semibold">Date</th>
                         <th className="px-4 py-3 font-semibold">Actions</th>
@@ -100,6 +101,18 @@ export default async function AdminReportsPage() {
                           </td>
                           <td className="px-4 py-3 capitalize text-graphite">
                             {humanize(report.reason_code)}
+                          </td>
+                          <td className="max-w-xs px-4 py-3 text-graphite">
+                            {report.target_href ? (
+                              <a href={report.target_href} target="_blank" rel="noreferrer" className="font-semibold text-ink underline decoration-line underline-offset-2">
+                                {report.target_label}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-ink">{report.target_label}</p>
+                            )}
+                            {report.target_context ? <p className="mt-1 text-xs">{report.target_context}</p> : null}
+                            <p className="whitespace-pre-wrap">{report.details ?? "No additional details"}</p>
+                            <p className="mt-1 font-mono text-[10px] text-graphite/70">{report.target_id}</p>
                           </td>
                           <td className="px-4 py-3">
                             {report.ai_severity ? (
@@ -119,6 +132,7 @@ export default async function AdminReportsPage() {
                             <AdminReportActions
                               reportId={report.id}
                               targetType={report.target_type}
+                              targetLabel={report.target_label}
                             />
                           </td>
                         </tr>

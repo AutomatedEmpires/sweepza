@@ -1,0 +1,33 @@
+# Sweepza uses a dedicated local port range so database replay and development
+# cannot attach to another Automated Empires venture's Supabase stack.
+project_id = "sweepza-local"
+
+[api]
+port = 54331
+
+[db]
+port = 54332
+shadow_port = 54330
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[db.pooler]
+enabled = false
+port = 54339
+
+[studio]
+port = 54333
+
+[inbucket]
+port = 54334
+smtp_port = 54335
+pop3_port = 54336
+
+[auth]
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000"]
+
+[analytics]
+port = 54337

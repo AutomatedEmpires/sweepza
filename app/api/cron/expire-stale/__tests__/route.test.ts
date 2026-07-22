@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -23,19 +23,13 @@ vi.mock("next/cache", () => ({
 
 import { GET } from "@/app/api/cron/expire-stale/route";
 
-type QueryResult = { data?: Array<{ id: string; slug: string; end_date: string }>; error: { message: string } | null };
+type RpcResult = {
+  data?: Array<{ id: string; slug: string; end_date: string }>;
+  error: { message: string } | null;
+};
 
-let lookupResult: QueryResult;
-let updateResults: Record<string, { error: { message: string } | null }>;
-let lookupQuery: {
-  select: ReturnType<typeof vi.fn>;
-  eq: ReturnType<typeof vi.fn>;
-  lt: ReturnType<typeof vi.fn>;
-};
-let updateQuery: {
-  update: ReturnType<typeof vi.fn>;
-  eq: ReturnType<typeof vi.fn>;
-};
+let rpcResult: RpcResult;
+let rpc: ReturnType<typeof vi.fn>;
 
 function cronRequest(token = "cron-secret"): Request {
   return new Request("http://test.local/api/cron/expire-stale", {
@@ -44,27 +38,9 @@ function cronRequest(token = "cron-secret"): Request {
 }
 
 function resetSupabaseMock() {
-  lookupResult = { data: [], error: null };
-  updateResults = {};
-
-  lookupQuery = {
-    select: vi.fn(() => lookupQuery),
-    eq: vi.fn(() => lookupQuery),
-    lt: vi.fn(() => Promise.resolve(lookupResult)),
-  };
-  updateQuery = {
-    update: vi.fn(() => updateQuery),
-    eq: vi.fn((_column: string, id: string) =>
-      Promise.resolve(updateResults[id] ?? { error: null }),
-    ),
-  };
-
-  mocks.createServiceRoleClient.mockReturnValue({
-    from: vi.fn(() => ({
-      select: lookupQuery.select,
-      update: updateQuery.update,
-    })),
-  });
+  rpcResult = { data: [], error: null };
+  rpc = vi.fn(() => Promise.resolve(rpcResult));
+  mocks.createServiceRoleClient.mockReturnValue({ rpc });
 }
 
 beforeEach(() => {
@@ -73,6 +49,10 @@ beforeEach(() => {
   mocks.createServiceRoleClient.mockReset();
   mocks.revalidateTag.mockReset();
   resetSupabaseMock();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("GET /api/cron/expire-stale", () => {
@@ -89,12 +69,34 @@ describe("GET /api/cron/expire-stale", () => {
     expect(mocks.createServiceRoleClient).not.toHaveBeenCalled();
   });
 
-  it("looks up only active public stale listings", async () => {
+  it("expires stale listings through the atomic database function", async () => {
     const response = await GET(cronRequest());
     expect(response.status).toBe(200);
-    expect(lookupQuery.eq).toHaveBeenCalledWith("lifecycle_status", "active");
-    expect(lookupQuery.eq).toHaveBeenCalledWith("visibility_status", "public");
-    expect(lookupQuery.lt).toHaveBeenCalledWith("end_date", expect.any(String));
+    expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
+      p_today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+  });
+
+  it("passes yesterday as the expiry floor until the UTC-12 grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T11:59:59.999Z"));
+
+    await GET(cronRequest());
+
+    expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
+      p_today: "2026-07-16",
+    });
+  });
+
+  it("advances the expiry floor exactly when the UTC-12 grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
+
+    await GET(cronRequest());
+
+    expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
+      p_today: "2026-07-17",
+    });
   });
 
   it("does not bust the public feed cache when nothing expired", async () => {
@@ -102,35 +104,31 @@ describe("GET /api/cron/expire-stale", () => {
     expect(mocks.revalidateTag).not.toHaveBeenCalled();
   });
 
-  it("reports lookup failures to Sentry", async () => {
-    lookupResult = { data: [], error: { message: "lookup failed" } };
+  it("reports transaction failures to Sentry", async () => {
+    rpcResult = { data: [], error: { message: "transaction failed" } };
     const response = await GET(cronRequest());
     expect(response.status).toBe(500);
     expect(mocks.captureException).toHaveBeenCalledOnce();
   });
 
-  it("partitions successful and failed expiration updates", async () => {
-    lookupResult = {
+  it("returns every atomic transition and refreshes the public cache", async () => {
+    rpcResult = {
       data: [
         { id: "ok-id", slug: "old-sweep", end_date: "2026-01-01" },
-        { id: "bad-id", slug: "stuck-sweep", end_date: "2026-01-02" },
+        { id: "second-id", slug: "older-sweep", end_date: "2026-01-02" },
       ],
       error: null,
-    };
-    updateResults = {
-      "bad-id": { error: { message: "update failed" } },
     };
 
     const response = await GET(cronRequest());
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      ok: false,
+      ok: true,
       checked: 2,
-      expired: ["old-sweep"],
-      failed: ["stuck-sweep"],
+      expired: ["old-sweep", "older-sweep"],
+      failed: [],
     });
-    expect(mocks.captureException).toHaveBeenCalledOnce();
-    // One listing left the live feed, so the shared cache must be dropped.
+    expect(mocks.captureException).not.toHaveBeenCalled();
     expect(mocks.revalidateTag).toHaveBeenCalledWith("public-listings");
   });
 });

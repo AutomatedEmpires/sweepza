@@ -6,9 +6,15 @@ import {
   isPaymentsEnabled,
   PAYMENTS_DISABLED_REASON,
 } from "@/lib/billing/payment-gate";
-import { getHostByStripeCustomerId, upsertSubscriptionFromStripe } from "@/lib/db/subscriptions";
+import {
+  applySubscriptionEventFromStripe,
+  getHostByStripeCustomerId,
+} from "@/lib/db/subscriptions";
 import { env } from "@/lib/env";
-import { createStripeServerClient } from "@/lib/stripe/server";
+import {
+  assertStripeAccountBinding,
+  createStripeServerClient,
+} from "@/lib/stripe/server";
 
 export const dynamic = "force-dynamic";
 
@@ -63,12 +69,9 @@ export async function POST(request: Request) {
   let event: Stripe.Event;
   try {
     event = await stripe.webhooks.constructEventAsync(payload, signature, secret);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error: "Webhook verification failed.",
-        message: error instanceof Error ? error.message : "unknown error",
-      },
+      { error: "Webhook verification failed." },
       { status: 400 },
     );
   }
@@ -82,7 +85,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const subscription = event.data.object as Stripe.Subscription;
+    await assertStripeAccountBinding(stripe, event.livemode);
+    if (event.account) {
+      throw new Error("Connected-account Stripe events are not accepted.");
+    }
+    const eventSubscription = event.data.object as Stripe.Subscription;
+    let subscription: Stripe.Subscription;
+    try {
+      subscription = await stripe.subscriptions.retrieve(eventSubscription.id);
+    } catch (error) {
+      if (event.type !== "customer.subscription.deleted") throw error;
+      // Signed deletion payload fallback. The database still rejects stale or
+      // superseded subscription state before granting any entitlement.
+      subscription = eventSubscription;
+    }
     const customerId =
       typeof subscription.customer === "string"
         ? subscription.customer
@@ -100,21 +116,29 @@ export async function POST(request: Request) {
         {
           error: "No Sweepza host matches the Stripe customer on this event.",
           eventType: event.type,
-          customerId,
         },
         { status: 404 },
       );
     }
 
-    const synced = await upsertSubscriptionFromStripe(host.id, subscription);
+    const synced = await applySubscriptionEventFromStripe(
+      host.id,
+      event,
+      subscription,
+    );
 
     return NextResponse.json({
       ok: true,
-      action: "subscription_synced",
+      action:
+        synced.outcome === "processed"
+          ? "subscription_synced"
+          : "subscription_ignored",
       eventType: event.type,
+      eventId: event.id,
+      outcome: synced.outcome,
       hostId: host.id,
-      subscriptionId: synced.id,
-      stripeSubscriptionId: synced.stripe_subscription_id,
+      subscriptionId: synced.subscriptionId,
+      stripeSubscriptionId: subscription.id,
       status: synced.status,
     });
   } catch (error) {
@@ -126,7 +150,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Stripe webhook processing failed.",
-        message: error instanceof Error ? error.message : "unknown error",
         eventType: event.type,
       },
       { status: 500 },

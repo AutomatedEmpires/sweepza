@@ -18,7 +18,7 @@ async function getWinnerListingOptions(
 ): Promise<WinnerListingOption[]> {
   const seekerRows = await getSeekerStatesForAppUser(appUserId);
   const listingIds = [...new Set(seekerRows.flatMap((row) => {
-    if (row.entered_at || row.won_at || row.saved_at) return [row.listing_id];
+    if (row.entered_at || row.won_at) return [row.listing_id];
     return [];
   }))];
 
@@ -85,7 +85,8 @@ export default async function NewWinnerPostPage() {
             Share your win
           </h1>
           <p className="mt-1 text-sm text-graphite">
-            Real wins, verified by the community. Tell us what you won.
+            Tell us what you won. Sweepza reviews every post before it appears
+            publicly.
           </p>
         </header>
 

@@ -1,4 +1,7 @@
 import "server-only";
+import { createHash } from "node:crypto";
+
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
  * Lightweight best-effort in-memory sliding-window rate limiter.
@@ -15,7 +18,7 @@ import "server-only";
  * instances.
  */
 
-interface RateLimitOptions {
+export interface RateLimitOptions {
   /** Stable endpoint or action namespace for an independent request bucket. */
   namespace: string;
   /** Maximum number of requests allowed within the window. */
@@ -24,7 +27,7 @@ interface RateLimitOptions {
   windowMs: number;
 }
 
-interface RateLimitResult {
+export interface RateLimitResult {
   ok: boolean;
   retryAfterSec: number;
 }
@@ -74,6 +77,32 @@ export function rateLimit(
   }
 
   return { ok: true, retryAfterSec: 0 };
+}
+
+export async function rateLimitShared(
+  key: string,
+  opts: RateLimitOptions,
+): Promise<RateLimitResult> {
+  const bucketKey = createHash("sha256")
+    .update(`${opts.namespace}\0${key}`)
+    .digest("hex");
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase.rpc("consume_rate_limit", {
+    p_bucket_key: `${opts.namespace}:${bucketKey}`,
+    p_limit: opts.limit,
+    p_window_seconds: Math.max(1, Math.ceil(opts.windowMs / 1000)),
+  });
+  if (error) {
+    throw new Error(`Shared rate limiter unavailable: ${error.message}`);
+  }
+  const result = data as { ok?: boolean; retry_after_sec?: number } | null;
+  if (typeof result?.ok !== "boolean") {
+    throw new Error("Shared rate limiter returned an invalid result.");
+  }
+  return {
+    ok: result.ok,
+    retryAfterSec: Math.max(0, result.retry_after_sec ?? 0),
+  };
 }
 
 /**

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/admin-guard";
+import { ensureCurrentAppUser } from "@/lib/auth";
 import { suspendHost } from "@/lib/db/admin";
 import { revalidatePublicListings } from "@/lib/db/listings-cache";
 
 export const dynamic = "force-dynamic";
 
 const paramsSchema = z.object({ hostId: z.string().uuid() });
-const bodySchema = z.object({}).passthrough();
+const bodySchema = z.object({ notes: z.string().trim().min(5).max(2000) });
 
 export async function POST(
   request: Request,
@@ -23,21 +24,29 @@ export async function POST(
     return NextResponse.json({ error: "Invalid host id." }, { status: 400 });
   }
 
-  const rawBody = await request.json().catch(() => ({}));
-  if (!bodySchema.safeParse(rawBody).success) {
+  const reviewer = await ensureCurrentAppUser();
+  if (!reviewer) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+  const parsedBody = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsedBody.success) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
   try {
-    await suspendHost(parsedParams.data.hostId);
+    await suspendHost({
+      hostId: parsedParams.data.hostId,
+      actorUserId: reviewer.appUserId,
+      notes: parsedBody.data.notes,
+    });
     // Suspension hides every listing the host owns, so any of theirs that were
     // publicly live must leave the cached feed.
     revalidatePublicListings();
     return NextResponse.json({ ok: true, verification_status: "none" });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Suspend failed." },
-      { status: 500 },
+      { error: "Host suspension failed." },
+      { status: 422 },
     );
   }
 }
