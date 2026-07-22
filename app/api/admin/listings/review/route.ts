@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Listing not found." }, { status: 404 });
   }
 
-  if (!["host_submitted", "owner_seeded"].includes(listing.source_type)) {
+  if (!["host_submitted", "owner_seeded", "claimed_host"].includes(listing.source_type)) {
     return NextResponse.json(
       { error: "This listing source is not reviewable here." },
       { status: 409 },

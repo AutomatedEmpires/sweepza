@@ -18,7 +18,10 @@ vi.mock("@/lib/db/listings-cache", () => ({
   revalidatePublicListings: mocks.revalidatePublicListings,
 }));
 
-import { deactivateListingAction } from "@/app/host/listings/actions";
+import {
+  deactivateListingAction,
+  reactivateListingAction,
+} from "@/app/host/listings/actions";
 
 function formWith(listingId: string): FormData {
   const form = new FormData();
@@ -28,6 +31,8 @@ function formWith(listingId: string): FormData {
 
 beforeEach(() => {
   mocks.deactivateListing.mockReset();
+  mocks.reactivateListing.mockReset();
+  mocks.submitForReview.mockReset();
   mocks.revalidatePath.mockReset();
   mocks.revalidatePublicListings.mockReset();
 });
@@ -46,6 +51,27 @@ describe("deactivateListingAction", () => {
     await deactivateListingAction(formWith(""));
 
     expect(mocks.deactivateListing).not.toHaveBeenCalled();
+    expect(mocks.revalidatePublicListings).not.toHaveBeenCalled();
+  });
+});
+
+describe("reactivateListingAction", () => {
+  it("reactivates the owned listing and refreshes host and public reads", async () => {
+    mocks.reactivateListing.mockResolvedValue(undefined);
+
+    await reactivateListingAction(formWith("listing-2"));
+
+    expect(mocks.reactivateListing).toHaveBeenCalledWith("listing-2");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/host/listings");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/host");
+    expect(mocks.revalidatePublicListings).toHaveBeenCalledOnce();
+  });
+
+  it("no-ops without a listing id", async () => {
+    await reactivateListingAction(formWith(""));
+
+    expect(mocks.reactivateListing).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.revalidatePublicListings).not.toHaveBeenCalled();
   });
 });

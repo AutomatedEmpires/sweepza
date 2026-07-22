@@ -30,6 +30,23 @@ describe("describeEligibility — unknown means unknown", () => {
     expect(region?.certainty).toBe("known");
   });
 
+  it("collapses the exact 50-state and D.C. set without losing certainty", () => {
+    const states =
+      "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(
+        " ",
+      );
+    const region = describeEligibility({
+      eligibilityCountry: "US",
+      eligibilityStates: states,
+    }).facets.find((facet) => facet.label === "Region");
+
+    expect(region).toEqual({
+      label: "Region",
+      value: "50 United States and D.C.",
+      certainty: "known",
+    });
+  });
+
   it("does not infer a country from states alone", () => {
     const region = describeEligibility({ eligibilityStates: [" CA ", "NY"] }).facets.find(
       (f) => f.label === "Region",

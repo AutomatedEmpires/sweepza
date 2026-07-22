@@ -7,9 +7,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { createRemoteMutationSequencer } from "@/lib/remote-mutation-sequencer";
 import type {
   SeekerListingActivity,
   SeekerUiState,
@@ -184,6 +186,29 @@ export function SeekerStateProvider({
   // Remote mode is hydrated from mount — its `initial` snapshot is the
   // server's authoritative state, so there is no async merge to wait on.
   const [hydrated, setHydrated] = useState(() => persistenceMode !== "local");
+  // Keep the newest snapshot actually acknowledged by the server. If several
+  // queued optimistic writes fail, rolling back only the last click can retain
+  // state from an earlier failed click. Reconciliation instead restores this
+  // known-authoritative aggregate.
+  const authoritativeRemoteSnapshot = useRef(initial);
+  // Primary-state and save controls both mutate the same server snapshot. A
+  // shared serial queue preserves click order at the server and suppresses
+  // stale responses from either callback when a newer mutation is pending.
+  const remoteMutations = useMemo(
+    () => createRemoteMutationSequencer<SeekerStateSnapshot>(),
+    [],
+  );
+
+  const rememberRemoteSnapshot = useCallback((server: SeekerStateSnapshot) => {
+    authoritativeRemoteSnapshot.current = server;
+  }, []);
+
+  const applyRemoteSnapshot = useCallback((server: SeekerStateSnapshot) => {
+    rememberRemoteSnapshot(server);
+    setPrimary(server.primary);
+    setSaved(server.saved);
+    setActivity(server.activity);
+  }, [rememberRemoteSnapshot]);
 
   useEffect(() => {
     if (persistenceMode !== "local") return;
@@ -250,9 +275,6 @@ export function SeekerStateProvider({
 
   const setPrimaryState = useCallback(
     (id: string, state: SeekerUiState) => {
-      const previousPrimary = primary[id];
-      const previousSaved = saved[id];
-      const previousActivity = activity[id];
       setPrimary((current) => ({ ...current, [id]: state }));
       stampActivity(id, state);
 
@@ -261,47 +283,39 @@ export function SeekerStateProvider({
       }
 
       if (persistenceMode === "remote") {
-        void persistRemote({
-          listingId: id,
-          primaryUiState: state,
-          ...(state === "saved" ? { saved: true } : {}),
-        }).then((server) => {
-          setPrimary(server.primary);
-          setSaved(server.saved);
-          setActivity(server.activity);
-        }).catch((error) => {
-          setPrimary((current) => {
-            if (current[id] !== state) return current;
-            const next = { ...current };
-            if (previousPrimary) next[id] = previousPrimary;
-            else delete next[id];
-            return next;
-          });
-          setSaved((current) => {
-            const next = { ...current };
-            if (previousSaved) next[id] = true;
-            else delete next[id];
-            return next;
-          });
-          setActivity((current) => {
-            const next = { ...current };
-            if (previousActivity) next[id] = previousActivity;
-            else delete next[id];
-            return next;
-          });
-          // eslint-disable-next-line no-console
-          console.error("[seeker-state] remote persistence failed", error);
-        });
+        remoteMutations.enqueue(
+          () =>
+            persistRemote({
+              listingId: id,
+              primaryUiState: state,
+              ...(state === "saved" ? { saved: true } : {}),
+            }),
+          {
+            onObservedSuccess: rememberRemoteSnapshot,
+            onSuccess: applyRemoteSnapshot,
+            onError(error) {
+              applyRemoteSnapshot(authoritativeRemoteSnapshot.current);
+              // eslint-disable-next-line no-console
+              console.error("[seeker-state] remote persistence failed", error);
+            },
+          },
+        );
       }
     },
-    [activity, persistRemote, persistenceMode, primary, saved, stampActivity],
+    [
+      applyRemoteSnapshot,
+      persistRemote,
+      persistenceMode,
+      rememberRemoteSnapshot,
+      remoteMutations,
+      stampActivity,
+    ],
   );
 
   const toggleSaved = useCallback(
     (id: string) => {
       const nextSaved = !Boolean(saved[id]);
       const currentPrimary = primary[id];
-      const previousActivity = activity[id];
       const nextPrimary =
         !nextSaved && currentPrimary === "saved" ? "none" : undefined;
 
@@ -322,37 +336,35 @@ export function SeekerStateProvider({
       }
 
       if (persistenceMode === "remote") {
-        void persistRemote({
-          listingId: id,
-          saved: nextSaved,
-          ...(nextPrimary ? { primaryUiState: nextPrimary } : {}),
-        }).then((server) => {
-          setPrimary(server.primary);
-          setSaved(server.saved);
-          setActivity(server.activity);
-        }).catch((error) => {
-          setSaved((current) => {
-            if (Boolean(current[id]) !== nextSaved) return current;
-            const next = { ...current };
-            if (!nextSaved) next[id] = true;
-            else delete next[id];
-            return next;
-          });
-          if (nextPrimary) {
-            setPrimary((current) => ({ ...current, [id]: currentPrimary ?? "saved" }));
-          }
-          setActivity((current) => {
-            const next = { ...current };
-            if (previousActivity) next[id] = previousActivity;
-            else delete next[id];
-            return next;
-          });
-          // eslint-disable-next-line no-console
-          console.error("[seeker-state] remote persistence failed", error);
-        });
+        remoteMutations.enqueue(
+          () =>
+            persistRemote({
+              listingId: id,
+              saved: nextSaved,
+              ...(nextPrimary ? { primaryUiState: nextPrimary } : {}),
+            }),
+          {
+            onObservedSuccess: rememberRemoteSnapshot,
+            onSuccess: applyRemoteSnapshot,
+            onError(error) {
+              applyRemoteSnapshot(authoritativeRemoteSnapshot.current);
+              // eslint-disable-next-line no-console
+              console.error("[seeker-state] remote persistence failed", error);
+            },
+          },
+        );
       }
     },
-    [activity, persistRemote, persistenceMode, primary, saved, stampActivity],
+    [
+      applyRemoteSnapshot,
+      persistRemote,
+      persistenceMode,
+      primary,
+      rememberRemoteSnapshot,
+      remoteMutations,
+      saved,
+      stampActivity,
+    ],
   );
 
   const snapshot = useMemo<SeekerStateSnapshot>(

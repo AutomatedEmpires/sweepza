@@ -261,12 +261,17 @@ export function HostListingSubmissionForm({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Eligible state codes</span>
+            <span className="font-medium text-ink">Eligible region codes (U.S./Canada)</span>
             <input
               name="eligibilityStates"
-              placeholder="Leave blank for nationwide; otherwise CA, NY"
+              placeholder="CA, NY, DC, ON, QC"
+              aria-describedby="host-eligibility-states-help"
               className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-graphite focus:border-ink focus:outline-none"
             />
+            <span id="host-eligibility-states-help" className="text-xs text-graphite">
+              Comma-separated U.S. state/DC or Canadian province/territory
+              codes. Leave blank when the rules cover the whole stated country.
+            </span>
           </label>
         </div>
 

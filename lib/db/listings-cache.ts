@@ -1,5 +1,6 @@
 import "server-only";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { assessExpiration } from "@/lib/ingestion/lifecycle";
 import type { Listing } from "@/lib/types/listing";
 import { getListingBySlug, getPublicListings } from "./listings";
 
@@ -12,19 +13,21 @@ import { getListingBySlug, getPublicListings } from "./listings";
 export const PUBLIC_LISTINGS_TAG = "public-listings";
 
 // Background refresh cadence — a defense-in-depth safety net. Serving code
-// below also checks the current UTC date after every cache hit, so a listing
-// cannot remain enterable merely because midnight passed before the cron ran.
+// below also checks the canonical UTC-12 date-only deadline after every cache
+// hit, so a listing cannot remain enterable after the grace lapses merely
+// because the cron has not run yet.
 const PUBLIC_LISTINGS_TTL_SECONDS = 300;
 
 export function isListingCurrentForPublicCache(
   listing: Listing,
   now = new Date(),
 ): boolean {
-  const today = now.toISOString().slice(0, 10);
+  const expiration = assessExpiration(listing.endDate, now).state;
   return (
     listing.lifecycleStatus === "active" &&
     Boolean(listing.endDate) &&
-    listing.endDate >= today
+    expiration !== "expired" &&
+    expiration !== "unknown"
   );
 }
 

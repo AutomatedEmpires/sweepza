@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { revalidatePublicListings } from "@/lib/db/listings-cache";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,10 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  // The RPC expires rows strictly before this inclusive floor. Deriving it
+  // from the same UTC-12 rule as public reads prevents the cron from hiding a
+  // date-only promotion before its last plausible civil day has ended.
+  const today = dateOnlyVisibilityFloor();
 
   const { data, error } = await supabase.rpc("expire_stale_listings", {
     p_today: today,

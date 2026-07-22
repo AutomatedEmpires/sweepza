@@ -9,6 +9,7 @@ import { describeEligibility } from "@/lib/eligibility";
 import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingReportButton } from "@/components/listing-report-button";
+import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { pickListingContext } from "@/lib/listing-context";
@@ -91,6 +92,7 @@ export function ListingDetail({
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [shareFlash, setShareFlash] = useState(false);
   const [confirmEntry, setConfirmEntry] = useState(false);
+  const [reopened, setReopened] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
@@ -138,6 +140,7 @@ export function ListingDetail({
   }
   function handleMarkEntered() {
     setPrimary("entered");
+    setReopened(false);
     setConfirmEntry(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
@@ -190,18 +193,30 @@ export function ListingDetail({
     eligibility.facets[3],
   ];
 
-  // Ready-again integration for entered recurring sweeps.
-  const readyAgainAt = entered
-    ? nextEntryAt(store?.getActivity(listing.id)?.enteredAt ?? "", listing.entryFrequency)
+  // Ready-again integration for entered recurring sweeps. Re-confirming an
+  // entry writes the same `entered` state again, intentionally refreshing the
+  // authoritative enteredAt timestamp for the next cadence window.
+  const enteredAt =
+    store?.getActivity(listing.id)?.enteredAt ??
+    listing.seekerState?.enteredAt;
+  const readyAgainAt = entered && enteredAt
+    ? nextEntryAt(enteredAt, listing.entryFrequency)
     : null;
+  const readyAgainAtInitialRender = Boolean(
+    readyAgainAt && readyAgainAt.getTime() <= now.getTime(),
+  );
+  const readyAgain = readyAgainAtInitialRender || reopened;
 
   const enterLabel = won
     ? "You won this"
     : expired
       ? "Sweepstakes ended"
-      : entered
-        ? "Entered — enter again"
+      : entered && readyAgain
+        ? "Enter again"
+        : entered
+          ? "Entry recorded"
         : "Enter now";
+  const enterDisabled = expired || won || (entered && !readyAgain);
 
   // ---- Action block, reused in the sticky rail (desktop) and inline (mobile) ----
   const actionBlock = (
@@ -229,15 +244,17 @@ export function ListingDetail({
       <button
         type="button"
         onClick={handleEnter}
-        disabled={expired || won}
+        disabled={enterDisabled}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-base font-semibold transition",
           won
             ? "cursor-default bg-pine text-on-trust"
             : expired
               ? "cursor-not-allowed bg-line text-graphite"
-              : entered
+              : entered && readyAgain
                 ? "bg-pine/12 text-pine hover:bg-pine/18"
+                : entered
+                  ? "cursor-default bg-pine/12 text-pine"
                 : "bg-ember text-on-accent hover:bg-ember/90",
         )}
       >
@@ -245,9 +262,13 @@ export function ListingDetail({
           <>
             <Icon name="trophy" size={18} weight="fill" /> {enterLabel}
           </>
-        ) : entered && !expired ? (
+        ) : entered && readyAgain ? (
           <>
             <Icon name="repeat" size={17} /> {enterLabel}
+          </>
+        ) : entered ? (
+          <>
+            <Icon name="check" size={17} /> {enterLabel}
           </>
         ) : expired ? (
           enterLabel
@@ -262,8 +283,18 @@ export function ListingDetail({
         Opens the entry page provided for this listing · Sweepza never charges to enter
       </p>
 
-      {confirmEntry && !entered ? (
-        <div className="rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
+      {entered && !readyAgain && enteredAt && readyAgainAt ? (
+        <p className="text-center text-xs text-graphite" role="timer">
+          <ReentryCountdown
+            enteredAt={enteredAt}
+            frequency={listing.entryFrequency}
+            onReady={() => setReopened(true)}
+          />
+        </p>
+      ) : null}
+
+      {confirmEntry && (!entered || readyAgain) ? (
+        <div className="hidden rounded-xl border border-pine/25 bg-pine/5 p-3 lg:block" role="status">
           <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
@@ -334,7 +365,7 @@ export function ListingDetail({
 
       {readyAgainAt && (
         <p className="rounded-xl bg-pine/[0.06] px-3 py-2 text-center text-xs font-medium text-pine">
-          {readyAgainAt.getTime() <= now.getTime()
+          {readyAgain
             ? "Ready to enter again now"
             : `Ready again ${formatRelativeTime(readyAgainAt.toISOString(), now).replace(" ago", "")}`}
         </p>
@@ -578,31 +609,53 @@ export function ListingDetail({
       {/* ---- Mobile sticky enter bar ---- */}
       {!won && (
         <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
-          <button
-            type="button"
-            onClick={handleEnter}
-            disabled={expired}
-            className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
-              expired
-                ? "cursor-not-allowed bg-line text-graphite"
-                : entered
-                  ? "bg-pine text-on-trust"
-                  : "bg-ember text-on-accent",
-            )}
-          >
-            {expired ? (
-              "Sweepstakes ended"
-            ) : entered ? (
-              <>
-                <Icon name="repeat" size={17} /> Enter again
-              </>
-            ) : (
-              <>
-                Enter now <Icon name="send" size={16} />
-              </>
-            )}
-          </button>
+          {confirmEntry && (!entered || readyAgain) ? (
+            <div className="rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
+              <p className="text-center text-sm font-medium text-ink">
+                Did you complete the sponsor&apos;s entry?
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+                  Yes, mark entered
+                </button>
+                <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
+                  Not yet
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleEnter}
+              disabled={enterDisabled}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
+                expired
+                  ? "cursor-not-allowed bg-line text-graphite"
+                  : entered && readyAgain
+                    ? "bg-pine text-on-trust"
+                    : entered
+                      ? "cursor-default bg-pine/12 text-pine"
+                    : "bg-ember text-on-accent",
+              )}
+            >
+              {expired ? (
+                "Sweepstakes ended"
+              ) : entered && readyAgain ? (
+                <>
+                  <Icon name="repeat" size={17} /> Enter again
+                </>
+              ) : entered ? (
+                <>
+                  <Icon name="check" size={17} /> Entry recorded
+                </>
+              ) : (
+                <>
+                  Enter now <Icon name="send" size={16} />
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

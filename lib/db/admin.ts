@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { publicHttpUrlSchema } from "@/lib/http-url-schema";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 import type {
   HostVerificationStatus,
   NotificationChannel,
@@ -45,7 +46,7 @@ export interface PlatformSnapshot {
 
 export async function getPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateOnlyVisibilityFloor();
   const [total, active, pendingReview, held, stale] = await Promise.all([
     supabase.from("listing").select("*", { count: "exact", head: true }),
     supabase

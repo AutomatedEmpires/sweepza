@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import type Stripe from "stripe";
 import type { AppUserRow, HostRow } from "@/lib/db/types";
 import { assertPaymentsEnabled } from "@/lib/billing/payment-gate";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/billing/plans";
 import {
   assertStripeAccountBinding,
+  assertStripeCustomerBinding,
   createStripeServerClient,
   ensureStripeCustomerForHost,
 } from "./server";
@@ -117,6 +119,18 @@ export async function createHostCheckoutSession(
     });
   }
 
+  const checkoutShapeHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        lineItems,
+        includedActiveListings: allowance.includedActiveListings,
+        purchasedAdditionalListings: allowance.purchasedAdditionalListings,
+        maxActiveListings: allowance.maxActiveListings,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+
   // Stripe metadata values must be strings. These keys mirror exactly what
   // upsertSubscriptionFromStripe reads back off the subscription.
   const metadata: Record<string, string> = {
@@ -128,35 +142,48 @@ export async function createHostCheckoutSession(
       allowance.purchasedAdditionalListings,
     ),
     max_active_listings: String(allowance.maxActiveListings),
+    checkout_shape: checkoutShapeHash,
   };
 
-  const openSessions = await stripe.checkout.sessions.list({
+  // Include recently closed sessions as a generation boundary. If a host
+  // changes allowance, the former open session is expired; switching back to
+  // the original allowance must not reuse that expired session's Stripe
+  // idempotency result.
+  const recentSessions = await stripe.checkout.sessions.list({
     customer: customerId,
-    status: "open",
     limit: 20,
   });
-  const reusableSession = openSessions.data.find(
-    (session) =>
-      session.mode === "subscription" &&
-      session.url &&
-      session.metadata?.venture === "sweepza" &&
-      session.metadata.host_id === args.host.id &&
-      session.metadata.max_active_listings ===
-        String(allowance.maxActiveListings),
-  );
-  if (reusableSession?.url) {
-    return { url: reusableSession.url, sessionId: reusableSession.id };
-  }
-
-  const mismatchedSweepzaSessions = openSessions.data.filter(
+  const sweepzaSessions = recentSessions.data.filter(
     (session) =>
       session.mode === "subscription" &&
       session.metadata?.venture === "sweepza" &&
       session.metadata.host_id === args.host.id,
   );
-  for (const session of mismatchedSweepzaSessions) {
+  const openSweepzaSessions = sweepzaSessions.filter(
+    (session) => session.status === "open",
+  );
+  const reusableSession = openSweepzaSessions.find(
+    (session) =>
+      session.url &&
+      session.metadata?.checkout_shape === checkoutShapeHash,
+  );
+  if (reusableSession?.url) {
+    return { url: reusableSession.url, sessionId: reusableSession.id };
+  }
+
+  for (const session of openSweepzaSessions) {
     await stripe.checkout.sessions.expire(session.id);
   }
+
+  // Stripe lists newest first. Hashing the latest session id creates a stable
+  // generation for retries and concurrent duplicate requests, but advances
+  // after any prior session (including an expired one). Combined with the
+  // immutable allowance hash, A -> B -> A can never replay the first expired
+  // A session.
+  const checkoutGeneration = createHash("sha256")
+    .update(sweepzaSessions[0]?.id ?? "initial")
+    .digest("hex")
+    .slice(0, 16);
 
   const session = await stripe.checkout.sessions.create(
     {
@@ -173,8 +200,13 @@ export async function createHostCheckoutSession(
       },
     },
     {
-      idempotencyKey:
-        `sweepza/checkout/${args.host.id}/${Math.floor(Date.now() / 600_000)}`,
+      // One key per host generation deliberately excludes the requested
+      // shape. Concurrent requests that observed the same prior generation
+      // therefore cannot create two independently payable sessions: identical
+      // parameters replay one result, while different parameters fail closed
+      // with Stripe's idempotency mismatch. A later retry observes the created
+      // session and either reuses it or advances the generation after expiry.
+      idempotencyKey: `sweepza/checkout/${args.host.id}/${checkoutGeneration}`,
     },
   );
 
@@ -190,11 +222,13 @@ export async function createHostCheckoutSession(
 // Stripe SDK client.
 export async function createStripePortalSession(args: {
   customerId: string;
+  hostId: string;
   returnUrl?: string;
 }): Promise<string> {
   assertPaymentsEnabled();
   const stripe = createStripeServerClient();
   await assertStripeAccountBinding(stripe);
+  await assertStripeCustomerBinding(stripe, args.customerId, args.hostId);
   const session = await stripe.billingPortal.sessions.create({
     customer: args.customerId,
     return_url: args.returnUrl ?? `${getAppBaseUrl()}/host`,

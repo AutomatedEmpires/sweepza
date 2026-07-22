@@ -113,9 +113,9 @@ export default async function HostListingsPage() {
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">Held / rejected</h2>
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-graphite">Needs attention</h2>
         {groups.held_rejected.length === 0 ? (
-          <EmptySection label="Nothing held or rejected." />
+          <EmptySection label="Nothing needs attention." />
         ) : (
           <div className="space-y-3">
             {groups.held_rejected.map((listing) => (
@@ -124,6 +124,8 @@ export default async function HostListingsPage() {
                   <Link href={`/host/listings/${listing.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-3 py-1.5 text-sm font-medium text-ink/75 transition hover:bg-paper">
                     Edit &amp; resubmit
                   </Link>
+                ) : listing.lifecycleStatus === "paused" ? (
+                  <span className="text-sm text-graphite">Paused while the host account is under review. Once access is restored, this listing can be reactivated or edited for re-review.</span>
                 ) : (
                   <span className="text-sm text-graphite">Rejected listings cannot be resubmitted. Create a corrected new promotion only if it has a distinct official identity.</span>
                 )}

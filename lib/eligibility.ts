@@ -37,6 +37,27 @@ export interface EligibilitySummary {
 }
 
 const NOT_STATED = "Not stated";
+const ALL_US_STATE_DC_CODES = new Set(
+  "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(
+    " ",
+  ),
+);
+const US_COUNTRY_NAMES = new Set([
+  "US",
+  "USA",
+  "UNITEDSTATES",
+  "UNITEDSTATESOFAMERICA",
+]);
+
+function isAllUnitedStatesAndDc(country: string, states: string[]): boolean {
+  const normalizedCountry = country.toUpperCase().replace(/[^A-Z]/g, "");
+  const normalizedStates = new Set(states.map((state) => state.toUpperCase()));
+  return (
+    US_COUNTRY_NAMES.has(normalizedCountry) &&
+    normalizedStates.size === ALL_US_STATE_DC_CODES.size &&
+    [...normalizedStates].every((state) => ALL_US_STATE_DC_CODES.has(state))
+  );
+}
 
 function region(input: EligibilityInput): EligibilityFacet {
   const country = input.eligibilityCountry?.trim();
@@ -48,6 +69,13 @@ function region(input: EligibilityInput): EligibilityFacet {
     return { label: "Region", value: NOT_STATED, certainty: "unknown" };
   }
   if (country && states.length > 0) {
+    if (isAllUnitedStatesAndDc(country, states)) {
+      return {
+        label: "Region",
+        value: "50 United States and D.C.",
+        certainty: "known",
+      };
+    }
     return {
       label: "Region",
       value: `${country} — ${states.join(", ")}`,

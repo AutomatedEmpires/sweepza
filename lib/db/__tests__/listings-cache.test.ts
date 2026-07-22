@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Listing } from "@/lib/types/listing";
 
 const mocks = vi.hoisted(() => ({
   // unstable_cache(fn, keyParts, opts) returns the wrapped reader. Emulate a
@@ -29,6 +30,7 @@ import {
   PUBLIC_LISTINGS_TAG,
   getCachedListingBySlug,
   getCachedPublicListings,
+  isListingCurrentForPublicCache,
   revalidatePublicListings,
 } from "@/lib/db/listings-cache";
 
@@ -91,5 +93,19 @@ describe("public listings cache", () => {
   it("busts exactly the public-listings tag on revalidation", () => {
     revalidatePublicListings();
     expect(mocks.revalidateTag).toHaveBeenCalledWith(PUBLIC_LISTINGS_TAG);
+  });
+
+  it("keeps a date-only listing cached through the canonical UTC-12 grace", () => {
+    const listing = {
+      lifecycleStatus: "active",
+      endDate: "2026-07-16",
+    } as Listing;
+
+    expect(
+      isListingCurrentForPublicCache(listing, new Date("2026-07-17T11:59:59.999Z")),
+    ).toBe(true);
+    expect(
+      isListingCurrentForPublicCache(listing, new Date("2026-07-17T12:00:00.000Z")),
+    ).toBe(false);
   });
 });

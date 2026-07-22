@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -51,6 +51,10 @@ beforeEach(() => {
   resetSupabaseMock();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("GET /api/cron/expire-stale", () => {
   it("returns 503 when CRON_SECRET is missing", async () => {
     delete process.env.CRON_SECRET;
@@ -70,6 +74,28 @@ describe("GET /api/cron/expire-stale", () => {
     expect(response.status).toBe(200);
     expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
       p_today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+  });
+
+  it("passes yesterday as the expiry floor until the UTC-12 grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T11:59:59.999Z"));
+
+    await GET(cronRequest());
+
+    expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
+      p_today: "2026-07-16",
+    });
+  });
+
+  it("advances the expiry floor exactly when the UTC-12 grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
+
+    await GET(cronRequest());
+
+    expect(rpc).toHaveBeenCalledWith("expire_stale_listings", {
+      p_today: "2026-07-17",
     });
   });
 

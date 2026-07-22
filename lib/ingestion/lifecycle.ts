@@ -19,6 +19,22 @@ const DAY_MS = 24 * HOUR_MS;
 // Hawaii/Alaska/global sweep before its stated calendar day has ended.
 const DATE_ONLY_GRACE_HOURS = 12;
 
+/**
+ * Earliest inclusive end date that may still be public at `now`.
+ *
+ * Database reads and the expiry cron operate on SQL `date` values rather than
+ * exact closing instants. Shifting the clock back by the canonical UTC-12
+ * grace converts that instant rule into the matching inclusive date floor:
+ * before 12:00 UTC yesterday's date remains eligible; at 12:00 UTC it does
+ * not. Keep every date-only serving boundary on this helper so the query,
+ * cache, and lifecycle worker cannot disagree.
+ */
+export function dateOnlyVisibilityFloor(now: Date = new Date()): string {
+  return new Date(now.getTime() - DATE_ONLY_GRACE_HOURS * HOUR_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** Strict UTC midnight for a real YYYY-MM-DD calendar date, or NaN. */
 function dateMidnightUtc(value: string): number {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);

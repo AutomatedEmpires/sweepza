@@ -4,6 +4,7 @@ import {
   createServiceRoleClient,
 } from "@/lib/supabase/server";
 import type { Listing, PrizeCategory } from "@/lib/types/listing";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 import { PRIZE_CATEGORY_TO_CATEGORY_CODE, toListing } from "./adapters";
 import type { EntryFrequency, LifecycleStatus } from "./enums";
 import type { HostPublicRow, ListingRow, WinnerPostRow } from "./types";
@@ -134,10 +135,6 @@ export async function adaptListingRows(
 // a public surface.
 const PUBLICLY_SERVABLE_REVIEW_STATUSES = ["reviewed", "verified"];
 
-function utcDateOnly(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
 /**
  * Public Discover feed. RLS already restricts rows to public + active +
  * non-under_review/action_taken; the explicit predicates are defense-in-depth
@@ -153,7 +150,7 @@ export async function getPublicListings(
     .select("*")
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
-    .gte("end_date", utcDateOnly())
+    .gte("end_date", dateOnlyVisibilityFloor())
     .not("moderation_status", "in", '("under_review","action_taken")')
     .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES);
 
@@ -221,7 +218,7 @@ export async function getListingBySlug(slug: string): Promise<Listing | null> {
     .select("*")
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
-    .gte("end_date", utcDateOnly())
+    .gte("end_date", dateOnlyVisibilityFloor())
     .in("listing_verification_status", PUBLICLY_SERVABLE_REVIEW_STATUSES)
     .not("moderation_status", "in", '("under_review","action_taken")')
     .eq("slug", slug)

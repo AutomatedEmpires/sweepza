@@ -4,6 +4,11 @@ import {
   optionalPublicHttpUrlSchema,
   publicHttpUrlSchema,
 } from "@/lib/http-url-schema";
+import {
+  eligibilityRegionCodesSchema,
+  validateEligibilityRegionCountry,
+} from "@/lib/us-state-codes";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 
 export const hostListingSubmissionSchema = z.object({
   title: z.string().min(5).max(70),
@@ -21,7 +26,7 @@ export const hostListingSubmissionSchema = z.object({
   entryFrequency: z.enum(ENTRY_FREQUENCIES),
   entryLimitNotes: z.string().max(240).nullable().optional(),
   eligibilityCountry: z.string().min(2).max(40),
-  eligibilityStates: z.array(z.string().trim().min(2).max(3)).max(60).default([]),
+  eligibilityStates: eligibilityRegionCodesSchema,
   ageRequirement: z.coerce.number().int().min(13).max(120),
   noPurchaseNecessary: z.literal(true),
   sponsorName: z.string().trim().min(2).max(120),
@@ -29,8 +34,7 @@ export const hostListingSubmissionSchema = z.object({
   winnerCount: z.coerce.number().int().positive().max(10000).nullable().optional(),
   tagCodes: z.array(z.string()).max(12).default([]),
 }).superRefine((input, context) => {
-  const today = new Date().toISOString().slice(0, 10);
-  if (input.endDate < today) {
+  if (input.endDate < dateOnlyVisibilityFloor()) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["endDate"],
@@ -44,6 +48,13 @@ export const hostListingSubmissionSchema = z.object({
       message: "Start date cannot be after the end date.",
     });
   }
+}).superRefine((listing, context) => {
+  validateEligibilityRegionCountry(
+    listing.eligibilityCountry,
+    listing.eligibilityStates,
+    context,
+    "eligibilityStates",
+  );
 });
 
 // Host-editable fields for the draft/held edit flow. Admin-only fields
@@ -66,15 +77,14 @@ export const hostListingEditSchema = z.object({
   entry_frequency: z.enum(ENTRY_FREQUENCIES),
   entry_limit_notes: z.string().trim().max(240).nullable().optional(),
   eligibility_country: z.string().trim().min(2).max(40),
-  eligibility_states: z.array(z.string().trim().min(2).max(3)).max(60).default([]),
+  eligibility_states: eligibilityRegionCodesSchema,
   age_requirement: z.coerce.number().int().min(13).max(120),
   no_purchase_necessary: z.literal(true),
   sponsor_name: z.string().trim().min(2).max(120),
   sponsor_url: optionalPublicHttpUrlSchema,
   tag_codes: z.array(z.string()).max(12).default([]),
 }).superRefine((input, context) => {
-  const today = new Date().toISOString().slice(0, 10);
-  if (input.end_date < today) {
+  if (input.end_date < dateOnlyVisibilityFloor()) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["end_date"],
@@ -88,6 +98,13 @@ export const hostListingEditSchema = z.object({
       message: "Start date cannot be after the end date.",
     });
   }
+}).superRefine((listing, context) => {
+  validateEligibilityRegionCountry(
+    listing.eligibility_country,
+    listing.eligibility_states,
+    context,
+    "eligibility_states",
+  );
 });
 
 export type HostListingSubmissionInput = z.infer<

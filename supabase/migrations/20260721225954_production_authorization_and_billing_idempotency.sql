@@ -326,7 +326,12 @@ alter policy listing_public_select on public.listing using (
   (
     visibility_status = 'public'
     and lifecycle_status = 'active'
-    and end_date >= current_date
+    -- Date-only rules have no authoritative timezone. Keep them visible until
+    -- midnight has passed in the latest civil timezone (UTC-12), matching the
+    -- application lifecycle boundary exactly. The explicit UTC conversion
+    -- avoids inheriting the database session timezone.
+    and ((end_date::timestamp at time zone 'UTC') + interval '36 hours')
+      > clock_timestamp()
     and listing_verification_status in ('reviewed', 'verified')
     and moderation_status not in ('under_review', 'action_taken')
   )
@@ -343,7 +348,8 @@ alter policy listing_tag_select on public.listing_tag using (
          (
            l.visibility_status = 'public'
            and l.lifecycle_status = 'active'
-           and l.end_date >= current_date
+           and ((l.end_date::timestamp at time zone 'UTC') + interval '36 hours')
+             > clock_timestamp()
            and l.listing_verification_status in ('reviewed', 'verified')
            and l.moderation_status not in ('under_review', 'action_taken')
          )
@@ -372,7 +378,8 @@ begin
     end if;
     if coalesce(new.entry_url, '') = '' then raise exception 'publish blocked: entry_url required'; end if;
     if coalesce(new.official_rules_url, '') = '' then raise exception 'publish blocked: official_rules_url required'; end if;
-    if new.end_date is null or new.end_date < current_date then
+    if new.end_date is null
+       or new.end_date < (((clock_timestamp() at time zone 'UTC') - interval '12 hours')::date) then
       raise exception 'publish blocked: end_date must be current or future';
     end if;
     if new.entry_frequency is null then raise exception 'publish blocked: entry_frequency required'; end if;

@@ -134,8 +134,9 @@ export default async function EditHostListingPage({
             <input name="eligibility_country" defaultValue={listing.eligibility_country ?? "US"} required className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
           </label>
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-            <span className="font-medium text-ink">Eligible state codes</span>
-            <input name="eligibility_states" defaultValue={listing.eligibility_states?.join(", ") ?? ""} placeholder="Blank for nationwide or CA, NY" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
+            <span className="font-medium text-ink">Eligible region codes (U.S./Canada)</span>
+            <input name="eligibility_states" defaultValue={listing.eligibility_states?.join(", ") ?? ""} placeholder="CA, NY, DC, ON, QC" aria-describedby="edit-eligibility-states-help" className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink focus:border-ink focus:outline-none" />
+            <span id="edit-eligibility-states-help" className="text-xs text-graphite">Comma-separated U.S. state/DC or Canadian province/territory codes. Leave blank when the rules cover the whole stated country.</span>
           </label>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">

@@ -5,6 +5,7 @@ import type { ReactionType, WinnerReviewStatus } from "@/lib/db/enums";
 import type { WinnerPost } from "@/lib/types/winner";
 import type { AppUserRow, ListingRow, WinnerPostRow, WinnerReactionRow } from "@/lib/db/types";
 import { toWinnerPost } from "@/lib/db/adapters";
+import { dateOnlyVisibilityFloor } from "@/lib/ingestion/lifecycle";
 
 export type WinnerFeedCursor = { createdAt: string; id: string };
 
@@ -29,6 +30,8 @@ type WinnerPostJoinRow = Pick<
   listing: Pick<ListingRow, "slug" | "title" | "prize_value"> | null;
 };
 
+const PUBLICLY_SERVABLE_REVIEW_STATUSES = ["reviewed", "verified"];
+
 export async function getPublishedWinnerPosts(
   args: GetPublishedWinnerPostsArgs = {},
 ): Promise<{ posts: WinnerPost[]; nextCursor: WinnerFeedCursor | null }> {
@@ -52,10 +55,22 @@ export async function getPublishedWinnerPosts(
         "created_at",
         "updated_at",
         "app_user:app_user(display_name)",
-        "listing:listing(slug, title, prize_value)",
+        "listing:listing!inner(slug, title, prize_value)",
       ].join(","),
     )
     .eq("review_status", "published" satisfies WinnerReviewStatus)
+    // A published winner post is not authority to expose a listing that has
+    // since been held, hidden, expired, or otherwise removed from public
+    // discovery. The service role bypasses RLS, so repeat the complete public
+    // listing boundary on the embedded relation.
+    .eq("listing.visibility_status", "public")
+    .eq("listing.lifecycle_status", "active")
+    .gte("listing.end_date", dateOnlyVisibilityFloor())
+    .not("listing.moderation_status", "in", '("under_review","action_taken")')
+    .in(
+      "listing.listing_verification_status",
+      PUBLICLY_SERVABLE_REVIEW_STATUSES,
+    )
     .order("created_at", { ascending: false })
     .order("id", { ascending: false });
 

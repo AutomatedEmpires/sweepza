@@ -11,12 +11,34 @@ function ClaimCard({ claim }: { claim: HostListingClaim }) {
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
   const [message, setMessage] = useState("");
   async function review(action: "approve" | "reject") {
-    setPending(action); setMessage("");
-    const response = await fetch("/api/admin/listing-claims", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ claimId: claim.id, action, reviewNotes: notes }) });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    setPending(null);
-    if (!response.ok) { setMessage(payload?.error ?? "Review failed."); return; }
-    setMessage(action === "approve" ? "Claim approved." : "Claim rejected."); router.refresh();
+    setPending(action);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/listing-claims", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          claimId: claim.id,
+          action,
+          reviewNotes: notes,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (!response.ok) {
+        setMessage(payload?.error ?? "Review failed. Please try again.");
+        return;
+      }
+      setMessage(action === "approve" ? "Claim approved." : "Claim rejected.");
+      router.refresh();
+    } catch {
+      setMessage(
+        "The review could not be sent. Check your connection and try again.",
+      );
+    } finally {
+      setPending(null);
+    }
   }
   return (
     <article className="rounded-card border border-line bg-surface p-5 shadow-e1">

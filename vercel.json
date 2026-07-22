@@ -6,11 +6,7 @@
     },
     {
       "path": "/api/cron/seeker-reminders",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/email-deliveries",
-      "schedule": "* * * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/ingest",

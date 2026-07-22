@@ -349,7 +349,7 @@ export function ListingCard({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={expired || won}
+              disabled={expired || won || enterState === "entered"}
             className={cn(
               "relative flex min-h-11 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 text-sm font-semibold transition",
               enterState === "won"
@@ -357,7 +357,7 @@ export function ListingCard({
                 : enterState === "expired"
                   ? "cursor-not-allowed bg-line text-graphite"
                   : enterState === "entered"
-                    ? "bg-pine/12 text-pine hover:bg-pine/18"
+                    ? "cursor-default bg-pine/12 text-pine"
                     : "bg-ember text-on-accent hover:bg-ember/90",
               // The recurrence invitation: a calm breathing ring while a
               // re-entry window is open again.
@@ -407,7 +407,7 @@ export function ListingCard({
             <Icon name="info" size={18} />
           </Link>
         </div>
-        {confirmEntry && !entered ? (
+        {confirmEntry && (!entered || readyAgain) ? (
           <div className="mt-3 rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
             <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
             <div className="mt-2 flex gap-2">

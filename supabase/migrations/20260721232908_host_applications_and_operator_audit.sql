@@ -743,7 +743,7 @@ begin
   if not found then raise exception 'host listing not found' using errcode = 'P0002'; end if;
   if v_listing.lifecycle_status <> 'inactive'
      or v_listing.visibility_status <> 'unlisted'
-     or v_listing.end_date < current_date
+     or v_listing.end_date < (((clock_timestamp() at time zone 'UTC') - interval '12 hours')::date)
      or v_listing.listing_verification_status not in ('reviewed', 'verified')
      or v_listing.moderation_status <> 'clear'
      or v_listing.duplicate_status <> 'clear' then

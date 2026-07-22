@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The public trust promise "every listing reviewed before it goes live"
 // (lib/trust-copy.ts, FAQ) is enforced at the serving boundary: these tests
@@ -49,9 +49,19 @@ function reviewStatusFilters(calls: RecordedCall[]): RecordedCall[] {
   );
 }
 
+function endDateFloor(calls: RecordedCall[]): unknown {
+  return calls.find(
+    (call) => call.method === "gte" && call.args[0] === "end_date",
+  )?.args[1];
+}
+
 describe("public serving boundary", () => {
   beforeEach(() => {
     state.recorder = createClientRecorder({ data: [], error: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("getPublicListings only serves reviewed/verified rows", async () => {
@@ -68,5 +78,23 @@ describe("public serving boundary", () => {
     const filters = reviewStatusFilters(state.recorder!.calls);
     expect(filters.length).toBeGreaterThanOrEqual(1);
     expect(filters[0].args[1]).toEqual(["reviewed", "verified"]);
+  });
+
+  it("keeps yesterday queryable until the UTC-12 date-only grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T11:59:59.999Z"));
+
+    await getPublicListings();
+
+    expect(endDateFloor(state.recorder!.calls)).toBe("2026-07-16");
+  });
+
+  it("advances the public query floor exactly when the UTC-12 grace lapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
+
+    await getPublicListings();
+
+    expect(endDateFloor(state.recorder!.calls)).toBe("2026-07-17");
   });
 });

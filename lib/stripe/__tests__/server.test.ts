@@ -19,6 +19,7 @@ vi.mock("@/lib/db/hosts", () => ({
 
 import {
   assertStripeAccountBinding,
+  assertStripeCustomerBinding,
   createStripeServerClient,
   ensureStripeCustomerForHost,
 } from "@/lib/stripe/server";
@@ -54,12 +55,104 @@ describe("Stripe server boundary", () => {
     mocks.env.PAYMENTS_ENABLED = "true";
     mocks.env.VERCEL_ENV = "production";
     mocks.env.STRIPE_SECRET_KEY = "sk_test_sweepza";
-    const retrieve = vi.fn();
+    const retrieveCurrent = vi.fn();
 
     await expect(
-      assertStripeAccountBinding({ accounts: { retrieve } } as never),
+      assertStripeAccountBinding({ accounts: { retrieveCurrent } } as never),
     ).rejects.toThrow(/production payments require live Stripe credentials/);
 
-    expect(retrieve).not.toHaveBeenCalled();
+    expect(retrieveCurrent).not.toHaveBeenCalled();
+  });
+
+  it("rejects credentials whose authenticated platform account differs from the approved binding", async () => {
+    mocks.env.PAYMENTS_ENABLED = "true";
+    mocks.env.STRIPE_SECRET_KEY = "sk_test_sweepza";
+    const retrieveCurrent = vi.fn().mockResolvedValue({
+      id: "acct_connected_or_other_venture",
+      charges_enabled: true,
+      payouts_enabled: true,
+    });
+
+    await expect(
+      assertStripeAccountBinding(
+        { accounts: { retrieveCurrent } } as never,
+        false,
+      ),
+    ).rejects.toThrow(/credentials resolve to a different account/);
+
+    expect(retrieveCurrent).toHaveBeenCalledTimes(1);
+    expect(retrieveCurrent).toHaveBeenCalledWith();
+  });
+
+  it("verifies the account authenticated by the approved test key without an account argument", async () => {
+    mocks.env.PAYMENTS_ENABLED = "true";
+    mocks.env.STRIPE_SECRET_KEY = "sk_test_sweepza";
+    const retrieveCurrent = vi.fn().mockResolvedValue({
+      id: "acct_1TeqgHD7Yqq488pB",
+      charges_enabled: false,
+      payouts_enabled: false,
+    });
+
+    await expect(
+      assertStripeAccountBinding(
+        { accounts: { retrieveCurrent } } as never,
+        false,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(retrieveCurrent).toHaveBeenCalledTimes(1);
+    expect(retrieveCurrent).toHaveBeenCalledWith();
+  });
+
+  it.each([
+    {
+      label: "another venture",
+      customer: {
+        id: "cus_wrong_venture",
+        deleted: false,
+        metadata: { venture: "other", host_id: "host_1" },
+      },
+    },
+    {
+      label: "another host",
+      customer: {
+        id: "cus_wrong_host",
+        deleted: false,
+        metadata: { venture: "sweepza", host_id: "host_2" },
+      },
+    },
+    {
+      label: "a deleted customer",
+      customer: { id: "cus_deleted", deleted: true },
+    },
+  ])("rejects a persisted customer bound to $label", async ({ customer }) => {
+    const retrieve = vi.fn().mockResolvedValue(customer);
+
+    await expect(
+      assertStripeCustomerBinding(
+        { customers: { retrieve } } as never,
+        customer.id,
+        "host_1",
+      ),
+    ).rejects.toThrow(/not bound to this Sweepza host/);
+
+    expect(retrieve).toHaveBeenCalledWith(customer.id);
+  });
+
+  it("accepts only a live customer with exact Sweepza host metadata", async () => {
+    const customer = {
+      id: "cus_sweepza",
+      deleted: false,
+      metadata: { venture: "sweepza", host_id: "host_1" },
+    };
+    const retrieve = vi.fn().mockResolvedValue(customer);
+
+    await expect(
+      assertStripeCustomerBinding(
+        { customers: { retrieve } } as never,
+        customer.id,
+        "host_1",
+      ),
+    ).resolves.toEqual(customer);
   });
 });

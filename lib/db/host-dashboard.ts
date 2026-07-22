@@ -639,5 +639,8 @@ export async function createHostBillingPortalUrl(): Promise<string> {
   assertPaymentsEnabled();
   const { host } = await getHostIdentity({ allowSuspended: true });
   if (!host.stripe_customer_id) throw new HostAccessError("No Stripe customer on file yet.", 400);
-  return createStripePortalUrl({ customerId: host.stripe_customer_id });
+  return createStripePortalUrl({
+    customerId: host.stripe_customer_id,
+    hostId: host.id,
+  });
 }

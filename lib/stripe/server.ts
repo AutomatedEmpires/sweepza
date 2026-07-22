@@ -60,8 +60,11 @@ export async function assertStripeAccountBinding(
   }
 
   if (!stripeAccountVerification) {
+    // Use Stripe v22's explicit /v1/account operation so a Connect platform
+    // credential cannot satisfy this check by retrieving a configured
+    // connected account id.
     stripeAccountVerification = stripe.accounts
-      .retrieve(configuredAccountId)
+      .retrieveCurrent()
       .then((account) => {
         if (account.id !== configuredAccountId) {
           throw new Error("Stripe credentials resolve to a different account.");
@@ -83,12 +86,17 @@ export async function ensureStripeCustomerForHost(
   appUser: AppUserRow,
 ): Promise<{ customerId: string; host: HostRow }> {
   assertPaymentsEnabled();
+  const stripe = createStripeServerClient();
+  await assertStripeAccountBinding(stripe);
   if (host.stripe_customer_id) {
+    await assertStripeCustomerBinding(
+      stripe,
+      host.stripe_customer_id,
+      host.id,
+    );
     return { customerId: host.stripe_customer_id, host };
   }
 
-  const stripe = createStripeServerClient();
-  await assertStripeAccountBinding(stripe);
   const existing = await stripe.customers.search({
     query:
       `metadata['venture']:'sweepza' AND metadata['host_id']:'${host.id}'`,
@@ -127,4 +135,21 @@ export async function ensureStripeCustomerForHost(
 
   const updatedHost = await updateHostStripeCustomerId(host.id, customer.id);
   return { customerId: customer.id, host: updatedHost };
+}
+
+/** Fail closed unless a persisted Stripe Customer belongs to this Sweepza host. */
+export async function assertStripeCustomerBinding(
+  stripe: Stripe,
+  customerId: string,
+  hostId: string,
+): Promise<Stripe.Customer> {
+  const customer = await stripe.customers.retrieve(customerId);
+  if (
+    customer.deleted ||
+    customer.metadata.venture !== "sweepza" ||
+    customer.metadata.host_id !== hostId
+  ) {
+    throw new Error("Stripe customer is not bound to this Sweepza host.");
+  }
+  return customer;
 }
