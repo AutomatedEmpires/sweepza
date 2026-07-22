@@ -56,7 +56,7 @@ export function SearchInput({
         onChange={(event) => setValue(event.target.value)}
         placeholder={placeholder}
         aria-label="Search sweepstakes"
-        className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-graphite"
+        className="sweep-search min-w-0 flex-1 appearance-none bg-transparent text-sm text-ink outline-none placeholder:text-graphite"
       />
       {value ? (
         <button

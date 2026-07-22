@@ -15,10 +15,15 @@ export const ENTRY_FREQUENCY_LABEL: Record<Listing["entryFrequency"], string> = 
 };
 
 export function formatEndDate(endDate: string): string {
-  return new Date(endDate).toLocaleDateString(undefined, {
+  // Postgres `date` values are calendar facts, not instants. Formatting
+  // YYYY-MM-DD in the browser's local timezone shifts UTC midnight to the
+  // previous day west of Greenwich and makes SSR disagree with hydration.
+  const dateOnly = endDate.slice(0, 10);
+  return new Date(`${dateOnly}T00:00:00.000Z`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -52,7 +57,7 @@ export function formatPrizeValue(
 ): string | null {
   if (value == null) return null;
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       maximumFractionDigits: 0,

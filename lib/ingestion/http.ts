@@ -1,4 +1,5 @@
 import type { SourceDescriptor } from "@/lib/ingestion/source";
+import type { LookupFunction } from "node:net";
 
 // The only way an adapter is allowed to touch the network. Every control that
 // keeps ingestion polite, bounded, and reversible lives here rather than in the
@@ -29,6 +30,7 @@ export type FetchFailureClass =
   | "server_error"
   | "too_many_redirects"
   | "budget_exhausted"
+  | "body_too_large"
   | "empty_body";
 
 /** Failure classes worth retrying — everything else is a fact, not a blip. */
@@ -46,6 +48,16 @@ export function isRetryable(failure: FetchFailureClass): boolean {
 export interface ConditionalState {
   etag?: string | null;
   lastModified?: string | null;
+}
+
+export interface SourceFailureResult {
+  status: "failed";
+  url: string;
+  failure: FetchFailureClass;
+  httpStatus: number | null;
+  /** Attempts actually made, including the first. */
+  attempts: number;
+  message: string;
 }
 
 export type SourceFetchResult =
@@ -66,15 +78,21 @@ export type SourceFetchResult =
       finalUrl: string;
       httpStatus: 304;
     }
+  | SourceFailureResult;
+
+export type SourceAssetFetchResult =
   | {
-      status: "failed";
+      status: "ok";
       url: string;
-      failure: FetchFailureClass;
-      httpStatus: number | null;
-      /** Attempts actually made, including the first. */
-      attempts: number;
-      message: string;
-    };
+      finalUrl: string;
+      bytes: Uint8Array;
+      contentType: string | null;
+      contentLength: number;
+      etag: string | null;
+      lastModified: string | null;
+      httpStatus: number;
+    }
+  | SourceFailureResult;
 
 export interface HttpClientStats {
   requests: number;
@@ -103,6 +121,14 @@ export interface SourceHttpClient {
       persistFetchState?: boolean;
     },
   ): Promise<SourceFetchResult>;
+  /**
+   * Fetch a bounded binary image under the exact same reach, SSRF, redirect,
+   * cadence, retry, and request-budget controls as source HTML.
+   */
+  getAsset(
+    url: string,
+    options?: { maxBytes?: number },
+  ): Promise<SourceAssetFetchResult>;
   /** Persist validators after downstream parsing/work has completed. */
   commitFetchState(url: string, result: SourceFetchResult): Promise<void>;
   /** Resolve a redirect chain to its destination without reading the body. */
@@ -161,8 +187,16 @@ export const SWEEPZA_USER_AGENT =
   "Mozilla/5.0 (compatible; SweepzaBot/0.1; +https://sweepza.com/bot)";
 
 const MAX_BODY_CHARS = 400_000;
+const DEFAULT_MAX_ASSET_BYTES = 8 * 1024 * 1024;
 /** Redirect hops permitted per request; each one is re-checked, not trusted. */
 const MAX_REDIRECTS = 5;
+
+class BodyTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BodyTooLargeError";
+  }
+}
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -329,6 +363,17 @@ interface ResolvedAddress {
   family: 4 | 6;
 }
 
+/** Return the shape Node requests when family autoselection asks for all addresses. */
+export function createPinnedLookup(pinned: ResolvedAddress): LookupFunction {
+  return (_hostname, lookupOptions, callback) => {
+    if (lookupOptions.all) {
+      callback(null, [{ address: pinned.address, family: pinned.family }]);
+      return;
+    }
+    callback(null, pinned.address, pinned.family);
+  };
+}
+
 interface HopAttempt {
   hop: Hop;
   requestMade: boolean;
@@ -336,6 +381,20 @@ interface HopAttempt {
 
 interface ChainResult {
   result: SourceFetchResult;
+  requestsMade: number;
+}
+
+type AssetHop =
+  | { kind: "result"; result: SourceAssetFetchResult }
+  | { kind: "redirect"; location: string; httpStatus: number };
+
+interface AssetHopAttempt {
+  hop: AssetHop;
+  requestMade: boolean;
+}
+
+interface AssetChainResult {
+  result: SourceAssetFetchResult;
   requestsMade: number;
 }
 
@@ -415,7 +474,7 @@ export function createSourceHttpClient(
     return true;
   }
 
-  function budgetExhausted(url: string): SourceFetchResult {
+  function budgetExhausted(url: string): SourceFailureResult {
     return {
       status: "failed",
       url,
@@ -430,7 +489,7 @@ export function createSourceHttpClient(
     url: string,
     failure: FetchFailureClass,
     message: string,
-  ): SourceFetchResult {
+  ): SourceFailureResult {
     failures += 1;
     return { status: "failed", url, failure, httpStatus: null, attempts: 0, message };
   }
@@ -462,7 +521,7 @@ export function createSourceHttpClient(
    */
   async function resolvePublicTarget(
     url: string,
-  ): Promise<{ blocked: SourceFetchResult | null; addresses: ResolvedAddress[] }> {
+  ): Promise<{ blocked: SourceFailureResult | null; addresses: ResolvedAddress[] }> {
     if (!lookupImpl) return { blocked: null, addresses: [] };
     let hostname: string;
     try {
@@ -540,9 +599,7 @@ export function createSourceHttpClient(
           headers,
           signal: init.signal ?? undefined,
           ...(parsed.protocol === "https:" ? { servername: parsed.hostname } : {}),
-          lookup: (_hostname, _options, callback) => {
-            callback(null, pinned.address, pinned.family);
-          },
+          lookup: createPinnedLookup(pinned),
         },
         (incoming) => {
           const responseHeaders = new Headers();
@@ -589,6 +646,169 @@ export function createSourceHttpClient(
       await reader.cancel().catch(() => undefined);
     }
     return out.slice(0, MAX_BODY_CHARS);
+  }
+
+  async function readCappedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+    const declared = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new BodyTooLargeError(`asset declares ${declared} bytes; limit is ${maxBytes}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > maxBytes) {
+        throw new BodyTooLargeError(`asset returned ${bytes.byteLength} bytes; limit is ${maxBytes}`);
+      }
+      return bytes;
+    }
+
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let finished = false;
+    try {
+      while (total <= maxBytes) {
+        const { done, value } = await reader.read();
+        if (done) {
+          finished = true;
+          break;
+        }
+        total += value.byteLength;
+        if (total > maxBytes) {
+          throw new BodyTooLargeError(`asset exceeded the ${maxBytes}-byte limit`);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      if (!finished) await reader.cancel().catch(() => undefined);
+    }
+
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
+  async function discardResponseBody(response: Response): Promise<void> {
+    await response.body?.cancel().catch(() => undefined);
+  }
+
+  async function assetOnce(
+    url: string,
+    init: RequestInit,
+    maxBytes: number,
+    addresses: ResolvedAddress[],
+  ): Promise<AssetHopAttempt> {
+    await acquireSlot();
+    try {
+      if (!reserveBudget()) {
+        return { hop: { kind: "result", result: budgetExhausted(url) }, requestMade: false };
+      }
+
+      await reserveCrawlCadence();
+      const timeout = new AbortController();
+      const timer = setTimeout(() => timeout.abort(), descriptor.timeoutMs);
+      const signals = [timeout.signal, options.signal, (init as { signal?: AbortSignal }).signal]
+        .filter((signal): signal is AbortSignal => Boolean(signal));
+
+      try {
+        const response = await performFetch(url, {
+          ...init,
+          redirect: "manual",
+          headers: { "User-Agent": userAgent, ...(init.headers ?? {}) },
+          signal: signals.length > 1 ? AbortSignal.any(signals) : signals[0],
+        }, addresses);
+
+        if (response.status >= 300 && response.status < 400) {
+          await discardResponseBody(response);
+          const location = response.headers.get("location");
+          if (!location) {
+            failures += 1;
+            return { requestMade: true, hop: { kind: "result", result: {
+              status: "failed",
+              url,
+              failure: "server_error",
+              httpStatus: response.status,
+              attempts: 1,
+              message: `GET ${url} -> ${response.status} with no Location header`,
+            } } };
+          }
+          let target: string;
+          try {
+            target = new URL(location, url).toString();
+          } catch {
+            failures += 1;
+            return { requestMade: true, hop: { kind: "result", result: {
+              status: "failed",
+              url,
+              failure: "server_error",
+              httpStatus: response.status,
+              attempts: 1,
+              message: `GET ${url} -> ${response.status} with an unparseable Location (${location})`,
+            } } };
+          }
+          return { requestMade: true, hop: { kind: "redirect", location: target, httpStatus: response.status } };
+        }
+
+        if (response.status < 200 || response.status >= 300) {
+          const body = await readCappedBody(response);
+          const failure = classifyStatus(response.status, body) ?? "server_error";
+          failures += 1;
+          return { requestMade: true, hop: { kind: "result", result: {
+            status: "failed",
+            url,
+            failure,
+            httpStatus: response.status,
+            attempts: 1,
+            message: `GET ${url} -> ${response.status}`,
+          } } };
+        }
+
+        const bytes = await readCappedBytes(response, maxBytes);
+        if (bytes.byteLength === 0) {
+          failures += 1;
+          return { requestMade: true, hop: { kind: "result", result: {
+            status: "failed",
+            url,
+            failure: "empty_body",
+            httpStatus: response.status,
+            attempts: 1,
+            message: `GET ${url} -> ${response.status} with an empty body`,
+          } } };
+        }
+
+        return { requestMade: true, hop: { kind: "result", result: {
+          status: "ok",
+          url,
+          finalUrl: url,
+          bytes,
+          contentType: response.headers.get("content-type"),
+          contentLength: bytes.byteLength,
+          etag: response.headers.get("etag"),
+          lastModified: response.headers.get("last-modified"),
+          httpStatus: response.status,
+        } } };
+      } catch (error) {
+        const tooLarge = error instanceof BodyTooLargeError;
+        failures += 1;
+        return { requestMade: true, hop: { kind: "result", result: {
+          status: "failed",
+          url,
+          failure: tooLarge ? "body_too_large" : classifyError(error),
+          httpStatus: null,
+          attempts: 1,
+          message: error instanceof Error ? error.message : String(error),
+        } } };
+      } finally {
+        clearTimeout(timer);
+      }
+    } finally {
+      releaseSlot();
+    }
   }
 
   async function once(
@@ -644,6 +864,7 @@ export function createSourceHttpClient(
       // 304 is a 3xx but is NOT a redirect — it must be settled before the
       // redirect branch or a conditional GET turns into a bogus hop.
       if (response.status === 304) {
+        await discardResponseBody(response);
         notModified += 1;
         return { requestMade: true, hop: {
           kind: "result",
@@ -652,6 +873,7 @@ export function createSourceHttpClient(
       }
 
       if (response.status >= 300 && response.status < 400) {
+        await discardResponseBody(response);
         const location = response.headers.get("location");
         if (!location) {
           return { requestMade: true, hop: {
@@ -689,6 +911,7 @@ export function createSourceHttpClient(
       }
 
       const body = readBody ? await readCappedBody(response) : null;
+      if (!readBody) await discardResponseBody(response);
       const failure = classifyStatus(response.status, body);
       if (failure) {
         failures += 1;
@@ -840,6 +1063,68 @@ export function createSourceHttpClient(
     };
   }
 
+  async function followAssetChain(
+    startUrl: string,
+    init: RequestInit,
+    maxBytes: number,
+  ): Promise<AssetChainResult> {
+    let url = startUrl;
+    let requestsMade = 0;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      const blocked = guard(url);
+      if (blocked) return { result: blocked, requestsMade };
+      const resolved = await resolvePublicTarget(url);
+      if (resolved.blocked) return { result: resolved.blocked, requestsMade };
+
+      const outcome = await assetOnce(url, init, maxBytes, resolved.addresses);
+      if (outcome.requestMade) requestsMade += 1;
+      if (outcome.hop.kind === "result") return { result: outcome.hop.result, requestsMade };
+
+      const target = outcome.hop.location;
+      if (!isUrlAllowed(descriptor, target)) {
+        return {
+          result: policyFailure(
+            target,
+            "blocked_by_policy",
+            `${url} redirected to ${target}, outside the declared reach of source "${descriptor.id}"`,
+          ),
+          requestsMade,
+        };
+      }
+      url = target;
+    }
+
+    return {
+      result: policyFailure(url, "too_many_redirects", `${startUrl} exceeded ${MAX_REDIRECTS} redirects`),
+      requestsMade,
+    };
+  }
+
+  async function assetWithRetries(
+    url: string,
+    init: RequestInit,
+    maxBytes: number,
+  ): Promise<SourceAssetFetchResult> {
+    let retry = 0;
+    let chain = await followAssetChain(url, init, maxBytes);
+    let last = chain.result;
+    let networkAttempts = chain.requestsMade;
+    while (
+      last.status === "failed"
+      && isRetryable(last.failure)
+      && retry < descriptor.maxRetries
+    ) {
+      if (requests >= descriptor.requestBudgetPerRun) break;
+      retry += 1;
+      await sleep(descriptor.crawlDelayMs * 2 ** retry);
+      chain = await followAssetChain(url, init, maxBytes);
+      last = chain.result;
+      networkAttempts += chain.requestsMade;
+    }
+    if (last.status === "failed") return { ...last, attempts: networkAttempts };
+    return last;
+  }
+
   async function withRetries(
     url: string,
     init: RequestInit,
@@ -872,7 +1157,7 @@ export function createSourceHttpClient(
     return last;
   }
 
-  function guard(url: string): SourceFetchResult | null {
+  function guard(url: string): SourceFailureResult | null {
     if (!isUrlAllowed(descriptor, url)) {
       return policyFailure(
         url,
@@ -933,6 +1218,19 @@ export function createSourceHttpClient(
         }
       }
       return result;
+    },
+
+    async getAsset(url, assetOptions) {
+      const requestedMax = assetOptions?.maxBytes ?? DEFAULT_MAX_ASSET_BYTES;
+      const maxBytes = Math.min(
+        DEFAULT_MAX_ASSET_BYTES,
+        Math.max(1, Math.floor(requestedMax)),
+      );
+      return assetWithRetries(url, {
+        headers: {
+          Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.8,*/*;q=0.1",
+        },
+      }, maxBytes);
     },
 
     async commitFetchState(url, result) {

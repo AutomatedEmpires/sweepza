@@ -119,7 +119,9 @@ export function toListing(
     winnerCount: opt(row.winner_count),
 
     mainImageUrl: opt(row.main_image_url),
+    imageSourceType: opt(row.image_source_type),
     imageAltText: opt(row.image_alt_text),
+    imageAttribution: opt(row.image_attribution),
     categoryFallbackImageUrl: opt(row.category_fallback_image),
 
     entryUrl: row.entry_url ?? "",

@@ -14,6 +14,7 @@ import {
   type FetchStatePort,
 } from "@/lib/ingestion/http";
 import { mapExtraction } from "@/lib/ingestion/mapper";
+import { processListingImage } from "@/lib/ingestion/image-pipeline";
 import {
   SOURCE_REGISTRY,
   SourceFetchError,
@@ -28,6 +29,10 @@ import {
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
 import { discoveryWorkQueue } from "@/lib/db/discovery-work";
+import {
+  finalizeListingImage,
+  storeListingMedia,
+} from "@/lib/db/listing-media";
 import {
   acquireSourceRunLease,
   finishSourceRunLease,
@@ -272,6 +277,7 @@ export async function runIngestion(
       counts.discovered = leads.length;
 
       const held: string[] = [];
+      const mediaRetries: string[] = [];
       // Tracked apart from counts.failed, which deliberately conflates two very
       // different facts: an official page we could not fetch (an outage signal)
       // and a candidate we fetched fine and then rejected (a policy outcome).
@@ -348,7 +354,15 @@ export async function runIngestion(
         healthyOfficialResponses += 1;
         officialHealthyResponses += 1;
 
-        const { candidate } = mapExtraction(result.extraction.raw);
+        const mapped = mapExtraction(result.extraction.raw);
+        // Media is deterministic and rights-gated. Never persist an image URL
+        // emitted by the language model or leave an external hotlink in the
+        // canonical listing while the media pipeline is still pending.
+        const candidate = {
+          ...mapped.candidate,
+          mainImageUrl: null,
+          imageAltText: null,
+        };
 
         // Hard gate: a candidate that fails any non-negotiable (title/
         // description/prize substance, official rules URL, entry URL,
@@ -387,13 +401,38 @@ export async function runIngestion(
           extractionSummary: verification.summary,
           contentHash: result.extraction.contentHash,
         });
+
+        const imageResult = await processListingImage({
+          discovery: result.extraction.imageDiscovery,
+          prizeCategory: candidate.prizeCategory,
+          prizeName: candidate.prizeName,
+          http: activeOfficialHttp,
+          storage: { store: storeListingMedia },
+        });
+        await finalizeListingImage({
+          listingId: claim.listingId,
+          sourcePageUrl: result.extraction.finalUrl,
+          result: imageResult,
+        });
+
+        if (claim.created) counts.created += 1;
+        else counts.skipped += 1;
+
+        if (imageResult.retryable) {
+          counts.failed += 1;
+          mediaRetries.push(urlKey);
+          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
+          continue;
+        }
+
+        // Commit the page validator only after listing identity, media state,
+        // and diagnostics all reached a durable terminal state. If media
+        // persistence fails, the unchanged page must remain retryable.
         await saveAcceptedOfficialFetchState(
           lead.officialUrl,
           result.extraction,
           officialFetchState,
         );
-        if (claim.created) counts.created += 1;
-        else counts.skipped += 1;
         await acknowledgeLead();
       }
 
@@ -415,6 +454,7 @@ export async function runIngestion(
       const notes = [
         outage ? outageNote : null,
         held.length > 0 ? `held: ${held.join("; ")}` : null,
+        mediaRetries.length > 0 ? `media retry: ${mediaRetries.join("; ")}` : null,
       ].filter(Boolean).join(" | ");
 
       await finishIngestionRun(

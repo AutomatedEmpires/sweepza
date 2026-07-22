@@ -11,7 +11,7 @@ import type { SourceDescriptor } from "@/lib/ingestion/source";
 // entire point of testing against it.
 
 export interface FixturePage {
-  body?: string;
+  body?: BodyInit | null;
   status?: number;
   headers?: Record<string, string>;
   /**

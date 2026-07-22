@@ -9,6 +9,7 @@ import { describeEligibility } from "@/lib/eligibility";
 import { ContextTag } from "@/components/context-tag";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingReportButton } from "@/components/listing-report-button";
+import { ListingMedia } from "@/components/listing-media";
 import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
@@ -171,7 +172,6 @@ export function ListingDetail({
     [listing, uiState, saved, store, now],
   );
 
-  const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
   const attributionName = listing.host?.name ?? listing.originalSponsorName;
   const hostVerified =
@@ -387,21 +387,16 @@ export function ListingDetail({
         <div className="min-w-0">
           {/* Hero */}
           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-card bg-line">
-            {imageUrl ? (
-              <Image
-                src={imageUrl}
-                alt={listing.imageAltText ?? listing.prizeName}
-                fill
-                priority
-                className="object-cover"
-                sizes="(min-width:1024px) 640px, 100vw"
-                unoptimized={!canOptimizeImage(imageUrl)}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-line to-paper text-ink/25">
-                <Icon name="gift" size={64} />
-              </div>
-            )}
+            <ListingMedia
+              sourceUrl={listing.mainImageUrl}
+              altText={listing.imageAltText}
+              prizeName={listing.prizeName}
+              sponsorName={attributionName}
+              category={listing.prizeCategory}
+              attribution={listing.imageAttribution}
+              priority
+              sizes="(min-width:1024px) 640px, 100vw"
+            />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/45 to-transparent" />
             <div className="absolute left-4 bottom-4">
               <ContextTag context={context} variant="chip" />

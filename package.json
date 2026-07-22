@@ -19,6 +19,7 @@
     "ops:smoke": "node scripts/smoke.mjs",
     "ops:sync-vercel-env": "./scripts/sync-vercel-env-from-doppler.sh",
     "ops:expire-stale": "node scripts/expire-stale-listings.mjs",
+    "ops:backfill-images": "tsx scripts/backfill-listing-images.ts",
     "ops:seed-dev": "node scripts/seed-dev-listings.mjs",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/db/database.types.ts"
@@ -29,10 +30,12 @@
     "@phosphor-icons/react": "^2.1.10",
     "@sentry/nextjs": "^10.63.0",
     "@supabase/supabase-js": "^2.45.4",
+    "cheerio": "1.2.0",
     "next": "^15.1.0",
     "posthog-js": "^1.398.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sharp": "0.35.3",
     "stripe": "^22.2.0",
     "zod": "^3.23.8"
   },
@@ -45,6 +48,7 @@
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.15",
+    "tsx": "4.23.1",
     "typescript": "^5.8.3",
     "vitest": "^4.1.10"
   },

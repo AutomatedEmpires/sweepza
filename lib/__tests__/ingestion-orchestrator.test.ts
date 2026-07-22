@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   deferWork: vi.fn(),
   getFetchState: vi.fn(),
   saveFetchState: vi.fn(),
+  finalizeListingImage: vi.fn(),
+  storeListingMedia: vi.fn(),
+  processListingImage: vi.fn(),
 }));
 
 // A source that satisfies every gate condition, so these tests exercise the
@@ -102,6 +105,15 @@ vi.mock("@/lib/db/ingestion", () => ({
   startIngestionRun: mocks.startIngestionRun,
 }));
 
+vi.mock("@/lib/db/listing-media", () => ({
+  finalizeListingImage: mocks.finalizeListingImage,
+  storeListingMedia: mocks.storeListingMedia,
+}));
+
+vi.mock("@/lib/ingestion/image-pipeline", () => ({
+  processListingImage: mocks.processListingImage,
+}));
+
 import { runIngestion } from "@/lib/ingestion/orchestrator";
 
 const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -117,6 +129,7 @@ const ok = (r: RawExtraction, finalUrl = "https://brand.com/official-rules") => 
   extraction: {
     raw: r,
     pageText: "page text",
+    imageDiscovery: { candidates: [], rejected: [] },
     contentHash: "hash",
     finalUrl,
     fetchState: { etag: 'W/"accepted"', lastModified: null, httpStatus: 200 },
@@ -184,6 +197,19 @@ beforeEach(() => {
     suspectedDuplicateIds: [],
   });
   mocks.finishIngestionRun.mockResolvedValue(undefined);
+  mocks.finalizeListingImage.mockResolvedValue(undefined);
+  mocks.storeListingMedia.mockResolvedValue({
+    storedUrl: "https://project.supabase.co/storage/v1/object/public/listing-media/test.jpg",
+    objectPath: "test.jpg",
+    deduplicated: false,
+  });
+  mocks.processListingImage.mockResolvedValue({
+    finalStatus: "generated_fallback",
+    selected: null,
+    fallbackUrl: "/api/images/listing-fallback/travel",
+    diagnostics: [],
+    retryable: false,
+  });
 });
 
 describe("runIngestion — a down source must reach the circuit breaker", () => {
@@ -501,6 +527,25 @@ describe("runIngestion publishable gate", () => {
       null,
       expect.objectContaining({ gateDecision: "allowed" }),
     );
+  });
+
+  it("defers work and leaves the page validator unset after a transient media failure", async () => {
+    mocks.processListingImage.mockResolvedValueOnce({
+      finalStatus: "generated_fallback",
+      selected: null,
+      fallbackUrl: "/api/images/listing-fallback/travel",
+      diagnostics: [{ status: "storage_failed" }],
+      retryable: true,
+    });
+
+    const summaries = await runIngestion();
+
+    expect(mocks.finalizeListingImage).toHaveBeenCalledTimes(1);
+    expect(mocks.saveFetchState).not.toHaveBeenCalled();
+    expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).not.toHaveBeenCalledWith("work-1");
+    expect(summaries[0]).toMatchObject({ created: 1, failed: 1 });
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain("media retry:");
   });
 
   it("does not persist a final-hop validator under a redirecting request URL", async () => {
