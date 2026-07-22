@@ -880,6 +880,10 @@ create table private.rate_limit_bucket (
   hit_count integer not null check (hit_count > 0),
   updated_at timestamptz not null default now()
 );
+-- Cleanup scans only the oldest inactive buckets. Retention is deliberately
+-- longer than the maximum accepted 24-hour limiter window.
+create index rate_limit_bucket_updated_at_idx
+  on private.rate_limit_bucket (updated_at, bucket_key);
 revoke all on private.rate_limit_bucket from public, anon, authenticated, service_role;
 
 create function public.consume_rate_limit(
@@ -902,6 +906,24 @@ begin
      or p_window_seconds < 1 or p_window_seconds > 86400 then
     raise exception 'invalid rate limit request' using errcode = '22023';
   end if;
+
+  -- Public namespaces can generate unbounded cardinality (for example, one
+  -- key per client IP). Reclaim a bounded batch on normal traffic so inactive
+  -- keys do not accumulate forever. Lock cleanup candidates in index order and
+  -- skip rows another request is already pruning; this stays short and cannot
+  -- contend with the per-bucket advisory lock below.
+  with stale as materialized (
+    select bucket_key
+      from private.rate_limit_bucket
+     where updated_at < v_now - interval '48 hours'
+     order by updated_at, bucket_key
+     for update skip locked
+     limit 100
+  )
+  delete from private.rate_limit_bucket b
+   using stale s
+   where b.bucket_key = s.bucket_key;
+
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('rate-limit|' || p_bucket_key, 0)
   );
