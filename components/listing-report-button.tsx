@@ -46,6 +46,7 @@ export function ListingReportButton({
   const [pending, startTransition] = useTransition();
   const panelRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLSpanElement>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     if (submitted) successRef.current?.focus();
@@ -87,7 +88,7 @@ export function ListingReportButton({
       window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
-      previousFocus?.focus();
+      if (!submittedRef.current) previousFocus?.focus();
     };
   }, [open]);
 
@@ -112,6 +113,7 @@ export function ListingReportButton({
           setError(body?.error ?? `Report failed (${response.status})`);
           return;
         }
+        submittedRef.current = true;
         setSubmitted(true);
         setOpen(false);
       } catch (submitError) {

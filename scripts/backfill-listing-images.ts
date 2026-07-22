@@ -286,9 +286,43 @@ async function run(argv = process.argv.slice(2)) {
   let leaseToken: string | null = null;
   let networkStarted = false;
   let runError: unknown | null = null;
+  let settlementError: unknown | null = null;
   let availabilityFailures = 0;
   let healthyResponses = 0;
   const descriptor = getSourceDescriptor("official_direct");
+
+  const settleSourceLease = async () => {
+    if (!leaseToken) return;
+    const settlement = planSourceLeaseSettlement({
+      apply,
+      networkStarted,
+      runError,
+      availabilityFailures,
+      healthyResponses,
+    });
+    if (settlement.action === "release") {
+      const { data: released, error: releaseError } = await supabase.rpc("release_source_run_lease", {
+        p_source_id: "official_direct",
+        p_token: leaseToken,
+      });
+      if (releaseError) throw new Error(`source lease release failed: ${releaseError.message}`);
+      if (released !== true) throw new Error("source lease release failed: stale lease");
+      return;
+    }
+
+    const { data: finished, error: finishError } = await supabase.rpc("finish_source_run_lease", {
+      p_source_id: "official_direct",
+      p_token: leaseToken,
+      p_ok: settlement.ok,
+      p_failure_class: settlement.failureClass,
+      p_failure_threshold: descriptor?.failureThreshold ?? 5,
+    });
+    if (finishError) throw new Error(`source lease finish failed: ${finishError.message}`);
+    const outcome = finished as { ok?: boolean; error?: string } | null;
+    if (!outcome?.ok) {
+      throw new Error(`source lease finish failed: ${outcome?.error ?? "invalid_result"}`);
+    }
+  };
 
   try {
     if (!fallbackOnly) {
@@ -427,46 +461,22 @@ async function run(argv = process.argv.slice(2)) {
     }
   } catch (error) {
     runError = error;
-    throw error;
   } finally {
-    if (leaseToken) {
-      const settlement = planSourceLeaseSettlement({
-        apply,
-        networkStarted,
-        runError,
-        availabilityFailures,
-        healthyResponses,
-      });
-      try {
-        if (settlement.action === "release") {
-          const { data: released, error: releaseError } = await supabase.rpc("release_source_run_lease", {
-            p_source_id: "official_direct",
-            p_token: leaseToken,
-          });
-          if (releaseError) throw new Error(`source lease release failed: ${releaseError.message}`);
-          if (released !== true) throw new Error("source lease release failed: stale lease");
-        } else {
-          const { data: finished, error: finishError } = await supabase.rpc("finish_source_run_lease", {
-            p_source_id: "official_direct",
-            p_token: leaseToken,
-            p_ok: settlement.ok,
-            p_failure_class: settlement.failureClass,
-            p_failure_threshold: descriptor?.failureThreshold ?? 5,
-          });
-          if (finishError) throw new Error(`source lease finish failed: ${finishError.message}`);
-          const outcome = finished as { ok?: boolean; error?: string } | null;
-          if (!outcome?.ok) {
-            throw new Error(`source lease finish failed: ${outcome?.error ?? "invalid_result"}`);
-          }
-        }
-      } catch (settlementError) {
-        if (runError === null) throw settlementError;
+    try {
+      await settleSourceLease();
+    } catch (cleanupError) {
+      if (runError === null) {
+        settlementError = cleanupError;
+      } else {
         console.error(
-          `Source lease cleanup also failed: ${settlementError instanceof Error ? settlementError.message : String(settlementError)}`,
+          `Source lease cleanup also failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
         );
       }
     }
   }
+
+  if (runError !== null) throw runError;
+  if (settlementError !== null) throw settlementError;
 
   console.log(JSON.stringify({
     mode: apply ? "apply" : "dry-run",
