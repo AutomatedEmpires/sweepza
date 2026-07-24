@@ -28,6 +28,20 @@ if (!url || !key) {
   process.exit(1);
 }
 
+// Fail closed against a live database. This script writes 14+ demo listings and
+// a demo host; pointing .env.local at production (a real risk — the checked-in
+// file has done exactly that) would pollute the live sweepza.com catalog. Only a
+// localhost Supabase URL is allowed unless explicitly overridden.
+const isLocalSupabase = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/i.test(url);
+if (!isLocalSupabase && env.ALLOW_REMOTE_SEED !== "1") {
+  console.error(
+    `Refusing to seed a non-local Supabase URL:\n  ${url}\n` +
+      "This writes demo data. Point .env.local at the local stack (127.0.0.1:54331), " +
+      "or set ALLOW_REMOTE_SEED=1 to override intentionally.",
+  );
+  process.exit(1);
+}
+
 const supabase = createClient(url, key);
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -115,15 +129,25 @@ const LISTINGS = [
   { slug: "island-escape-week", title: "Island Escape: 7-Night Getaway", prize: "7-night trip for two to Maui", value: 8500, cat: "travel", freq: "weekly", end: 5, start: 30, hosted: true, verified: "verified", tags: ["high_value"], desc: "Flights, resort, and excursions included. Weekly entries allowed." },
   { slug: "creator-laptop-bundle", sponsor: "Northwind Tech", title: "Creator Laptop Bundle", prize: "Laptop + accessories bundle", value: 2400, cat: "electronics", freq: "one_time", end: 2, start: 25, hosted: false, verified: "reviewed", tags: ["high_value"], desc: "A creator-grade laptop, dock, and headphones. Ends this week." },
   { slug: "snack-stash-instant-win", title: "Snack Stash Instant Win", prize: "Snack boxes (100 winners)", value: 45, cat: "food_beverage", freq: "instant_win", end: 20, start: 5, hosted: true, verified: "verified", tags: ["easy_entry"], desc: "Play daily — instant win a curated snack box. 100 boxes up for grabs." },
-  { slug: "dream-kitchen-refresh", sponsor: "HearthHome Retail", title: "Dream Kitchen Refresh", prize: "Kitchen appliance package", value: 5200, cat: "home", freq: "monthly", end: 30, start: 15, hosted: false, verified: "unreviewed", tags: ["high_value"], desc: "A full counter-to-cabinet appliance refresh from a national retailer." },
+  // img:false -> no source image found; renders the branded category fallback.
+  { slug: "dream-kitchen-refresh", sponsor: "HearthHome Retail", title: "Dream Kitchen Refresh", prize: "Kitchen appliance package", value: 5200, cat: "home", freq: "monthly", end: 30, start: 15, hosted: false, verified: "reviewed", img: false, tags: ["high_value"], desc: "A full counter-to-cabinet appliance refresh from a national retailer." },
   { slug: "weekend-truck-giveaway", title: "Adventure Truck Giveaway", prize: "Pickup truck + gear package", value: 62000, cat: "vehicles", freq: "one_time", end: 1, start: 60, hosted: true, featured: true, verified: "verified", tags: ["high_value"], desc: "The flagship giveaway: a trail-ready truck and a full gear loadout. Ends tomorrow." },
   { slug: "trailhead-gear-refit", sponsor: "TrailPeak Outfitters", title: "Trailhead Gear Refit", prize: "Camping + hiking gear set", value: 1800, cat: "outdoor", freq: "weekly", end: 9, start: 12, hosted: false, verified: "reviewed", tags: ["easy_entry"], desc: "Tent, pack, stove, and boots — everything for a season outside." },
-  { slug: "style-capsule-wardrobe", sponsor: "Atelier Loft", title: "Style Capsule Wardrobe", prize: "$1,200 wardrobe styling credit", value: 1200, cat: "fashion_beauty", freq: "one_time", end: 15, start: 8, hosted: false, verified: "unreviewed", tags: [], desc: "A personal-stylist session plus a capsule wardrobe credit." },
+  { slug: "style-capsule-wardrobe", sponsor: "Atelier Loft", title: "Style Capsule Wardrobe", prize: "$1,200 wardrobe styling credit", value: 1200, cat: "fashion_beauty", freq: "one_time", end: 15, start: 8, hosted: false, verified: "reviewed", img: false, tags: [], desc: "A personal-stylist session plus a capsule wardrobe credit." },
   { slug: "family-park-passes", title: "Family Theme Park Passes", prize: "4 annual theme park passes", value: 2800, cat: "family_kids", freq: "daily", end: 7, start: 14, hosted: true, verified: "verified", tags: ["family_friendly", "no_purchase"], desc: "Enter daily to win a year of family park days — four annual passes." },
   { slug: "holiday-lights-bundle", sponsor: "GlowSeason Co.", title: "Holiday Lights Mega Bundle", prize: "Smart holiday lighting kit", value: 650, cat: "seasonal", freq: "one_time", end: 3, start: 10, hosted: false, verified: "reviewed", tags: ["easy_entry"], desc: "A whole-house smart lighting kit before the season starts." },
   { slug: "payday-boost-2500", title: "$2,500 Payday Boost", prize: "$2,500 cash", value: 2500, cat: "cash", freq: "weekly", end: 18, start: 4, hosted: true, verified: "verified", tags: ["high_value", "no_purchase"], desc: "One winner gets a serious payday boost. Weekly re-entry keeps you in." },
-  { slug: "national-parks-roadtrip", sponsor: "Wanderline Travel", title: "National Parks Road Trip", prize: "RV rental + parks pass + fuel card", value: 6800, cat: "travel", freq: "one_time", end: 25, start: 2, hosted: false, verified: "unreviewed", tags: ["high_value"], desc: "Two weeks, five parks, one RV — with fuel and passes covered." },
+  { slug: "national-parks-roadtrip", sponsor: "Wanderline Travel", title: "National Parks Road Trip", prize: "RV rental + parks pass + fuel card", value: 6800, cat: "travel", freq: "one_time", end: 25, start: 2, hosted: false, verified: "reviewed", tags: ["high_value"], desc: "Two weeks, five parks, one RV — with fuel and passes covered." },
   { slug: "game-night-instant-win", title: "Game Night Instant Win", prize: "Console + game bundles (25 winners)", value: 720, cat: "electronics", freq: "instant_win", end: 6, start: 9, hosted: true, verified: "reviewed", tags: ["family_friendly"], desc: "Instant-win a console bundle — 25 winners while the pool lasts." },
+];
+
+// Drafts awaiting a human publish decision — these populate the admin review
+// queue (/admin/review). Private + not active, so the publish guard does not
+// apply and verification stays 'unreviewed' by design. They carry captured
+// source-preview images (external_reference), mirroring an ingested listing.
+const DRAFTS = [
+  { slug: "midnight-gaming-rig-draft", title: "Midnight Gaming Rig Giveaway", prize: "Custom gaming PC + 4K monitor", value: 3200, cat: "electronics", freq: "one_time", end: 21, hosted: true, desc: "A hand-built gaming rig with a 4K display — host-submitted, awaiting review." },
+  { slug: "coastal-weekender-draft", sponsor: "Seabreeze Resorts", title: "Coastal Weekender for Two", prize: "2-night coastal resort stay", value: 1400, cat: "travel", freq: "one_time", end: 18, hosted: false, desc: "A found-by-Sweepza coastal getaway captured from the sponsor page, pending review." },
 ];
 
 async function main() {
@@ -144,9 +168,15 @@ async function main() {
       prize_currency: "USD",
       prize_category: item.cat,
       winner_count: item.freq === "instant_win" ? 25 : 1,
-      main_image_url: `https://picsum.photos/seed/sweepza-${item.slug}/800/600`,
-      image_source_type: "external_reference",
-      image_alt_text: item.prize,
+      // img:false demonstrates the honest fallback — no source image, so the
+      // listing carries the branded per-category art instead of a real photo.
+      // Everything else stores the source image URL as an external_reference
+      // (rendered as an attributed "via {host}" preview), mirroring how the
+      // ingestion pipeline now captures a source's og:image.
+      main_image_url: item.img === false ? null : `https://picsum.photos/seed/sweepza-${item.slug}/800/600`,
+      image_source_type: item.img === false ? null : "external_reference",
+      image_alt_text: item.img === false ? null : item.prize,
+      category_fallback_image: item.img === false ? `/api/images/listing-fallback/${item.cat}` : null,
       entry_url: `https://entries.example.com/${item.slug}`,
       official_rules_url: `https://entries.example.com/${item.slug}/rules`,
       start_date: dateOnly(agoDays(item.start)),
@@ -159,7 +189,9 @@ async function main() {
       public_source_label: hosted ? "host_submitted" : "found_by_sweepza",
       created_by_role: hosted ? "host" : "owner",
       host_id: hosted ? hostId : null,
-      sponsor_name: hosted ? null : item.sponsor ?? null,
+      // Every active public listing must name who is behind it (publish guard).
+      // For host-submitted rows the host is that party.
+      sponsor_name: hosted ? "Bright Horizon Brands" : item.sponsor ?? null,
       sponsor_notes_internal: "dev-seed",
       lifecycle_status: "active",
       visibility_status: "public",
@@ -208,7 +240,65 @@ async function main() {
     console.log(`✓ ${item.slug} (ends ${row.end_date})`);
   }
 
-  console.log(`\nDone: ${upserted}/${LISTINGS.length} listings upserted.`);
+  let drafted = 0;
+  for (const item of DRAFTS) {
+    const hosted = item.hosted;
+    const row = {
+      slug: item.slug,
+      title: item.title,
+      short_description: item.desc,
+      long_description: `${item.desc}\n\nNo purchase necessary. See official rules for eligibility and entry details.`,
+      prize_name: item.prize,
+      prize_value: item.value,
+      prize_currency: "USD",
+      prize_category: item.cat,
+      winner_count: 1,
+      main_image_url: `https://picsum.photos/seed/sweepza-${item.slug}/800/600`,
+      image_source_type: "external_reference",
+      image_alt_text: item.prize,
+      entry_url: `https://entries.example.com/${item.slug}`,
+      official_rules_url: `https://entries.example.com/${item.slug}/rules`,
+      start_date: dateOnly(agoDays(2)),
+      end_date: dateOnly(inDays(item.end)),
+      entry_frequency: item.freq,
+      eligibility_country: "US",
+      age_requirement: 18,
+      no_purchase_necessary: true,
+      source_type: hosted ? "host_submitted" : "owner_seeded",
+      public_source_label: hosted ? "host_submitted" : "found_by_sweepza",
+      created_by_role: hosted ? "host" : "owner",
+      host_id: hosted ? hostId : null,
+      sponsor_name: hosted ? "Bright Horizon Brands" : item.sponsor ?? null,
+      sponsor_notes_internal: "dev-seed",
+      review_notes_internal: "Awaiting first publish decision (dev seed).",
+      lifecycle_status: "draft",
+      visibility_status: "private",
+      moderation_status: "clear",
+      duplicate_status: "clear",
+      listing_verification_status: "unreviewed",
+    };
+
+    const { data: existingDraft, error: draftLookup } = await supabase
+      .from("listing")
+      .select("id")
+      .eq("slug", item.slug)
+      .maybeSingle();
+    if (draftLookup) {
+      console.error(`✗ draft ${item.slug}: ${draftLookup.message}`);
+      continue;
+    }
+    const { error } = existingDraft
+      ? await supabase.from("listing").update(row).eq("id", existingDraft.id)
+      : await supabase.from("listing").insert(row);
+    if (error) {
+      console.error(`✗ draft ${item.slug}: ${error.message}`);
+      continue;
+    }
+    drafted += 1;
+    console.log(`✎ draft ${item.slug} (review queue)`);
+  }
+
+  console.log(`\nDone: ${upserted}/${LISTINGS.length} listings + ${drafted}/${DRAFTS.length} review-queue drafts.`);
 }
 
 main().catch((error) => {

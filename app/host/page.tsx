@@ -17,7 +17,7 @@ import {
   assertPaymentsEnabled,
   isPaymentsEnabled,
 } from "@/lib/billing/payment-gate";
-import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { ensureCurrentAppUser, isAuthAvailable } from "@/lib/auth";
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { getLatestHostApplicationForUser } from "@/lib/db/host-applications";
@@ -80,7 +80,7 @@ export default async function HostPage({
   searchParams: Promise<{ checkout?: string }>;
 }) {
   const authUser = await ensureCurrentAppUser();
-  const clerkConfigured = isClerkConfigured();
+  const clerkConfigured = isAuthAvailable();
   const checkoutStatus = (await searchParams)?.checkout ?? null;
   const isHost = authUser?.appUser.is_host ?? false;
   const dashboard = authUser

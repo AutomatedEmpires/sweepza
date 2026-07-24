@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Icon, type IconName } from "@/components/icon";
+import { HeroShowcase } from "@/components/hero-showcase";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
 import { GamificationStrip } from "@/components/gamification-strip";
@@ -258,17 +258,7 @@ export default async function TodayPage() {
             </div>
           </div>
 
-          <div className="order-first overflow-hidden rounded-sheet border border-line bg-surface shadow-e2 lg:order-last">
-            <Image
-              src="/brand/sweepza-logo.png"
-              alt="Sweepza — Sweepstakes Simplified"
-              width={2500}
-              height={1696}
-              priority
-              className="h-auto w-full"
-              sizes="(min-width: 1024px) 440px, (min-width: 640px) 620px, calc(100vw - 40px)"
-            />
-          </div>
+          <HeroShowcase />
         </div>
         <p className="mt-4 text-xs leading-relaxed text-graphite lg:max-w-[46%] lg:ml-auto">
           Sweepza is a discovery and tracking service. Third-party sponsors run

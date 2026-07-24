@@ -389,6 +389,7 @@ export function ListingDetail({
           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-card bg-line">
             <ListingMedia
               sourceUrl={listing.mainImageUrl || listing.categoryFallbackImageUrl}
+              sourceType={listing.imageSourceType}
               altText={listing.imageAltText}
               prizeName={listing.prizeName}
               sponsorName={attributionName}

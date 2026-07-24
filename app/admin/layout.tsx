@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminNav } from "@/components/admin-nav";
-import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
+import { ensureCurrentAppUser, isAuthAvailable } from "@/lib/auth";
 import { getNavBadgeCounts } from "@/lib/db/admin";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  if (!isClerkConfigured()) {
+  if (!isAuthAvailable()) {
     return (
       <AdminGateNotice
         title="Admin unavailable"

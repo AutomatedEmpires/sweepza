@@ -6,8 +6,30 @@ import { cn } from "@/lib/cn";
 import { canOptimizeImage } from "@/lib/image";
 import { listingFallbackTheme } from "@/lib/listing-media";
 
+/**
+ * An honest source credit for an externally-referenced preview image. We render
+ * the operator's own image (og:image / host-supplied URL) without copying or
+ * hosting the bytes, so we say where it comes from rather than implying it is
+ * ours. Only shown for `external_reference` images with a resolvable host; the
+ * app's own relative category-fallback URL (and rights-cleared stored assets,
+ * which carry an explicit `attribution`) never trigger it.
+ */
+function sourceCredit(
+  url: string | null,
+  sourceType: string | undefined,
+): string | null {
+  if (!url || sourceType !== "external_reference") return null;
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return host || null;
+  } catch {
+    return null;
+  }
+}
+
 export function ListingMedia({
   sourceUrl,
+  sourceType,
   altText,
   prizeName,
   sponsorName,
@@ -19,6 +41,7 @@ export function ListingMedia({
   imageClassName,
 }: {
   sourceUrl?: string;
+  sourceType?: string;
   altText?: string;
   prizeName: string;
   sponsorName?: string;
@@ -32,6 +55,7 @@ export function ListingMedia({
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
   const usableSource = sourceUrl && failedUrl !== sourceUrl ? sourceUrl : null;
+  const credit = sourceCredit(usableSource, sourceType);
   const theme = listingFallbackTheme(category);
 
   return (
@@ -51,6 +75,10 @@ export function ListingMedia({
           {attribution ? (
             <span className="absolute bottom-2 right-2 max-w-[72%] truncate rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
               Image: {attribution}
+            </span>
+          ) : credit ? (
+            <span className="absolute bottom-2 right-2 max-w-[72%] truncate rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+              via {credit}
             </span>
           ) : null}
         </>

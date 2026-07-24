@@ -206,6 +206,7 @@ export function ListingCard({
       >
         <ListingMedia
           sourceUrl={listing.mainImageUrl || listing.categoryFallbackImageUrl}
+          sourceType={listing.imageSourceType}
           altText={listing.imageAltText}
           prizeName={listing.prizeName}
           sponsorName={attributionName}
