@@ -109,6 +109,22 @@ const config: Config = {
             transform: "translate(var(--drift, 0px), 54px) rotate(200deg)",
           },
         },
+        // Hero discovery scene — a calm, always-on ambient motion. Every keyframe
+        // animates only transform/opacity so it stays cheap; the global
+        // prefers-reduced-motion clamp (app/globals.css) freezes it to a clean
+        // static composition for anyone who asks.
+        "hero-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        "hero-drift": {
+          "0%, 100%": { transform: "translate3d(0, 0, 0) scale(1)" },
+          "50%": { transform: "translate3d(4%, -6%, 0) scale(1.1)" },
+        },
+        "hero-twinkle": {
+          "0%, 100%": { opacity: "0.2", transform: "scale(0.8)" },
+          "50%": { opacity: "1", transform: "scale(1)" },
+        },
       },
       animation: {
         "settle-in": "settle-in 0.35s cubic-bezier(0.22,1,0.36,1) both",
@@ -119,6 +135,10 @@ const config: Config = {
         sheen: "sheen 2.4s ease-in-out 0.15s",
         "coin-rise": "coin-rise 1.05s cubic-bezier(0.22,1,0.36,1) both",
         "confetti-fall": "confetti-fall 1.1s ease-out both",
+        "hero-float": "hero-float 6s ease-in-out infinite",
+        "hero-drift": "hero-drift 16s ease-in-out infinite",
+        "hero-twinkle": "hero-twinkle 3.2s ease-in-out infinite",
+        "hero-sheen": "sheen 2.8s ease-in-out infinite",
       },
     },
   },

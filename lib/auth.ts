@@ -2,6 +2,7 @@ import "server-only";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import type { AppUserRow } from "@/lib/db/types";
+import { isDevAuthEnabled, resolveDevAuthClerkId } from "@/lib/dev-auth";
 import { env } from "@/lib/env";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -29,6 +30,35 @@ export function isClerkConfigured(): boolean {
   return Boolean(
     env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && env.CLERK_SECRET_KEY,
   );
+}
+
+/**
+ * Whether any authentication identity can be established at all — real Clerk, or
+ * the fail-closed local dev bypass. Gates that show an "auth unavailable" notice
+ * should use this so the dev bypass can reach them on localhost.
+ */
+export function isAuthAvailable(): boolean {
+  return isClerkConfigured() || isDevAuthEnabled();
+}
+
+/** Load a seeded app_user by clerk_user_id (used only by the dev-auth bypass). */
+async function loadAppUserByClerkId(
+  clerkUserId: string,
+): Promise<SweepzaAuthUser | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("app_user")
+    .select("*")
+    .eq("clerk_user_id", clerkUserId)
+    .maybeSingle<AppUserRow>();
+  if (error || !data) return null;
+  return {
+    clerkUserId: data.clerk_user_id,
+    appUserId: data.id,
+    email: data.email,
+    displayName: data.display_name,
+    appUser: data,
+  };
 }
 
 function getPrimaryEmailAddress(
@@ -121,6 +151,13 @@ export async function deleteAppUserByClerkId(clerkUserId: string): Promise<void>
 }
 
 export async function ensureCurrentAppUser(): Promise<SweepzaAuthUser | null> {
+  // Local dev-only impersonation of a seeded admin/host, resolved before Clerk
+  // so gated surfaces are reachable on localhost without a Clerk instance. This
+  // is fail-closed in production: resolveDevAuthClerkId() returns null (without
+  // reading any cookie) unless the three dev guards all hold — see lib/dev-auth.
+  const devClerkId = await resolveDevAuthClerkId();
+  if (devClerkId) return loadAppUserByClerkId(devClerkId);
+
   if (!isClerkConfigured()) return null;
 
   let authState: Awaited<ReturnType<typeof auth>>;

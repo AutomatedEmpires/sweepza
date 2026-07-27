@@ -16,7 +16,8 @@ on conflict (clerk_user_id) do nothing;
 insert into listing (
   id, slug, title, short_description, prize_name, prize_value, prize_currency, prize_category,
   main_image_url, image_source_type, entry_url, official_rules_url, end_date, entry_frequency,
-  eligibility_country, source_type, public_source_label, created_by_role, created_by_user_id,
+  eligibility_country, sponsor_name, no_purchase_necessary, moderation_status, duplicate_status,
+  source_type, public_source_label, created_by_role, created_by_user_id,
   lifecycle_status, visibility_status, listing_verification_status, published_at
 ) values
 (
@@ -26,7 +27,7 @@ insert into listing (
   'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 1200 900%27%3E%3Cdefs%3E%3ClinearGradient id=%27bg%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop stop-color=%27%231D4ED8%27/%3E%3Cstop offset=%271%27 stop-color=%27%230F172A%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%271200%27 height=%27900%27 fill=%27url(%23bg)%27/%3E%3Ccircle cx=%271000%27 cy=%27160%27 r=%27110%27 fill=%27rgba(255,255,255,0.12)%27/%3E%3Ctext x=%2790%27 y=%27390%27 fill=%27white%27 font-family=%27Arial,sans-serif%27 font-size=%2784%27 font-weight=%27700%27%3EWin $10,000%3C/text%3E%3Ctext x=%2790%27 y=%27498%27 fill=%27white%27 font-family=%27Arial,sans-serif%27 font-size=%27118%27 font-weight=%27800%27%3EDream Cash%3C/text%3E%3Ctext x=%2790%27 y=%27582%27 fill=%27%23DBEAFE%27 font-family=%27Arial,sans-serif%27 font-size=%2738%27%3EDaily entry • No purchase necessary%3C/text%3E%3C/svg%3E', 'photo_bucket',
   'https://example.com/enter/dream-cash', 'https://example.com/rules/dream-cash',
   (current_date + interval '5 days')::date, 'daily',
-  'US', 'owner_seeded', 'found_by_sweepza', 'owner', '00000000-0000-0000-0000-000000000001',
+  'US', 'Cashfall Rewards', true, 'clear', 'clear', 'owner_seeded', 'found_by_sweepza', 'owner', '00000000-0000-0000-0000-000000000001',
   'active', 'public', 'verified', now()
 ),
 (
@@ -36,7 +37,7 @@ insert into listing (
   'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 1200 900%27%3E%3Cdefs%3E%3ClinearGradient id=%27bg%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop stop-color=%27%230EA5E9%27/%3E%3Cstop offset=%271%27 stop-color=%27%23158F77%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%271200%27 height=%27900%27 fill=%27url(%23bg)%27/%3E%3Ccircle cx=%27970%27 cy=%27170%27 r=%27120%27 fill=%27rgba(255,255,255,0.18)%27/%3E%3Ctext x=%2790%27 y=%27390%27 fill=%27white%27 font-family=%27Arial,sans-serif%27 font-size=%2780%27 font-weight=%27700%27%3EMaui Getaway%3C/text%3E%3Ctext x=%2790%27 y=%27498%27 fill=%27white%27 font-family=%27Arial,sans-serif%27 font-size=%27116%27 font-weight=%27800%27%3Efor Two%3C/text%3E%3Ctext x=%2790%27 y=%27582%27 fill=%27%23ECFEFF%27 font-family=%27Arial,sans-serif%27 font-size=%2738%27%3E7 nights • Flights included%3C/text%3E%3C/svg%3E', 'photo_bucket',
   'https://example.com/enter/maui', 'https://example.com/rules/maui',
   (current_date + interval '20 days')::date, 'one_time',
-  'US', 'owner_seeded', 'found_by_sweepza', 'owner', '00000000-0000-0000-0000-000000000001',
+  'US', 'Island Escapes Co.', true, 'clear', 'clear', 'owner_seeded', 'found_by_sweepza', 'owner', '00000000-0000-0000-0000-000000000001',
   'active', 'public', 'reviewed', now()
 )
 on conflict (slug) do update
@@ -49,6 +50,10 @@ set
   prize_category = excluded.prize_category,
   main_image_url = excluded.main_image_url,
   image_source_type = excluded.image_source_type,
+  sponsor_name = excluded.sponsor_name,
+  no_purchase_necessary = excluded.no_purchase_necessary,
+  moderation_status = excluded.moderation_status,
+  duplicate_status = excluded.duplicate_status,
   entry_url = excluded.entry_url,
   official_rules_url = excluded.official_rules_url,
   end_date = excluded.end_date,
@@ -63,8 +68,13 @@ set
   listing_verification_status = excluded.listing_verification_status,
   published_at = excluded.published_at;
 
+-- A verified win is a claim Sweepza has to be able to back, so the schema
+-- requires published + a public evidence URL + a named reviewer and timestamp
+-- (winner_verified_requires_public_evidence). The unverified post carries none
+-- of that and is simply a member's own account of their win.
 insert into winner_post (
-  id, app_user_id, listing_id, caption, photo_url, verified_win, review_status, created_at
+  id, app_user_id, listing_id, caption, photo_url, verified_win, review_status, created_at,
+  verification_evidence_url, reviewed_by, reviewed_at
 ) values
 (
   '00000000-0000-0000-0000-0000000000b1',
@@ -74,7 +84,10 @@ insert into winner_post (
   null,
   true,
   'published',
-  now() - interval '8 days'
+  now() - interval '8 days',
+  'https://example.com/winners/dream-cash-10k-announcement',
+  '00000000-0000-0000-0000-000000000001',
+  now() - interval '7 days'
 ),
 (
   '00000000-0000-0000-0000-0000000000b2',
@@ -84,14 +97,20 @@ insert into winner_post (
   null,
   false,
   'published',
-  now() - interval '4 days'
+  now() - interval '4 days',
+  null,
+  null,
+  null
 )
 on conflict (id) do update
 set
   caption = excluded.caption,
   verified_win = excluded.verified_win,
   review_status = excluded.review_status,
-  created_at = excluded.created_at;
+  created_at = excluded.created_at,
+  verification_evidence_url = excluded.verification_evidence_url,
+  reviewed_by = excluded.reviewed_by,
+  reviewed_at = excluded.reviewed_at;
 
 insert into winner_reaction (id, winner_post_id, app_user_id, reaction_type, created_at)
 values

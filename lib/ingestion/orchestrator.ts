@@ -15,6 +15,7 @@ import {
 } from "@/lib/ingestion/http";
 import { mapExtraction } from "@/lib/ingestion/mapper";
 import { processListingImage } from "@/lib/ingestion/image-pipeline";
+import { selectSourcePreviewImage } from "@/lib/ingestion/source-preview";
 import {
   SOURCE_REGISTRY,
   SourceFetchError,
@@ -352,13 +353,24 @@ export async function runIngestion(
         officialHealthyResponses += 1;
 
         const mapped = mapExtraction(result.extraction.raw);
-        // Media is deterministic and rights-gated. Never persist an image URL
-        // emitted by the language model or leave an external hotlink in the
-        // canonical listing while the media pipeline is still pending.
+        // Media runs in two independent lanes:
+        //  1) Rights-cleared STORED assets (image_source_type 'photo_bucket'),
+        //     handled below by processListingImage. Dormant until Sweepza has an
+        //     approved binary storage provider — it fails closed.
+        //  2) A source PREVIEW: the operator's own representative image
+        //     (og:image / JSON-LD / hero), taken from the DETERMINISTIC page
+        //     markup — never the language model's guessed field. We do not copy
+        //     the bytes; per the storage=none product contract we store the
+        //     source URL itself (persisted as 'external_reference') and render it
+        //     as an attributed preview, exactly as a host-submitted image URL is
+        //     rendered today. No usable image ⇒ null ⇒ branded category art.
+        const sourcePreview = selectSourcePreviewImage(result.extraction.imageDiscovery);
         const candidate = {
           ...mapped.candidate,
-          mainImageUrl: null,
-          imageAltText: null,
+          mainImageUrl: sourcePreview?.url ?? null,
+          imageAltText: sourcePreview
+            ? sourcePreview.altText ?? mapped.candidate.imageAltText
+            : null,
         };
 
         // Hard gate: a candidate that fails any non-negotiable (title/
