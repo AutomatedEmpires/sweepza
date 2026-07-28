@@ -164,9 +164,12 @@ describe("filterListings", () => {
         "U.S. and Canada",
         "USA & Canada",
         "United States and Canada",
+        "United States & Canada",
+        "United States / Canada",
         "Canada and US",
         "Canada & USA",
         "Canada and United States",
+        "Canada, United States",
       ].map((eligibilityCountry) => makeListing({ eligibilityCountry }));
       const canada = makeListing({ eligibilityCountry: "Canada" });
       const unknown = makeListing({ eligibilityCountry: undefined });

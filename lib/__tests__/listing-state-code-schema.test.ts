@@ -92,8 +92,10 @@ describe("listing eligibility state codes", () => {
       "US and Canada",
       "U.S. and Canada",
       "USA & Canada",
+      "United States / Canada",
       "Canada and US",
       "Canada & USA",
+      "Canada, United States",
     ]) {
       const parsed = hostListingSubmissionSchema.parse({
         ...common,
