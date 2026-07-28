@@ -53,6 +53,14 @@ it("uses listing-card skeletons only for the Discover inventory workflow", () =>
   expect(routesUsingListingSkeletons).toEqual(["discover"]);
 });
 
+it("lets primary Discover read failures reach its retry boundary", () => {
+  const page = source("app/discover/page.tsx");
+
+  expect(page).not.toContain("withPublicFallback");
+  expect(page).toContain("getCachedPublicListings(60)");
+  expect(page).toContain("getPublicListings({");
+});
+
 describe("shared workflow error presentation", () => {
   const boundary = source("components/workflow-error-state.tsx");
 

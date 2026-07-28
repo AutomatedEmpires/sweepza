@@ -153,14 +153,26 @@ describe("filterListings", () => {
     });
 
     it("matches explicit US eligibility and never infers it from missing data", () => {
-      const us = makeListing({ eligibilityCountry: "United States" });
-      const usa = makeListing({ eligibilityCountry: "USA" });
+      const eligible = [
+        "US",
+        "USA",
+        "United States",
+        "United States of America",
+        "USCA",
+        "US / Canada",
+        "United States and Canada",
+        "Canada and United States",
+      ].map((eligibilityCountry) => makeListing({ eligibilityCountry }));
       const canada = makeListing({ eligibilityCountry: "Canada" });
       const unknown = makeListing({ eligibilityCountry: undefined });
 
       expect(
-        filterListings([us, usa, canada, unknown], ["us_eligible"], NOW),
-      ).toEqual([us, usa]);
+        filterListings(
+          [...eligible, canada, unknown],
+          ["us_eligible"],
+          NOW,
+        ),
+      ).toEqual(eligible);
     });
 
     it("matches only listings with an official rules link", () => {

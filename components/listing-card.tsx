@@ -319,7 +319,7 @@ export function ListingCard({
                 href={listing.officialRulesUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 inline-flex min-h-8 items-center gap-1 pr-2 text-[11px] font-semibold text-graphite underline-offset-2 transition hover:text-ink hover:underline"
+                className="mt-1 inline-flex min-h-11 items-center gap-1 pr-2 text-[11px] font-semibold text-graphite underline-offset-2 transition hover:text-ink hover:underline"
               >
                 Official rules
                 <Icon name="externalLink" size={10} />
@@ -397,7 +397,7 @@ export function ListingCard({
 
           <Link
             href={`/sweeps/${listing.slug}`}
-            className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-line px-3 text-xs font-semibold text-ink/75 transition hover:border-ink/25 hover:text-ink"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl border border-line px-3 text-xs font-semibold text-ink/75 transition hover:border-ink/25 hover:text-ink"
           >
             <Icon name="info" size={15} />
             <span className="hidden sm:inline">Details</span>
@@ -433,7 +433,7 @@ export function ListingCard({
               <button
                 type="button"
                 onClick={markEntered}
-                className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white"
+                className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust"
               >
                 Yes, mark entered
               </button>
@@ -666,7 +666,7 @@ export function ListingCard({
           <div className="mt-3 rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
             <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
             <div className="mt-2 flex gap-2">
-              <button type="button" onClick={markEntered} className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+              <button type="button" onClick={markEntered} className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust">
                 Yes, mark entered
               </button>
               <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">

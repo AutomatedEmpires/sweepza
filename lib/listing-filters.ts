@@ -1,5 +1,6 @@
 import type { Listing } from "@/lib/types/listing";
 import { daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
+import { countryIncludesUnitedStates } from "@/lib/eligibility-country";
 
 // Filters, sorting, and query helpers for Discover.
 // Source of truth: "Sweepza — Search, Filters & Query Engine".
@@ -134,15 +135,10 @@ function matchesChip(
       return typeof listing.prizeValue === "number" && listing.prizeValue >= 100;
     case "value_1000_plus":
       return typeof listing.prizeValue === "number" && listing.prizeValue >= 1000;
-    case "us_eligible": {
-      const country = listing.eligibilityCountry?.toLowerCase() ?? "";
-      return (
-        country === "us" ||
-        country === "usa" ||
-        country.includes("united states") ||
-        country.includes("u.s.")
-      );
-    }
+    case "us_eligible":
+      return listing.eligibilityCountry
+        ? countryIncludesUnitedStates(listing.eligibilityCountry)
+        : false;
     case "rules_linked":
       return Boolean(listing.officialRulesUrl);
     case "verified":
