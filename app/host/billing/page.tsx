@@ -5,7 +5,10 @@ import { cn } from "@/lib/cn";
 import { getHostBillingSnapshot } from "@/lib/db/host-dashboard";
 import { createStripePortalSessionAction } from "./actions";
 
-export const metadata = { title: "Host billing" };
+export const metadata = {
+  title: "Host billing",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 export default async function HostBillingPage() {

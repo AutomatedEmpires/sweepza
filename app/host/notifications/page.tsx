@@ -2,6 +2,10 @@ import Link from "next/link";
 import { getNotificationPrefs } from "@/lib/db/host-dashboard";
 import { updateNotificationPrefsAction } from "./actions";
 
+export const metadata = {
+  title: "Host notification preferences",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 const TOGGLES: Array<{ name: string; label: string; description: string }> = [

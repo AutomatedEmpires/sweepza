@@ -10,6 +10,7 @@ import type { ListingRow } from "@/lib/db/types";
 export const metadata = {
   title: "Share your win",
   description: "Submit a real Sweepza win for review and publication.",
+  robots: { index: false, follow: false },
 };
 export const dynamic = "force-dynamic";
 

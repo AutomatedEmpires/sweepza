@@ -197,7 +197,6 @@ describe("processDueEmailDeliveries", () => {
   });
 
   it("bounds one invocation to one provider wave of five", async () => {
-    vi.useRealTimers();
     let active = 0;
     let maximumActive = 0;
     const deliveries = Array.from({ length: 5 }, (_, index) => ({
@@ -215,7 +214,9 @@ describe("processDueEmailDeliveries", () => {
     });
     const { client } = makeSupabase();
 
-    const summary = await processDueEmailDeliveries(client);
+    const summaryPromise = processDueEmailDeliveries(client);
+    await vi.advanceTimersByTimeAsync(5);
+    const summary = await summaryPromise;
 
     expect(summary).toMatchObject({ claimed: 5, sent: 5, failed: 0 });
     expect(mocks.claimDueEmailDeliveries).toHaveBeenCalledWith(client, 5);
@@ -300,6 +301,25 @@ describe("processDueEmailDeliveries", () => {
       expect(mocks.deliverClaimedEmail).not.toHaveBeenCalled();
     },
   );
+
+  it("suppresses a reminder when no explicit preference row exists", async () => {
+    const { client } = makeSupabase({
+      prefs: { data: [], error: null },
+    });
+
+    await expect(processDueEmailDeliveries(client)).resolves.toMatchObject({
+      claimed: 1,
+      skipped: 1,
+      sent: 0,
+      failureDetails: [],
+    });
+    expect(mocks.suppressEmailDelivery).toHaveBeenCalledWith(
+      client,
+      delivery,
+      "notification_preference_changed",
+    );
+    expect(mocks.deliverClaimedEmail).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["ready_again", "ready_again"],

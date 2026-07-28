@@ -8,6 +8,10 @@ import {
 import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { editHostListingAction } from "./actions";
 
+export const metadata = {
+  title: "Edit host listing",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 export default async function EditHostListingPage({

@@ -8,7 +8,7 @@ import {
 
 const PREF_COLUMNS = "email_enabled, ready_again, ends_today, ends_soon";
 
-/** Current seeker reminder prefs, defaulting to fully opted-in when no row. */
+/** Current prefs. A missing row means no email consent; categories stay ready. */
 export async function getSeekerNotificationPrefs(
   appUserId: string,
 ): Promise<SeekerNotificationPrefsInput> {

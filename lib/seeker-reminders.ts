@@ -40,7 +40,10 @@ export interface ReminderCandidate {
   activity: ReminderActivity;
 }
 
-/** Per-event opt-ins, mapped from notification_pref. Missing row ⇒ all on. */
+/**
+ * Per-event category choices, mapped from notification_pref. Category defaults
+ * stay on; the separate master email consent defaults off when the row is absent.
+ */
 export interface ReminderPrefs {
   readyAgain: boolean;
   endsToday: boolean;

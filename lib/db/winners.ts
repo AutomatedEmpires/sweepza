@@ -54,7 +54,7 @@ export async function getPublishedWinnerPosts(
         "review_status",
         "created_at",
         "updated_at",
-        "app_user:app_user(display_name)",
+        "app_user:app_user!winner_post_app_user_id_fkey(display_name)",
         "listing:listing!inner(slug, title, prize_value)",
       ].join(","),
     )
@@ -162,7 +162,7 @@ export async function listPendingWinnerPostsForModeration(): Promise<WinnerModer
     .select(
       [
         "*",
-        "app_user:app_user(display_name, email)",
+        "app_user:app_user!winner_post_app_user_id_fkey(display_name, email)",
         "listing:listing(title, slug)",
       ].join(","),
     )

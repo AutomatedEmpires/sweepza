@@ -2,41 +2,107 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getSeekerNotificationPrefs } from "@/lib/db/seeker-notification-prefs";
-import { updateSeekerNotificationPrefsAction } from "./actions";
+import {
+  isEmailOutboxSchemaReady,
+  isOutboundEmailConfigured,
+  isOutboundEmailEnabled,
+} from "@/lib/email/outbound-gate";
+import { ReminderPreferencesForm } from "./reminder-preferences-form";
 
-export const metadata = { title: "Reminders" };
+export const metadata = {
+  title: "Reminders",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
-// Seeker reminder preferences — the opt-out surface for the seeker-reminders
-// cron. Only meaningful for signed-in seekers (prefs are per app_user); local
-// browsers have nothing to persist, so they get a sign-in prompt instead.
-
-const TOGGLES: Array<{ name: string; label: string; description: string }> = [
-  {
-    name: "ready_again",
-    label: "Ready to enter again",
-    description: "When a daily or recurring sweep's entry window re-opens for you.",
-  },
-  {
-    name: "ends_today",
-    label: "Ending today",
-    description: "A last-call nudge for a sweep you saved or entered that closes today.",
-  },
-  {
-    name: "ends_soon",
-    label: "Ending soon",
-    description: "A heads-up a few days before a sweep you're tracking closes.",
-  },
-];
+// Seeker reminder preferences are explicit consent, not an activation control.
+// The global outbound gate remains operator-owned and is surfaced honestly below.
 
 function BackLink() {
   return (
     <Link
       href="/profile"
-      className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
+      className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pine"
     >
       Profile
     </Link>
+  );
+}
+
+function DeliveryStatus({
+  enabled,
+  configured,
+  schemaReady,
+}: {
+  enabled: boolean;
+  configured: boolean;
+  schemaReady: boolean;
+}) {
+  if (!enabled) {
+    return (
+      <div
+        role="status"
+        data-delivery-state="inactive"
+        className="flex gap-3 rounded-card border border-ocean/25 bg-ocean/[0.06] p-4"
+      >
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ocean/10 text-ocean">
+          <Icon name="bell" size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-ink">
+            Email delivery is inactive
+          </p>
+          <p className="mt-0.5 text-sm leading-relaxed text-graphite">
+            Sweepza is not sending reminder emails while outbound delivery is
+            inactive. Saving choices here does not activate it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!configured || !schemaReady) {
+    return (
+      <div
+        role="status"
+        data-delivery-state="unavailable"
+        className="flex gap-3 rounded-card border border-flame/25 bg-flame/[0.06] p-4"
+      >
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flame/10 text-flame">
+          <Icon name="bell" size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-ink">
+            Email delivery is not ready
+          </p>
+          <p className="mt-0.5 text-sm leading-relaxed text-graphite">
+            Sweepza is not sending reminder emails while the delivery service
+            is unavailable. Saved choices remain preferences only.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="status"
+      data-delivery-state="available"
+      className="flex gap-3 rounded-card border border-pine/25 bg-pine/[0.06] p-4"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-pine/10 text-pine">
+        <Icon name="bell" size={17} />
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-ink">
+          Email delivery is available
+        </p>
+        <p className="mt-0.5 text-sm leading-relaxed text-graphite">
+          Sweepza may send a reminder only when you allow email, a selected
+          category matches current tracked activity, and delivery succeeds.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -57,13 +123,13 @@ export default async function SeekerNotificationsPage() {
           </span>
           <p className="font-display text-xl text-ink">Sign in to set reminders</p>
           <p className="max-w-[42ch] text-sm leading-relaxed text-graphite">
-            Reminder emails keep your streak alive and your saved sweeps from
-            slipping away. Sign in to choose which ones you get.
+            Sign in to choose whether Sweepza may send ready-again and deadline
+            reminders when outbound delivery is available.
           </p>
           {clerkConfigured && (
             <Link
               href="/sign-in"
-              className="mt-1 rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
+              className="mt-1 inline-flex min-h-11 items-center rounded-xl bg-ember px-5 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember focus-visible:ring-offset-2"
             >
               Sign in
             </Link>
@@ -74,74 +140,38 @@ export default async function SeekerNotificationsPage() {
   }
 
   const prefs = await getSeekerNotificationPrefs(authUser.appUserId);
+  const outboundEnabled = isOutboundEmailEnabled();
+  const outboundConfigured = isOutboundEmailConfigured();
+  const outboxSchemaReady = isEmailOutboxSchemaReady();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-8 pt-8">
+    <div className="mx-auto max-w-2xl px-4 pb-10 pt-8 sm:px-6">
       <header className="mb-2 flex items-start justify-between gap-3 px-1">
-        <h1 className="font-display text-3xl text-ink">Reminders</h1>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-pine">
+            Preferences
+          </p>
+          <h1 className="mt-1 font-display text-3xl font-semibold text-ink sm:text-4xl">
+            Reminders
+          </h1>
+        </div>
         <BackLink />
       </header>
-      <p className="mb-6 px-1 text-sm text-graphite">
-        Sweepza only emails you when a sweep you saved or entered actually needs
-        you — never marketing. Turn any of these off anytime.
+      <p className="mb-5 px-1 text-sm leading-relaxed text-graphite">
+        Choose whether Sweepza may send ready-again and deadline reminders when
+        delivery is available. These settings do not enter promotions or change
+        official deadlines.
       </p>
 
-      <form action={updateSeekerNotificationPrefsAction} className="flex flex-col gap-4">
-        {/* Master switch */}
-        <label
-          htmlFor="email_enabled"
-          className="flex items-start gap-3 rounded-card border border-ember/30 bg-ember/[0.04] p-4 shadow-e1"
-        >
-          <input
-            id="email_enabled"
-            name="email_enabled"
-            type="checkbox"
-            defaultChecked={prefs.email_enabled}
-            className="mt-1 h-4 w-4 rounded border-line text-ember focus:ring-ember"
-          />
-          <span>
-            <span className="block text-sm font-semibold text-ink">Reminder emails</span>
-            <span className="block text-sm text-graphite">
-              The master switch. Turn this off to pause every reminder below.
-            </span>
-          </span>
-        </label>
+      <div className="mb-5">
+        <DeliveryStatus
+          enabled={outboundEnabled}
+          configured={outboundConfigured}
+          schemaReady={outboxSchemaReady}
+        />
+      </div>
 
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-1 px-1 text-xs font-semibold uppercase tracking-[0.15em] text-graphite">
-            What to send
-          </legend>
-          {TOGGLES.map((toggle) => {
-            const checked = prefs[toggle.name as keyof typeof prefs];
-            return (
-              <label
-                key={toggle.name}
-                htmlFor={toggle.name}
-                className="flex items-start gap-3 rounded-card border border-line bg-surface p-4 shadow-e1"
-              >
-                <input
-                  id={toggle.name}
-                  name={toggle.name}
-                  type="checkbox"
-                  defaultChecked={checked}
-                  className="mt-1 h-4 w-4 rounded border-line text-pine focus:ring-pine"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-ink">{toggle.label}</span>
-                  <span className="block text-sm text-graphite">{toggle.description}</span>
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
-
-        <button
-          type="submit"
-          className="mt-1 self-start rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ember/90"
-        >
-          Save preferences
-        </button>
-      </form>
+      <ReminderPreferencesForm prefs={prefs} />
     </div>
   );
 }

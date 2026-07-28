@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { getHostAnalytics } from "@/lib/db/host-dashboard";
 
+export const metadata = {
+  title: "Host analytics",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 function StatCard({
@@ -34,7 +38,13 @@ export default async function HostAnalyticsPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 pb-8 pt-8">
       <header className="mb-6 flex items-start justify-between gap-3 px-1">
-        <h1 className="font-display text-3xl text-ink">Analytics</h1>
+        <div>
+          <h1 className="font-display text-3xl text-ink">Analytics</h1>
+          <p className="mt-1 max-w-xl text-sm leading-relaxed text-graphite">
+            Entry status reflects what seekers recorded in Sweepza, not
+            confirmed sponsor-site completions.
+          </p>
+        </div>
         <Link
           href="/host"
           className="inline-flex min-h-10 shrink-0 items-center rounded-xl border border-line px-3.5 py-2 text-xs font-semibold text-ink/75 transition hover:bg-paper"
@@ -45,12 +55,12 @@ export default async function HostAnalyticsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard label="Total saves" value={String(analytics.totalSaves)} numeric />
-        <StatCard label="Total entries" value={String(analytics.totalEnters)} numeric />
-        <StatCard label="Entries this week" value={String(analytics.entriesThisWeek)} hint={deltaLabel} numeric />
+        <StatCard label="Total marked entered" value={String(analytics.totalEnters)} numeric />
+        <StatCard label="Marked entered this week" value={String(analytics.entriesThisWeek)} hint={deltaLabel} numeric />
         <StatCard
           label="Top listing"
           value={analytics.topListing ? analytics.topListing.title : "—"}
-          hint={analytics.topListing ? `${analytics.topListing.enterCount} entries` : undefined}
+          hint={analytics.topListing ? `${analytics.topListing.enterCount} marked entered` : undefined}
         />
       </div>
 
@@ -65,9 +75,9 @@ export default async function HostAnalyticsPage() {
             <div key={row.listingId} className="rounded-card border border-line bg-surface p-4 shadow-e1">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium text-ink">{row.title}</h3>
-                <span className="nums text-sm font-semibold text-pine">{row.conversionRatePct}% conversion</span>
+                <span className="nums text-sm font-semibold text-pine">{row.conversionRatePct}% mark-entered rate</span>
               </div>
-              <p className="nums mt-1 text-sm text-graphite">{row.viewCount} views · {row.enterCount} entries</p>
+              <p className="nums mt-1 text-sm text-graphite">{row.viewCount} views · {row.enterCount} marked entered</p>
             </div>
           ))}
         </div>

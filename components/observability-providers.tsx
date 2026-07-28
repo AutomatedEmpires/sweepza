@@ -1,21 +1,22 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
+import { analyticsPathname } from "@/lib/analytics-path";
 import { ensurePosthog } from "@/lib/posthog/client";
 
 function PageViewTracker() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
-    const url = `${pathname}${searchParams?.toString() ? `?${searchParams}` : ""}`;
     void (async () => {
       const { capture } = await import("@/lib/posthog/client");
-      capture("$pageview", { $current_url: url });
+      capture("$pageview", {
+        $current_url: analyticsPathname(pathname),
+      });
     })();
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   return null;
 }
@@ -27,9 +28,7 @@ export function ObservabilityProviders({ children }: { children: React.ReactNode
 
   return (
     <>
-      <Suspense fallback={null}>
-        <PageViewTracker />
-      </Suspense>
+      <PageViewTracker />
       {children}
     </>
   );
