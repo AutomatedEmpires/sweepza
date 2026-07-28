@@ -5,6 +5,7 @@ import {
   EXCLUDED_CATEGORY_CODES,
   PROJECTION_CODES,
   getCategoryHub,
+  parseCategoryFilter,
 } from "@/lib/category-hubs";
 
 // The hubs are the programmatic-SEO surface over the CANONICAL category
@@ -46,6 +47,19 @@ describe("category hubs", () => {
     expect(getCategoryHub("gift_cards")).toBeUndefined();
     // Excluded codes have no hub at all.
     expect(getCategoryHub("other")).toBeUndefined();
+  });
+
+  it("normalizes every advertised Discover category to its dictionary code", () => {
+    for (const hub of CATEGORY_HUBS) {
+      expect(parseCategoryFilter(hub.code), hub.code).toBe(hub.code);
+      expect(parseCategoryFilter(hub.slug), hub.slug).toBe(hub.code);
+      expect(parseCategoryFilter(hub.label), hub.label).toBe(hub.code);
+    }
+
+    expect(parseCategoryFilter(" Experiences ")).toBe("experiences");
+    expect(parseCategoryFilter("other")).toBeUndefined();
+    expect(parseCategoryFilter("no-such-category")).toBeUndefined();
+    expect(parseCategoryFilter(["cash", "travel"])).toBeUndefined();
   });
 
   it("carries honest, non-empty SEO copy on every hub", () => {

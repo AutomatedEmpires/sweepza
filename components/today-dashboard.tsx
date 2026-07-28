@@ -32,24 +32,63 @@ const ACTIVITY_META: Record<
   won: { icon: "trophy", verb: "Won" },
 };
 
-function Rail({ listings }: { listings: Listing[] }) {
-  if (listings.length === 1) {
-    return (
-      <div className="px-1 lg:max-w-md">
-        <ListingCard listing={listings[0]} />
-      </div>
-    );
-  }
+function CompactQueue({ listings }: { listings: Listing[] }) {
   return (
-    <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-2 lg:gap-5 lg:overflow-visible xl:grid-cols-3">
+    <div className="grid gap-3 lg:grid-cols-2">
       {listings.map((listing) => (
-        <div
-          key={listing.id}
-          className="w-[86%] shrink-0 snap-center sm:w-[340px] lg:w-auto"
-        >
-          <ListingCard listing={listing} />
-        </div>
+        <ListingCard key={listing.id} listing={listing} variant="compact" />
       ))}
+    </div>
+  );
+}
+
+function TodayRoutinePlaceholder() {
+  return (
+    <div
+      className="flex flex-col gap-9"
+      aria-busy="true"
+      aria-label="Loading your Today routine"
+    >
+      <span className="sr-only" role="status">
+        Loading your Today routine
+      </span>
+
+      <div
+        className="mx-4 grid grid-cols-3 overflow-hidden rounded-card border border-line bg-surface shadow-e1 lg:mx-0"
+        aria-hidden="true"
+      >
+        {["Ready now", "End today", "In play"].map((label, index) => (
+          <div
+            key={label}
+            className={cn(
+              "px-3 py-4 text-center",
+              index > 0 && "border-l border-line",
+            )}
+          >
+            <div className="mx-auto h-7 w-8 rounded-md bg-line" />
+            <div className="mx-auto mt-2 h-2.5 w-14 rounded-full bg-line/80" />
+          </div>
+        ))}
+      </div>
+
+      <section className="px-4 lg:px-0" aria-hidden="true">
+        <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-8 lg:rounded-sheet lg:border lg:border-line lg:bg-surface lg:p-6 lg:shadow-e1">
+          <div className="mb-4 space-y-3 lg:mb-0">
+            <div className="h-3 w-40 rounded-full bg-line" />
+            <div className="h-8 w-4/5 max-w-sm rounded-lg bg-line" />
+            <div className="h-4 w-full max-w-md rounded-full bg-line/80" />
+            <div className="h-4 w-3/5 max-w-xs rounded-full bg-line/80" />
+          </div>
+          <div className="overflow-hidden rounded-card border border-line bg-surface shadow-e1 lg:max-w-md">
+            <div className="aspect-[16/11] bg-line" />
+            <div className="space-y-3 p-4">
+              <div className="h-5 w-4/5 rounded-full bg-line" />
+              <div className="h-3 w-2/3 rounded-full bg-line/80" />
+              <div className="h-11 w-full rounded-xl bg-line" />
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -155,7 +194,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
     recent.length > 0 ||
     buckets.entered.length > 0;
 
-  if (!mounted) return null;
+  if (!mounted) return <TodayRoutinePlaceholder />;
 
   // ---- Empty / onboarding ----
   if (!hasRoutine) {
@@ -323,7 +362,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           subtitle="Entry windows that just re-opened for you"
           count={readyAgainRest.length}
         >
-          <Rail listings={readyAgainRest.slice(0, MAX_SECTION_CARDS)} />
+          <CompactQueue listings={readyAgainRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
@@ -334,7 +373,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           subtitle="Last call on sweeps you're tracking"
           count={endingTodayRest.length}
         >
-          <Rail listings={endingTodayRest.slice(0, MAX_SECTION_CARDS)} />
+          <CompactQueue listings={endingTodayRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
@@ -345,7 +384,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           subtitle="You saved these — they're still open"
           count={readyRest.length}
         >
-          <Rail listings={readyRest.slice(0, MAX_SECTION_CARDS)} />
+          <CompactQueue listings={readyRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
@@ -356,7 +395,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           subtitle="Your tracked sweeps closing in the next few days"
           count={endingSoonRest.length}
         >
-          <Rail listings={endingSoonRest.slice(0, MAX_SECTION_CARDS)} />
+          <CompactQueue listings={endingSoonRest.slice(0, MAX_SECTION_CARDS)} />
         </Section>
       )}
 
@@ -367,7 +406,7 @@ export function TodayDashboard({ listings }: { listings: Listing[] }) {
           subtitle="Fresh listings published while you were away"
           count={newSinceLastVisit.length}
         >
-          <Rail listings={newSinceLastVisit} />
+          <CompactQueue listings={newSinceLastVisit} />
         </Section>
       )}
 

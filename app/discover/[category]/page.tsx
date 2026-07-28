@@ -88,7 +88,7 @@ export default async function CategoryHubPage({
   const siblings = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug);
 
   return (
-    <section className="px-4 pb-10 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+    <section className="px-4 pb-10 pt-8 lg:mx-auto lg:max-w-7xl lg:px-8">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }}

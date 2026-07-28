@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/icon";
+import { CATEGORY_HUBS } from "@/lib/category-hubs";
 import {
   FILTER_CHIPS,
   SORT_OPTIONS,
@@ -11,10 +12,18 @@ import {
   type SortId,
 } from "@/lib/listing-filters";
 
-const GROUP_ORDER: FilterGroup[] = ["timing", "entry", "trust"];
+const GROUP_ORDER: FilterGroup[] = [
+  "timing",
+  "entry",
+  "value",
+  "eligibility",
+  "trust",
+];
 const GROUP_LABELS: Record<FilterGroup, string> = {
   timing: "Timing",
   entry: "Entry style",
+  value: "Stated prize value",
+  eligibility: "Eligibility",
   trust: "Trust",
 };
 
@@ -25,6 +34,8 @@ export function FilterDrawer({
   onToggle,
   sort,
   onSort,
+  category,
+  onCategory,
   onClear,
   resultCount,
 }: {
@@ -34,6 +45,8 @@ export function FilterDrawer({
   onToggle: (id: FilterChipId) => void;
   sort: SortId;
   onSort: (id: SortId) => void;
+  category?: string;
+  onCategory: (category?: string) => void;
   onClear: () => void;
   resultCount: number;
 }) {
@@ -128,6 +141,30 @@ export function FilterDrawer({
         </div>
 
         <div className="flex flex-col gap-5">
+          <section className="flex flex-col gap-2">
+            <label
+              htmlFor="discover-prize-category"
+              className="text-xs font-semibold uppercase tracking-wide text-graphite"
+            >
+              Prize category
+            </label>
+            <select
+              id="discover-prize-category"
+              value={category ?? ""}
+              onChange={(event) =>
+                onCategory(event.target.value || undefined)
+              }
+              className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition focus:border-ink/40"
+            >
+              <option value="">All categories</option>
+              {CATEGORY_HUBS.map((hub) => (
+                <option key={hub.slug} value={hub.code}>
+                  {hub.label}
+                </option>
+              ))}
+            </select>
+          </section>
+
           {GROUP_ORDER.map((group) => {
             const chips = FILTER_CHIPS.filter((chip) => chip.group === group);
 

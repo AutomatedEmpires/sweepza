@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filterListings, sortListings } from "@/lib/listing-filters";
+import {
+  filterListings,
+  parseFilterIds,
+  parseSortId,
+  sortListings,
+} from "@/lib/listing-filters";
 import type { Listing } from "@/lib/types/listing";
 
 // Fixed reference "now" so every test is deterministic regardless of the
@@ -126,6 +131,49 @@ describe("filterListings", () => {
       expect(result).toEqual([instantWin]);
     });
 
+    it("filters by stated value without treating missing values as zero", () => {
+      const highValue = makeListing({ prizeValue: 2500 });
+      const moderateValue = makeListing({ prizeValue: 250 });
+      const unstated = makeListing({ prizeValue: undefined });
+
+      expect(
+        filterListings(
+          [highValue, moderateValue, unstated],
+          ["value_1000_plus"],
+          NOW,
+        ),
+      ).toEqual([highValue]);
+      expect(
+        filterListings(
+          [highValue, moderateValue, unstated],
+          ["value_100_plus"],
+          NOW,
+        ),
+      ).toEqual([highValue, moderateValue]);
+    });
+
+    it("matches explicit US eligibility and never infers it from missing data", () => {
+      const us = makeListing({ eligibilityCountry: "United States" });
+      const usa = makeListing({ eligibilityCountry: "USA" });
+      const canada = makeListing({ eligibilityCountry: "Canada" });
+      const unknown = makeListing({ eligibilityCountry: undefined });
+
+      expect(
+        filterListings([us, usa, canada, unknown], ["us_eligible"], NOW),
+      ).toEqual([us, usa]);
+    });
+
+    it("matches only listings with an official rules link", () => {
+      const linked = makeListing({
+        officialRulesUrl: "https://example.com/rules",
+      });
+      const missing = makeListing({ officialRulesUrl: undefined });
+
+      expect(
+        filterListings([linked, missing], ["rules_linked"], NOW),
+      ).toEqual([linked]);
+    });
+
     describe("'verified'", () => {
       it("matches a self_verified host", () => {
         const listing = makeListing({
@@ -179,6 +227,16 @@ describe("sortListings", () => {
     expect(result).toEqual([endsFirst, endsSecond, endsThird]);
   });
 
+  it("'highest_value' sorts stated values first and leaves unstated values last", () => {
+    const unstated = makeListing({ prizeValue: undefined });
+    const small = makeListing({ prizeValue: 100 });
+    const large = makeListing({ prizeValue: 5000 });
+
+    expect(
+      sortListings([small, unstated, large], "highest_value", NOW),
+    ).toEqual([large, small, unstated]);
+  });
+
   describe("'recommended'", () => {
     it("ranks boosted above featured above plain", () => {
       const plain = makeListing({ endDate: "2026-09-01T00:00:00.000Z" });
@@ -218,5 +276,18 @@ describe("sortListings", () => {
         expect.arrayContaining([expiredButBoosted, alsoExpiredByDate]),
       );
     });
+  });
+});
+
+describe("URL discovery control parsing", () => {
+  it("accepts known filters, removes duplicates, and ignores unknown values", () => {
+    expect(
+      parseFilterIds("daily,value_100_plus,daily,not-a-filter"),
+    ).toEqual(["daily", "value_100_plus"]);
+  });
+
+  it("falls back to recommended for unknown sorts", () => {
+    expect(parseSortId("highest_value")).toBe("highest_value");
+    expect(parseSortId("sponsored_first")).toBe("recommended");
   });
 });
