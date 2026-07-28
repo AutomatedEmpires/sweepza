@@ -25,8 +25,9 @@ body {
 @layer base {
   /* Editorial display defaults: tighter tracking, real optical sizing. */
   .font-display {
-    font-optical-sizing: auto;
-    letter-spacing: -0.02em;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-weight: 750;
+    letter-spacing: -0.035em;
   }
 
   /* Tabular numerals for countdowns, dates, stats. */

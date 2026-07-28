@@ -24,30 +24,30 @@
   /* ------------------------------------------------------------------ */
 
   /* Sunrise — day */
-  --sun-paper: 245 240 231;      /* #F5F0E7  warm canvas   */
+  --sun-paper: 255 250 244;      /* #FFFAF4  warm ivory    */
   --sun-surface: 255 255 255;    /* #FFFFFF  card          */
-  --sun-surface-2: 250 246 238;  /* #FAF6EE  raised        */
-  --sun-ink: 23 19 15;           /* #17130F  text          */
-  --sun-graphite: 110 101 90;    /* #6E655A  muted text    */
-  --sun-line: 231 223 208;       /* #E7DFD0  hairline      */
-  --sun-ember: 193 62 25;        /* #C13E19  primary action — AA with white text (5.3:1) and as text on paper (4.6:1) */
-  --sun-flame: 201 56 31;        /* #C9381F  urgency       */
-  --sun-gold: 143 104 31;        /* #8F681F  won / prize — AA as text on surface (5.0:1) and with white on fills */
-  --sun-ocean: 53 80 107;        /* #35506B  info / new    */
-  --sun-pine: 62 107 82;         /* #3E6B52  trust         */
+  --sun-surface-2: 247 244 238;  /* #F7F4EE  raised        */
+  --sun-ink: 23 35 33;           /* #172321  text          */
+  --sun-graphite: 91 106 101;    /* #5B6A65  muted text    */
+  --sun-line: 226 231 226;       /* #E2E7E2  hairline      */
+  --sun-ember: 190 64 50;        /* #BE4032  coral action  */
+  --sun-flame: 193 55 44;        /* #C1372C  urgency       */
+  --sun-gold: 142 96 24;         /* #8E6018  winner only   */
+  --sun-ocean: 48 99 150;        /* #306396  information   */
+  --sun-pine: 20 116 102;        /* #147466  trust / teal  */
 
   /* Midnight — night */
-  --mid-paper: 14 11 20;         /* #0E0B14  ink canvas    */
-  --mid-surface: 26 22 34;       /* #1A1622  card          */
-  --mid-surface-2: 36 31 48;     /* #241F30  raised        */
-  --mid-ink: 243 238 230;        /* #F3EEE6  warm-light text*/
-  --mid-graphite: 176 167 189;   /* #B0A7BD  muted text    */
-  --mid-line: 42 36 50;          /* #2A2432  hairline      */
-  --mid-ember: 240 99 58;        /* #F0633A  action (white-legible)*/
-  --mid-flame: 255 107 107;      /* #FF6B6B  urgency       */
-  --mid-gold: 245 197 66;        /* #F5C542  won — jewel gold*/
-  --mid-ocean: 127 178 255;      /* #7FB2FF  info          */
-  --mid-pine: 69 201 154;        /* #45C99A  trust         */
+  --mid-paper: 17 25 22;         /* #111916  ink canvas    */
+  --mid-surface: 24 34 30;       /* #18221E  card          */
+  --mid-surface-2: 32 44 39;     /* #202C27  raised        */
+  --mid-ink: 247 245 238;        /* #F7F5EE  warm light    */
+  --mid-graphite: 171 187 180;   /* #ABBBAF  muted text    */
+  --mid-line: 45 59 53;          /* #2D3B35  hairline      */
+  --mid-ember: 255 128 108;      /* #FF806C  coral action  */
+  --mid-flame: 255 126 116;      /* #FF7E74  urgency       */
+  --mid-gold: 229 189 90;        /* #E5BD5A  winner only   */
+  --mid-ocean: 138 186 240;      /* #8ABAF0  information   */
+  --mid-pine: 104 211 195;       /* #68D3C3  trust / teal  */
 
   /* ------------------------------------------------------------------ */
   /* 2 · NON-COLOR SCALES — mode-stable. (--font-sans / --font-display   */
@@ -66,8 +66,8 @@
   --text-4xl: 3rem;       /* 48px — hero prize numerals */
 
   --radius-control: 0.65rem;
-  --radius-card: 1.1rem;
-  --radius-sheet: 1.75rem;
+  --radius-card: 1rem;
+  --radius-sheet: 1.4rem;
   --radius-pill: 999px;
 
   --icon-sm: 16px;

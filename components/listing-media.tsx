@@ -4,7 +4,11 @@ import Image from "next/image";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { canOptimizeImage } from "@/lib/image";
-import { listingFallbackTheme } from "@/lib/listing-media";
+import {
+  isGeneratedListingFallbackUrl,
+  listingFallbackTheme,
+  listingMediaPresentationUrl,
+} from "@/lib/listing-media";
 
 export function ListingMedia({
   sourceUrl,
@@ -31,7 +35,13 @@ export function ListingMedia({
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  const usableSource = sourceUrl && failedUrl !== sourceUrl ? sourceUrl : null;
+  const presentationSource = listingMediaPresentationUrl(sourceUrl);
+  const generatedFallback =
+    isGeneratedListingFallbackUrl(presentationSource);
+  const usableSource =
+    presentationSource && failedUrl !== presentationSource
+      ? presentationSource
+      : null;
   const theme = listingFallbackTheme(category);
 
   return (
@@ -43,7 +53,12 @@ export function ListingMedia({
             alt={altText ?? prizeName}
             fill
             priority={priority}
-            className={cn("object-cover", imageClassName)}
+            className={cn(
+              generatedFallback
+                ? "bg-surface-2 object-contain"
+                : "object-cover",
+              imageClassName,
+            )}
             sizes={sizes}
             unoptimized={!canOptimizeImage(usableSource)}
             onError={() => setFailedUrl(usableSource)}
@@ -57,24 +72,24 @@ export function ListingMedia({
       ) : (
         <div
           role="img"
-          aria-label={`Sweepza fallback artwork for ${prizeName}${sponsorName ? ` from ${sponsorName}` : ""}`}
-          className="relative flex h-full w-full flex-col justify-between overflow-hidden bg-gradient-to-br from-surface-2 via-surface to-paper p-5 text-ink sm:p-6"
+          aria-label={`Category illustration for ${prizeName}${sponsorName ? ` from ${sponsorName}` : ""}`}
+          className="relative flex h-full w-full flex-col justify-between overflow-hidden bg-surface-2 p-5 text-ink sm:p-6"
         >
           <span
             aria-hidden
-            className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-gold/40"
+            className="absolute -right-14 -top-16 h-48 w-48 rounded-[2.5rem] border-[18px] border-ocean/10"
           />
           <span
             aria-hidden
-            className="absolute -bottom-14 right-10 h-40 w-40 rounded-full bg-ember/10"
+            className="absolute -bottom-12 right-8 h-36 w-36 rounded-[2.25rem] bg-pine/10"
           />
 
           <div className="relative flex items-center justify-between gap-3">
             <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-graphite">
               Sweepza
             </span>
-            <span className="rounded-full border border-gold/60 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-gold">
-              Sweepza fallback
+            <span className="rounded-full border border-line bg-surface px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-graphite">
+              Category illustration
             </span>
           </div>
 

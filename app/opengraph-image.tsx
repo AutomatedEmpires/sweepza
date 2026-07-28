@@ -79,22 +79,31 @@ export default function OpenGraphImage() {
         >
           {/* Wordmark */}
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <div
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 16,
-                background: OG_EMBER,
-                color: OG_PAPER,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 36,
-                fontWeight: 800,
-              }}
-            >
-              S
-            </div>
+            <svg width="64" height="64" viewBox="0 0 64 64">
+              <rect width="64" height="64" rx="18" fill={OG_PAPER} />
+              <path
+                d="M50 13H28c-8.3 0-15 5.6-15 12.5S19.7 38 28 38h8c8.3 0 15 5.2 15 11.7"
+                fill="none"
+                stroke={OG_EMBER}
+                strokeWidth="5.5"
+                strokeLinecap="round"
+              />
+              <path
+                d="m36 49 5.5 5.5L55 41"
+                fill="none"
+                stroke="#147466"
+                strokeWidth="5.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M53 7v7M49.5 10.5h7"
+                fill="none"
+                stroke="#306396"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
             <div
               style={{
                 display: "flex",

@@ -12,11 +12,11 @@
 // never assert no-purchase on a sponsor's behalf, never promise wins. This
 // file is a scanned surface in lib/__tests__/honest-copy.test.ts.
 
-export const OG_PAPER = "#F5F0E7"; // --sun-paper
-export const OG_INK = "#17130F"; // --sun-ink
-export const OG_GRAPHITE = "#6E655A"; // --sun-graphite
-export const OG_EMBER = "#C13E19"; // --sun-ember
-export const OG_PINE = "#3E6B52"; // --sun-pine
+export const OG_PAPER = "#FFFAF4"; // --sun-paper
+export const OG_INK = "#172321"; // --sun-ink
+export const OG_GRAPHITE = "#5B6A65"; // --sun-graphite
+export const OG_EMBER = "#BE4032"; // --sun-ember
+export const OG_PINE = "#147466"; // --sun-pine
 
 export const OG_TRUST_CHIPS = [
   "Free to enter — always",

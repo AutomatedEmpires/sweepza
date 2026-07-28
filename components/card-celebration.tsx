@@ -2,8 +2,8 @@
 
 import { useMemo, type CSSProperties } from "react";
 
-// A contained, tasteful celebration — coins rising over the prize when an entry
-// lands, a richer coin-and-confetti burst on a win. Deliberately clipped to the
+// A contained, tasteful celebration — small sparks rising over the prize when
+// an entry lands, with a richer spark-and-confetti burst on a win. Deliberately clipped to the
 // card cover (never a full-screen takeover) and only mounted the moment a state
 // is newly reached, so it delights without wearing out its welcome. Honors
 // prefers-reduced-motion via the global reduced-motion rule in globals.css.
@@ -28,7 +28,7 @@ export function CardCelebration({ kind }: { kind: "entered" | "won" }) {
           driftPx: Math.round(-16 + Math.random() * 32),
           color: isConfetti
             ? CONFETTI_COLORS[index % CONFETTI_COLORS.length]
-            : "rgb(var(--color-won))",
+            : CONFETTI_COLORS[index % CONFETTI_COLORS.length],
         };
       }),
     [count, kind],
@@ -45,7 +45,7 @@ export function CardCelebration({ kind }: { kind: "entered" | "won" }) {
           className={
             piece.isConfetti
               ? "animate-confetti-fall absolute top-1/3 h-2 w-1.5 rounded-[1px]"
-              : "animate-coin-rise absolute bottom-4 h-2.5 w-2.5 rounded-full"
+              : "animate-spark-rise absolute bottom-4 h-2.5 w-2.5 rotate-45 rounded-[2px]"
           }
           style={
             {

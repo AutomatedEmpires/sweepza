@@ -1,5 +1,7 @@
 import type { PrizeCategory } from "@/lib/types/listing";
 
+export const LISTING_FALLBACK_PRESENTATION_VERSION = "brand-20260728";
+
 export interface ListingFallbackTheme {
   code: string;
   label: string;
@@ -48,4 +50,37 @@ export function listingFallbackTheme(category: string | null | undefined): Listi
 
 export function listingFallbackImageUrl(category: string | null | undefined): string {
   return `/api/images/listing-fallback/${normalizeFallbackCategory(category)}`;
+}
+
+export function isGeneratedListingFallbackUrl(
+  sourceUrl: string | null | undefined,
+): boolean {
+  if (!sourceUrl) return false;
+  try {
+    return new URL(sourceUrl, "https://sweepza.invalid").pathname.startsWith(
+      "/api/images/listing-fallback/",
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Category fallbacks may have been persisted as absolute production URLs.
+ * Present them through the current deployment and a versioned cache key so a
+ * brand release is not held behind the route's intentionally long CDN TTL.
+ */
+export function listingMediaPresentationUrl(
+  sourceUrl: string | null | undefined,
+): string | undefined {
+  if (!sourceUrl) return undefined;
+  if (!isGeneratedListingFallbackUrl(sourceUrl)) return sourceUrl;
+
+  const parsed = new URL(sourceUrl, "https://sweepza.invalid");
+  const rawCategory = parsed.pathname.split("/").filter(Boolean).at(-1);
+  const category = normalizeFallbackCategory(
+    rawCategory ? decodeURIComponent(rawCategory) : undefined,
+  );
+
+  return `${listingFallbackImageUrl(category)}?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`;
 }
