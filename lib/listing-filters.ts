@@ -14,11 +14,22 @@ export type FilterChipId =
   | "new"
   | "ends_today"
   | "ends_soon"
+  | "one_time"
   | "daily"
+  | "weekly"
   | "instant_win"
+  | "value_100_plus"
+  | "value_1000_plus"
+  | "us_eligible"
+  | "rules_linked"
   | "verified";
 
-export type FilterGroup = "timing" | "entry" | "trust";
+export type FilterGroup =
+  | "timing"
+  | "entry"
+  | "value"
+  | "eligibility"
+  | "trust";
 
 export interface FilterChip {
   id: FilterChipId;
@@ -30,18 +41,56 @@ export const FILTER_CHIPS: FilterChip[] = [
   { id: "new", label: "New", group: "timing" },
   { id: "ends_today", label: "Ends Today", group: "timing" },
   { id: "ends_soon", label: "Ends Soon", group: "timing" },
+  { id: "one_time", label: "One time", group: "entry" },
   { id: "daily", label: "Daily", group: "entry" },
+  { id: "weekly", label: "Weekly", group: "entry" },
   { id: "instant_win", label: "Instant Win", group: "entry" },
+  { id: "value_100_plus", label: "$100+", group: "value" },
+  { id: "value_1000_plus", label: "$1,000+", group: "value" },
+  { id: "us_eligible", label: "US eligible", group: "eligibility" },
+  { id: "rules_linked", label: "Rules linked", group: "trust" },
   { id: "verified", label: "Verified", group: "trust" },
 ];
 
-export type SortId = "recommended" | "newest" | "ending_soon";
+const FILTER_CHIP_IDS = new Set<FilterChipId>(
+  FILTER_CHIPS.map((chip) => chip.id),
+);
+
+export type SortId =
+  | "recommended"
+  | "newest"
+  | "ending_soon"
+  | "highest_value";
 
 export const SORT_OPTIONS: { id: SortId; label: string }[] = [
   { id: "recommended", label: "Recommended" },
   { id: "newest", label: "Newest" },
   { id: "ending_soon", label: "Ending soon" },
+  { id: "highest_value", label: "Highest stated value" },
 ];
+
+const SORT_IDS = new Set<SortId>(SORT_OPTIONS.map((option) => option.id));
+
+export function parseFilterIds(value?: string | string[]): FilterChipId[] {
+  const serialized = Array.isArray(value) ? value.join(",") : value ?? "";
+  return [
+    ...new Set(
+      serialized
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item): item is FilterChipId =>
+          FILTER_CHIP_IDS.has(item as FilterChipId),
+        ),
+    ),
+  ];
+}
+
+export function parseSortId(value?: string | string[]): SortId {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return SORT_IDS.has(candidate as SortId)
+    ? (candidate as SortId)
+    : "recommended";
+}
 
 function publishedDaysAgo(listing: Listing, now: Date): number | null {
   if (!listing.publishedAt) return null;
@@ -75,8 +124,27 @@ function matchesChip(
     }
     case "daily":
       return listing.entryFrequency === "daily";
+    case "one_time":
+      return listing.entryFrequency === "one_time";
+    case "weekly":
+      return listing.entryFrequency === "weekly";
     case "instant_win":
       return listing.entryFrequency === "instant_win";
+    case "value_100_plus":
+      return typeof listing.prizeValue === "number" && listing.prizeValue >= 100;
+    case "value_1000_plus":
+      return typeof listing.prizeValue === "number" && listing.prizeValue >= 1000;
+    case "us_eligible": {
+      const country = listing.eligibilityCountry?.toLowerCase() ?? "";
+      return (
+        country === "us" ||
+        country === "usa" ||
+        country.includes("united states") ||
+        country.includes("u.s.")
+      );
+    }
+    case "rules_linked":
+      return Boolean(listing.officialRulesUrl);
     case "verified":
       return isVerified(listing);
     default:
@@ -144,6 +212,10 @@ export function sortListings(
     case "ending_soon":
       return copy.sort(
         (a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime(),
+      );
+    case "highest_value":
+      return copy.sort(
+        (a, b) => (b.prizeValue ?? -1) - (a.prizeValue ?? -1),
       );
     case "recommended":
     default:

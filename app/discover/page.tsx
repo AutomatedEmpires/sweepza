@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { DiscoverFeed } from "@/components/discover-feed";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
-import { CATEGORY_HUBS } from "@/lib/category-hubs";
+import { CATEGORY_HUBS, parseCategoryFilter } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
 import { withPublicFallback } from "@/lib/db/resilient";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
 import { APP_NAME, SITE_URL } from "@/lib/site";
 import { getCachedPublicListings } from "@/lib/db/listings-cache";
+import { parseFilterIds, parseSortId } from "@/lib/listing-filters";
 
 const DISCOVER_DESCRIPTION =
-  "Browse live, free-to-enter sweepstakes — filter by prize category, deadline, and entry frequency, then enter on the host's own site.";
+  "Browse current sweepstakes listings, filter by prize category, deadline, value, eligibility, and entry frequency, then review the linked official source.";
 
 export const metadata = {
   title: "Discover",
@@ -32,12 +33,18 @@ export const dynamic = "force-dynamic";
 export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string | string[]; category?: string | string[] }>;
+  searchParams?: Promise<{
+    q?: string | string[];
+    category?: string | string[];
+    filters?: string | string[];
+    sort?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   const q = typeof params?.q === "string" ? params.q.trim().slice(0, 200) : "";
-  const category =
-    typeof params?.category === "string" ? params.category : undefined;
+  const category = parseCategoryFilter(params?.category);
+  const initialFilters = parseFilterIds(params?.filters);
+  const initialSort = parseSortId(params?.sort);
 
   // The unfiltered feed is shared by every visitor, so serve it from the
   // cached path; search/category views are per-request and stay uncached.
@@ -67,7 +74,7 @@ export default async function DiscoverPage({
       : null;
 
   return (
-    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-5xl lg:px-8">
+    <section className="px-4 pb-8 pt-8 lg:mx-auto lg:max-w-7xl lg:px-8">
       {itemListJsonLd && (
         <script
           type="application/ld+json"
@@ -85,7 +92,13 @@ export default async function DiscoverPage({
         </div>
         <DiscoverModeToggle />
       </header>
-      <DiscoverFeed listings={listings} query={q} />
+      <DiscoverFeed
+        listings={listings}
+        query={q}
+        category={category}
+        initialFilters={initialFilters}
+        initialSort={initialSort}
+      />
 
       {/* Crawlable category hub links — server-rendered so search engines can
           reach every /discover/{category} landing page from here. */}

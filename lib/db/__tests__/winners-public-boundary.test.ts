@@ -52,6 +52,9 @@ describe("winner feed public listing boundary", () => {
     await getPublishedWinnerPosts();
 
     const select = state.recorder!.calls.find((call) => call.method === "select");
+    expect(select?.args[0]).toContain(
+      "app_user:app_user!winner_post_app_user_id_fkey",
+    );
     expect(select?.args[0]).toContain("listing:listing!inner");
     expect(hasCall("eq", "review_status", "published")).toBe(true);
     expect(hasCall("eq", "listing.visibility_status", "public")).toBe(true);

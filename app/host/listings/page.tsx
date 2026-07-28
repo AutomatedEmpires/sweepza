@@ -3,6 +3,10 @@ import { Icon } from "@/components/icon";
 import { getHostListingsSnapshot, type HostListingSummary } from "@/lib/db/host-dashboard";
 import { deactivateListingAction, reactivateListingAction, submitForReviewAction } from "./actions";
 
+export const metadata = {
+  title: "Host listings",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 function formatPrize(value: number | null): string {
@@ -37,7 +41,8 @@ function ListingCard({ listing, children }: { listing: HostListingSummary; child
         <div>
           <h3 className="font-medium text-ink">{listing.title}</h3>
           <p className="mt-1 text-sm text-graphite">
-            {formatPrize(listing.prizeValue)} · Ends {formatDate(listing.endDate)} · {listing.entryCount} entries
+            {formatPrize(listing.prizeValue)} · Ends{" "}
+            {formatDate(listing.endDate)} · {listing.entryCount} marked entered
           </p>
         </div>
         <span className={`shrink-0 rounded-pill px-2 py-1 text-xs font-medium capitalize ${moderationStatusStyles(listing.moderationStatus)}`}>

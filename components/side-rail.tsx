@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icon";
+import { BrandLockup } from "@/components/brand";
 import { cn } from "@/lib/cn";
 import { CONSUMER_NAV_ITEMS, isNavItemActive } from "@/lib/nav";
 
@@ -12,15 +13,8 @@ export function SideRail() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-paper/80 px-4 py-6 lg:flex">
-      <Link href="/" className="px-3">
-        <span className="text-sm font-semibold uppercase tracking-[0.2em] text-ember">
-          Sweepza
-        </span>
-        <span className="mt-1 block text-[11px] text-graphite">
-          Sweepstakes Simplified
-        </span>
-      </Link>
+    <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-line bg-paper/90 px-4 py-5 lg:flex">
+      <BrandLockup tagline className="px-2" />
 
       <nav aria-label="Primary" className="mt-8 flex flex-col gap-1">
         {CONSUMER_NAV_ITEMS.map((item) => {

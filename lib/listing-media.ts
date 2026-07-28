@@ -1,5 +1,7 @@
 import type { PrizeCategory } from "@/lib/types/listing";
 
+export const LISTING_FALLBACK_PRESENTATION_VERSION = "brand-20260728";
+
 export interface ListingFallbackTheme {
   code: string;
   label: string;
@@ -48,4 +50,50 @@ export function listingFallbackTheme(category: string | null | undefined): Listi
 
 export function listingFallbackImageUrl(category: string | null | undefined): string {
   return `/api/images/listing-fallback/${normalizeFallbackCategory(category)}`;
+}
+
+export function isGeneratedListingFallbackUrl(
+  sourceUrl: string | null | undefined,
+): boolean {
+  if (!sourceUrl) return false;
+  try {
+    const parsed = new URL(sourceUrl, "https://sweepza.invalid");
+    if (parsed.pathname.startsWith("/api/images/listing-fallback/")) {
+      return true;
+    }
+
+    return (
+      parsed.pathname === "/opengraph-image" &&
+      ["sweepza.invalid", "sweepza.com", "www.sweepza.com"].includes(
+        parsed.hostname,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Category fallbacks may have been persisted as absolute production URLs.
+ * Present them through the current deployment and a versioned cache key so a
+ * brand release is not held behind the route's intentionally long CDN TTL.
+ */
+export function listingMediaPresentationUrl(
+  sourceUrl: string | null | undefined,
+  category?: string | null,
+): string | undefined {
+  if (!sourceUrl) return undefined;
+  if (!isGeneratedListingFallbackUrl(sourceUrl)) return sourceUrl;
+
+  const parsed = new URL(sourceUrl, "https://sweepza.invalid");
+  const routeCategory = parsed.pathname.startsWith(
+    "/api/images/listing-fallback/",
+  )
+    ? parsed.pathname.split("/").filter(Boolean).at(-1)
+    : undefined;
+  const normalizedCategory = normalizeFallbackCategory(
+    routeCategory ? decodeURIComponent(routeCategory) : category,
+  );
+
+  return `${listingFallbackImageUrl(normalizedCategory)}?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`;
 }

@@ -91,7 +91,9 @@ function reminderEventEnabled(
   type: SeekerReminderType,
   pref: DeliveryPrefRow | undefined,
 ): boolean {
-  if (pref?.email_enabled === false) return false;
+  // Consent must be affirmative at the final pre-transport check. The durable
+  // outbox can outlive a preference-row deletion, so absence fails closed.
+  if (pref?.email_enabled !== true) return false;
   if (type === "ready_again") return pref?.ready_again !== false;
   if (type === "ends_today") return pref?.ends_today !== false;
   return pref?.ends_soon !== false;

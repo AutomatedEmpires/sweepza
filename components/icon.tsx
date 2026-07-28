@@ -18,6 +18,7 @@ import {
   GearSix,
   Gift,
   Info,
+  List,
   MagnifyingGlass,
   MapPin,
   Moon,
@@ -57,6 +58,7 @@ const REGISTRY = {
   caretRight: CaretRight,
   externalLink: ArrowUpRight,
   signOut: SignOut,
+  menu: List,
 
   // Trust & provenance
   verified: SealCheck,

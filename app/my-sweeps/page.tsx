@@ -15,6 +15,7 @@ const MY_SWEEPS_DESCRIPTION =
 export const metadata = {
   title: "My Sweeps",
   description: MY_SWEEPS_DESCRIPTION,
+  robots: { index: false, follow: false },
   alternates: { canonical: "/my-sweeps" },
   openGraph: {
     title: "My Sweeps",

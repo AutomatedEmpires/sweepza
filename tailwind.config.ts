@@ -51,9 +51,9 @@ const config: Config = {
         e3: "var(--shadow-e3)",
       },
       fontFamily: {
-        // Inter for UI/body; Fraunces for editorial display + numerals.
+        // One modern sans family for both dense utility and brand display.
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "Georgia", "serif"],
+        display: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       letterSpacing: {
         tightest: "-0.03em",
@@ -91,9 +91,9 @@ const config: Config = {
           "0%": { transform: "translateX(-130%) skewX(-12deg)" },
           "100%": { transform: "translateX(240%) skewX(-12deg)" },
         },
-        // Contained celebration — coins rise over the prize on entry; a win
+        // Contained celebration — brand-colored sparks rise on entry; a win
         // adds falling confetti. Both are clipped to the card cover.
-        "coin-rise": {
+        "spark-rise": {
           "0%": { opacity: "0", transform: "translateY(6px) scale(0.5)" },
           "20%": { opacity: "1" },
           "100%": {
@@ -117,7 +117,7 @@ const config: Config = {
         "pop-in": "pop-in 0.3s cubic-bezier(0.34,1.56,0.64,1) both",
         "ready-glow": "ready-glow 2.6s ease-in-out infinite",
         sheen: "sheen 2.4s ease-in-out 0.15s",
-        "coin-rise": "coin-rise 1.05s cubic-bezier(0.22,1,0.36,1) both",
+        "spark-rise": "spark-rise 1.05s cubic-bezier(0.22,1,0.36,1) both",
         "confetti-fall": "confetti-fall 1.1s ease-out both",
       },
     },

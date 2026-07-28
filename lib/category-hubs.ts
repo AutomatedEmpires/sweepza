@@ -181,9 +181,28 @@ export const CATEGORY_HUBS: CategoryHub[] = [
 ];
 
 const BY_SLUG = new Map(CATEGORY_HUBS.map((hub) => [hub.slug, hub]));
+const BY_FILTER_VALUE = new Map(
+  CATEGORY_HUBS.flatMap((hub) => [
+    [hub.code.toLowerCase(), hub.code] as const,
+    [hub.slug.toLowerCase(), hub.code] as const,
+    [hub.label.toLowerCase(), hub.code] as const,
+  ]),
+);
 
 export function getCategoryHub(slug: string): CategoryHub | undefined {
   return BY_SLUG.get(slug);
+}
+
+/**
+ * Normalizes public Discover query values to the canonical dictionary code.
+ * Labels and slugs remain accepted for backward-compatible shared URLs, while
+ * unknown or repeated query values are rejected before they reach Postgres.
+ */
+export function parseCategoryFilter(
+  value: string | string[] | undefined,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return BY_FILTER_VALUE.get(value.trim().toLowerCase());
 }
 
 // UI projection codes, re-exported for the coverage test: every code the UI

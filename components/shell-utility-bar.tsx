@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { isClerkConfigured, type SweepzaAuthUser } from "@/lib/auth";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export function ShellUtilityBar({
   authUser,
@@ -12,11 +11,10 @@ export function ShellUtilityBar({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs lg:justify-end lg:px-8">
       {/* Brand lives in the desktop side rail; keep it mobile-only here. */}
-      <span className="font-semibold uppercase tracking-[0.15em] text-graphite lg:hidden">
+      <span className="shell-mobile-brand font-semibold uppercase tracking-[0.15em] text-graphite lg:hidden">
         Sweepza
       </span>
       <div className="flex items-center gap-2">
-        <ThemeToggle />
       {clerkConfigured ? (
         authUser ? (
           <Link

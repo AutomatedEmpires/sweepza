@@ -2,6 +2,10 @@ import Link from "next/link";
 import { HostLogoUploader } from "@/components/host-logo-uploader";
 import { getHostIdentity } from "@/lib/db/host-dashboard";
 
+export const metadata = {
+  title: "Host settings",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 export default async function HostSettingsPage() {

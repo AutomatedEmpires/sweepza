@@ -360,6 +360,8 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/privacy/page.tsx", { legalCanon: true }),
   routeSurface("app/terms/page.tsx", { legalCanon: true }),
   routeSurface("app/discover/page.tsx"),
+  routeSurface("app/discover/loading.tsx"),
+  routeSurface("app/discover/error.tsx"),
   routeSurface("app/discover/[category]/page.tsx"),
   // The per-hub social card: an ImageResponse whose words leave the site with
   // every shared category link, exactly like app/opengraph-image.tsx.
@@ -369,7 +371,11 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/search/page.tsx"),
   routeSurface("app/saved/page.tsx"),
   routeSurface("app/my-sweeps/page.tsx"),
+  routeSurface("app/my-sweeps/loading.tsx"),
+  routeSurface("app/my-sweeps/error.tsx"),
   routeSurface("app/winners/page.tsx"),
+  routeSurface("app/winners/loading.tsx"),
+  routeSurface("app/winners/error.tsx"),
   routeSurface("app/winners/new/page.tsx"),
   routeSurface("app/sweeps/[slug]/page.tsx"),
   routeSurface("app/sweeps/[slug]/loading.tsx"),
@@ -379,6 +385,8 @@ const APP_ROUTE_SURFACES: Surface[] = [
   routeSurface("app/api/og/sweeps/[slug]/route.tsx"),
   routeSurface("app/api/images/listing-fallback/[category]/route.tsx"),
   routeSurface("app/profile/page.tsx"),
+  routeSurface("app/profile/loading.tsx"),
+  routeSurface("app/profile/error.tsx"),
   routeSurface("app/profile/notifications/page.tsx"),
   routeSurface("app/sign-in/[[...sign-in]]/page.tsx"),
   routeSurface("app/sign-up/[[...sign-up]]/page.tsx"),
@@ -387,6 +395,8 @@ const APP_ROUTE_SURFACES: Surface[] = [
   // justification, whereas exempting them would need a verified gate mechanism
   // and would buy nothing.
   routeSurface("app/host/page.tsx"),
+  routeSurface("app/host/loading.tsx"),
+  routeSurface("app/host/error.tsx"),
   routeSurface("app/host/claims/page.tsx"),
   routeSurface("app/host/listings/page.tsx"),
   routeSurface("app/host/listings/[listingId]/edit/page.tsx"),
@@ -397,6 +407,8 @@ const APP_ROUTE_SURFACES: Surface[] = [
   // Public copy despite living under /admin: this is the "sign in required" /
   // "403" notice an unauthenticated visitor sees. See EXEMPT_APP_SOURCES.
   routeSurface("app/admin/layout.tsx"),
+  routeSurface("app/admin/loading.tsx"),
+  routeSurface("app/admin/error.tsx"),
 ];
 
 // Data modules, components and static files. These stay ENUMERATED, and that is

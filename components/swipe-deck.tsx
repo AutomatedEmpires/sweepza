@@ -13,6 +13,12 @@ import { Icon } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { track } from "@/lib/analytics";
 import { useSeekerState } from "@/lib/seeker-state";
+import {
+  IDLE_SWIPE_ENTRY_FLOW,
+  primaryStateAfterSwipe,
+  transitionSwipeEntryFlow,
+  type SwipeEntryFlow,
+} from "@/lib/swipe-entry-flow";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
 // Swipe deck modeled on the explore-and-earn SwipeDeck flow, adapted to the
@@ -37,6 +43,30 @@ const MAX_VISIBLE = 3;
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
+function openOfficialSource(url: string): boolean {
+  if (typeof window === "undefined") return false;
+
+  // Open a same-origin blank tab first so a blocked popup is observable. Then
+  // sever its opener and set a no-referrer policy before navigating to the
+  // untrusted external destination.
+  const entryTab = window.open("about:blank", "_blank");
+  if (!entryTab) return false;
+
+  try {
+    entryTab.opener = null;
+    entryTab.document.title = "Opening official entry…";
+    const referrerPolicy = entryTab.document.createElement("meta");
+    referrerPolicy.name = "referrer";
+    referrerPolicy.content = "no-referrer";
+    entryTab.document.head.append(referrerPolicy);
+    entryTab.location.replace(url);
+    return true;
+  } catch {
+    entryTab.close();
+    return false;
+  }
+}
+
 export function SwipeDeck({ listings }: { listings: Listing[] }) {
   const store = useSeekerState();
   const total = listings.length;
@@ -47,10 +77,15 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
   const [dragging, setDragging] = useState(false);
   const [leaving, setLeaving] = useState<SwipeAction | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [entryFlow, setEntryFlow] = useState<SwipeEntryFlow>(
+    IDLE_SWIPE_ENTRY_FLOW,
+  );
 
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const pointerIdRef = useRef<number | null>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entryStatusRef = useRef<HTMLDivElement>(null);
+  const enterActionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -75,7 +110,23 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   const current = listings[index];
 
-  function triggerLeave(action: SwipeAction) {
+  useEffect(() => {
+    if (entryFlow.status === "idle") return;
+
+    const focusEntryStatus = () => {
+      if (document.visibilityState === "visible") {
+        entryStatusRef.current?.focus();
+      }
+    };
+
+    focusEntryStatus();
+    document.addEventListener("visibilitychange", focusEntryStatus);
+    return () => {
+      document.removeEventListener("visibilitychange", focusEntryStatus);
+    };
+  }, [entryFlow]);
+
+  function commitDecision(action: SwipeAction) {
     if (leaving) return;
     const card = listings[index];
     if (!card) return;
@@ -87,22 +138,26 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
     };
     const prevPrimary = store?.getState(card.id) ?? "none";
     const prevSaved = store ? store.isSaved(card.id) : false;
+    const nextPrimary = primaryStateAfterSwipe(prevPrimary, action);
 
     if (action === "save") {
-      store?.setPrimaryState(card.id, "saved");
+      if (store && !prevSaved) store.toggleSaved(card.id);
       track("listing_saved", base);
     } else if (action === "skip") {
-      store?.setPrimaryState(card.id, "skipped");
+      if (store && nextPrimary !== prevPrimary) {
+        store.setPrimaryState(card.id, nextPrimary);
+      }
       track("listing_skipped", base);
     } else {
-      track("listing_enter_clicked", base);
-      if (typeof window !== "undefined") {
-        window.open(card.entryUrl, "_blank", "noopener,noreferrer");
+      // Re-confirming an existing entry intentionally refreshes enteredAt for
+      // recurring sweeps. A recorded win remains terminal and is never reset.
+      if (store && prevPrimary !== "won") {
+        store.setPrimaryState(card.id, nextPrimary);
+        track("listing_marked_entered", { listing_id: card.id });
       }
-      store?.setPrimaryState(card.id, "entered");
-      track("listing_marked_entered", { listing_id: card.id });
     }
 
+    setEntryFlow(IDLE_SWIPE_ENTRY_FLOW);
     setDecisions((prev) => [
       ...prev,
       { id: card.id, action, prevPrimary, prevSaved },
@@ -126,11 +181,70 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
     );
   }
 
+  function requestEntry() {
+    if (leaving || !current || entryFlow.status === "awaiting_confirmation") {
+      return;
+    }
+
+    setDragging(false);
+    setOffset({ x: 0, y: 0 });
+    track("listing_enter_clicked", {
+      listing_id: current.id,
+      source_label: current.sourceLabel,
+      surface: "swipe",
+    });
+
+    const opened = openOfficialSource(current.entryUrl);
+
+    setEntryFlow((flow) =>
+      opened
+        ? transitionSwipeEntryFlow(flow, {
+            type: "official_source_opened",
+            listingId: current.id,
+          }).state
+        : transitionSwipeEntryFlow(flow, {
+            type: "official_source_failed",
+            listingId: current.id,
+          }).state,
+    );
+  }
+
+  function triggerLeave(action: SwipeAction) {
+    if (action === "enter") {
+      requestEntry();
+      return;
+    }
+    if (entryFlow.status !== "idle") return;
+    commitDecision(action);
+  }
+
+  function confirmEntry() {
+    if (!current) return;
+    const transition = transitionSwipeEntryFlow(entryFlow, {
+      type: "confirm",
+      listingId: current.id,
+    });
+    setEntryFlow(transition.state);
+    if (transition.confirmedListingId) {
+      commitDecision("enter");
+    }
+  }
+
+  function cancelEntry() {
+    setEntryFlow((flow) =>
+      transitionSwipeEntryFlow(flow, { type: "cancel" }).state,
+    );
+    window.requestAnimationFrame(() => enterActionRef.current?.focus());
+  }
+
   function undo() {
     if (leaving || decisions.length === 0) return;
     const last = decisions[decisions.length - 1];
     if (store) {
-      store.setPrimaryState(last.id, last.prevPrimary);
+      const currentPrimary = store.getState(last.id) ?? "none";
+      if (currentPrimary !== last.prevPrimary) {
+        store.setPrimaryState(last.id, last.prevPrimary);
+      }
       if (store.isSaved(last.id) !== last.prevSaved) store.toggleSaved(last.id);
     }
     setDecisions((prev) => prev.slice(0, -1));
@@ -143,10 +257,18 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
     setDecisions([]);
     setOffset({ x: 0, y: 0 });
     setLeaving(null);
+    setEntryFlow(IDLE_SWIPE_ENTRY_FLOW);
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (!current) return;
+    if (entryFlow.status !== "idle") {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelEntry();
+      }
+      return;
+    }
     switch (event.key) {
       case "ArrowLeft":
         event.preventDefault();
@@ -170,7 +292,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (leaving || !current) return;
+    if (leaving || !current || entryFlow.status !== "idle") return;
     pointerIdRef.current = event.pointerId;
     startRef.current = { x: event.clientX, y: event.clientY };
     setDragging(true);
@@ -346,45 +468,116 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
         })}
       </div>
 
-      <div className="flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={undo}
-          disabled={decisions.length === 0}
-          aria-label="Undo"
-          className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-graphite transition enabled:hover:border-ink/25 disabled:opacity-40"
+      {entryFlow.status === "awaiting_confirmation" ? (
+        <div
+          ref={entryStatusRef}
+          role="status"
+          aria-live="polite"
+          tabIndex={-1}
+          className="w-full rounded-card border border-pine/25 bg-pine/[0.06] p-4 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-pine/50"
         >
-          <Icon name="repeat" size={18} />
-        </button>
-        <button
-          type="button"
-          onClick={() => triggerLeave("skip")}
-          aria-label="Skip"
-          className="grid h-12 w-12 place-items-center rounded-full border border-line bg-surface text-ink/70 shadow-e1 transition hover:border-ink/25"
+          <p className="text-sm font-semibold text-ink">
+            Did you complete the sponsor&apos;s entry?
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-graphite">
+            The official source opened in a new tab. Sweepza records an entry
+            only after you confirm it.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={confirmEntry}
+              className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust"
+            >
+              Yes, mark entered
+            </button>
+            <button
+              type="button"
+              onClick={cancelEntry}
+              className="min-h-11 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold text-graphite"
+            >
+              Not yet
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-graphite">
+            Press Escape to cancel and keep this sweep in the deck.
+          </p>
+        </div>
+      ) : entryFlow.status === "open_failed" ? (
+        <div
+          ref={entryStatusRef}
+          role="alert"
+          tabIndex={-1}
+          className="w-full rounded-card border border-flame/30 bg-flame/[0.06] p-4 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-flame/50"
         >
-          <Icon name="skip" size={20} />
-        </button>
-        <button
-          type="button"
-          onClick={() => triggerLeave("save")}
-          aria-label="Save"
-          className="grid h-12 w-12 place-items-center rounded-full bg-ember text-on-accent shadow-e1 transition hover:bg-ember/90"
-        >
-          <Icon name="bookmark" size={20} />
-        </button>
-        <button
-          type="button"
-          onClick={() => triggerLeave("enter")}
-          aria-label="Enter"
-          className="grid h-12 w-12 place-items-center rounded-full bg-pine text-on-trust shadow-e1 transition hover:bg-pine/90"
-        >
-          <Icon name="send" size={20} />
-        </button>
-      </div>
+          <p className="text-sm font-semibold text-ink">
+            The official entry page did not open
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-graphite">
+            Check your pop-up settings and try again. No entry was recorded.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={requestEntry}
+              className="min-h-11 flex-1 rounded-xl bg-ember px-3 py-2 text-xs font-semibold text-on-accent"
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={cancelEntry}
+              className="min-h-11 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold text-graphite"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={decisions.length === 0}
+              aria-label="Undo"
+              className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-graphite transition enabled:hover:border-ink/25 disabled:opacity-40"
+            >
+              <Icon name="repeat" size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerLeave("skip")}
+              aria-label="Skip"
+              className="grid h-12 w-12 place-items-center rounded-full border border-line bg-surface text-ink/70 shadow-e1 transition hover:border-ink/25"
+            >
+              <Icon name="skip" size={20} />
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerLeave("save")}
+              aria-label="Save"
+              className="grid h-12 w-12 place-items-center rounded-full bg-ember text-on-accent shadow-e1 transition hover:bg-ember/90"
+            >
+              <Icon name="bookmark" size={20} />
+            </button>
+            <button
+              ref={enterActionRef}
+              type="button"
+              onClick={() => triggerLeave("enter")}
+              aria-label="Open official entry page"
+              className="grid h-12 w-12 place-items-center rounded-full bg-pine text-on-trust shadow-e1 transition hover:bg-pine/90"
+            >
+              <Icon name="send" size={20} />
+            </button>
+          </div>
 
-      <p className="text-center text-[11px] text-graphite">
-        Drag a card, tap a button, or use ← Skip · → Save · ↑ Enter · ⌫ Undo.
-      </p>
+          <p className="text-center text-[11px] text-graphite">
+            Drag a card, tap a button, or use ← Skip · → Save · ↑ Open entry ·
+            ⌫ Undo.
+          </p>
+        </>
+      )}
 
       <span className="sr-only" role="status" aria-live="polite">
         {`Sweep ${index + 1} of ${total}: ${current.title}`}

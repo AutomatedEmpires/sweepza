@@ -58,7 +58,10 @@ export interface PreviewInput {
   userLabel: string;
   candidates: ReminderCandidate[];
   prefs?: ReminderPrefs;
-  /** Mirrors notification_pref.email_enabled; missing pref rows default on. */
+  /**
+   * Mirrors resolved notification_pref.email_enabled. Production callers must
+   * pass the explicit-consent result; omission is only for logic-only previews.
+   */
   emailEnabled?: boolean;
   /** Whether the user bucket has a deliverable address; defaults true for fixtures. */
   hasEmailAddress?: boolean;

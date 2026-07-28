@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { track } from "@/lib/analytics";
+import { searchAnalyticsMetrics } from "@/lib/search-analytics";
 
 export function SearchInput({
   placeholder = "Search prizes, hosts, tags...",
@@ -29,18 +30,22 @@ export function SearchInput({
     const next = value.trim();
     if (next === initial) return;
     timeoutRef.current = window.setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
       if (!next) {
-        router.push("/discover");
+        params.delete("q");
+        const serialized = params.toString();
+        router.push(serialized ? `/discover?${serialized}` : "/discover");
         return;
       }
-      track("search_performed", { query: next });
-      router.push(`/discover?q=${encodeURIComponent(next)}`);
+      track("search_performed", { ...searchAnalyticsMetrics(next) });
+      params.set("q", next);
+      router.push(`/discover?${params.toString()}`);
     }, 300);
 
     return () => {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     };
-  }, [router, value, initial]);
+  }, [router, searchParams, value, initial]);
 
   return (
     <form
@@ -63,7 +68,10 @@ export function SearchInput({
           type="button"
           onClick={() => {
             setValue("");
-            router.push("/discover");
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("q");
+            const serialized = params.toString();
+            router.push(serialized ? `/discover?${serialized}` : "/discover");
           }}
           aria-label="Clear search"
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-graphite transition hover:bg-ink/5 hover:text-ink"

@@ -1,6 +1,12 @@
 import { ImageResponse } from "next/og";
 import { listingFallbackTheme } from "@/lib/listing-media";
-import { OG_EMBER, OG_GRAPHITE, OG_INK, OG_PAPER } from "@/lib/og-theme";
+import {
+  OG_EMBER,
+  OG_GRAPHITE,
+  OG_INK,
+  OG_PAPER,
+  OG_PINE,
+} from "@/lib/og-theme";
 
 export const runtime = "edge";
 
@@ -61,21 +67,31 @@ export async function GET(
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 58,
-                height: 58,
-                borderRadius: 18,
-                border: `2px solid ${OG_EMBER}`,
-                color: OG_EMBER,
-                fontSize: 34,
-              }}
-            >
-              S
-            </div>
+            <svg width="64" height="64" viewBox="0 0 64 64">
+              <rect width="64" height="64" rx="18" fill={OG_PAPER} />
+              <path
+                d="M50 13H28c-8.3 0-15 5.6-15 12.5S19.7 38 28 38h8c8.3 0 15 5.2 15 11.7"
+                fill="none"
+                stroke={OG_EMBER}
+                strokeWidth="5.5"
+                strokeLinecap="round"
+              />
+              <path
+                d="m36 49 5.5 5.5L55 41"
+                fill="none"
+                stroke={OG_PINE}
+                strokeWidth="5.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M53 7v7M49.5 10.5h7"
+                fill="none"
+                stroke="#306396"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
             <div style={{ display: "flex", fontSize: 31, fontWeight: 800, letterSpacing: 4 }}>
               SWEEPZA
             </div>
@@ -100,7 +116,7 @@ export async function GET(
           </div>
 
           <div style={{ display: "flex", fontSize: 20, color: OG_GRAPHITE }}>
-            Sweepza fallback art · source image unavailable for display
+            Category illustration · listing image unavailable for display
           </div>
         </div>
       </div>

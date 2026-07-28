@@ -6,7 +6,10 @@ import { getHostByAppUserId } from "@/lib/db/hosts";
 import { listHostListingClaims } from "@/lib/db/listing-claims";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Listing claims" };
+export const metadata = {
+  title: "Listing claims",
+  robots: { index: false, follow: false },
+};
 
 function ClaimsShell({ children }: { children: React.ReactNode }) {
   return (
