@@ -48,9 +48,9 @@ export function MobileShell({
             </div>
           </div>
         </header>
-        <div id="main-content" tabIndex={-1} className="focus:outline-none">
+        <main id="main-content" tabIndex={-1} className="focus:outline-none">
           {children}
-        </div>
+        </main>
       </div>
     );
   }

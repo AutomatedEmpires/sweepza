@@ -51,7 +51,7 @@ export function PublicFooter() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className="inline-flex min-h-8 items-center text-sm text-graphite transition hover:text-ink hover:underline"
+                      className="inline-flex min-h-11 min-w-11 items-center text-sm text-graphite transition hover:text-ink hover:underline"
                     >
                       {link.label}
                     </Link>

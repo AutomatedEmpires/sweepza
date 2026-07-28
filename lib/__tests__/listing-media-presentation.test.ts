@@ -40,6 +40,11 @@ describe("listing media presentation URLs", () => {
     expect(
       listingMediaPresentationUrl("https://cdn.example/prize.jpg"),
     ).toBe("https://cdn.example/prize.jpg");
+    expect(
+      listingMediaPresentationUrl(
+        "https://cdn.example/api/images/listing-fallback/cash",
+      ),
+    ).toBe("https://cdn.example/api/images/listing-fallback/cash");
     expect(listingMediaPresentationUrl(undefined)).toBeUndefined();
   });
 
@@ -58,6 +63,11 @@ describe("listing media presentation URLs", () => {
     expect(
       isGeneratedListingFallbackUrl(
         "https://example.com/opengraph-image",
+      ),
+    ).toBe(false);
+    expect(
+      isGeneratedListingFallbackUrl(
+        "https://cdn.example/api/images/listing-fallback/cash",
       ),
     ).toBe(false);
     expect(isGeneratedListingFallbackUrl(undefined)).toBe(false);

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  isCanadaCountry,
+  isUnitedStatesAndCanadaCountry,
+  isUnitedStatesCountry,
+} from "@/lib/eligibility-country";
 
 /** Two-letter USPS codes for the 50 states and District of Columbia. */
 export const US_STATE_CODES = [
@@ -93,26 +98,9 @@ export const eligibilityRegionCodesSchema = z
   .default([])
   .transform((codes) => [...new Set(codes)]);
 
-const US_COUNTRY_NAMES = new Set([
-  "US",
-  "USA",
-  "UNITEDSTATES",
-  "UNITEDSTATESOFAMERICA",
-]);
-const CANADA_COUNTRY_NAMES = new Set(["CA", "CAN", "CANADA"]);
 const US_CODES = new Set<string>(US_STATE_CODES);
 const CANADA_CODES = new Set<string>(CANADA_PROVINCE_CODES);
 const NORTH_AMERICA_CODES = new Set<string>(ELIGIBILITY_REGION_CODES);
-const US_CANADA_COUNTRY_NAMES = new Set([
-  "USCA",
-  "USCANADA",
-  "UNITEDSTATESANDCANADA",
-  "CANADAANDUNITEDSTATES",
-]);
-
-function normalizedCountry(value: string): string {
-  return value.trim().toUpperCase().replace(/[^A-Z]/g, "");
-}
 
 /** Keep region restrictions consistent with the listing's stated country. */
 export function validateEligibilityRegionCountry(
@@ -122,12 +110,11 @@ export function validateEligibilityRegionCountry(
   path: string,
 ): void {
   if (codes.length === 0) return;
-  const normalized = normalizedCountry(country);
-  const allowed = US_COUNTRY_NAMES.has(normalized)
+  const allowed = isUnitedStatesCountry(country)
     ? US_CODES
-    : CANADA_COUNTRY_NAMES.has(normalized)
+    : isCanadaCountry(country)
       ? CANADA_CODES
-      : US_CANADA_COUNTRY_NAMES.has(normalized)
+      : isUnitedStatesAndCanadaCountry(country)
         ? NORTH_AMERICA_CODES
         : null;
   if (allowed && codes.every((code) => allowed.has(code))) return;

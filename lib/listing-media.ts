@@ -38,6 +38,12 @@ const DISPLAY_TO_CODE: Partial<Record<PrizeCategory, string>> = {
   "Seasonal/Holiday": "seasonal",
 };
 
+const GENERATED_MEDIA_HOSTS = new Set([
+  "sweepza.invalid",
+  "sweepza.com",
+  "www.sweepza.com",
+]);
+
 export function normalizeFallbackCategory(category: string | null | undefined): string {
   if (!category) return "other";
   if (THEMES[category]) return category;
@@ -58,15 +64,10 @@ export function isGeneratedListingFallbackUrl(
   if (!sourceUrl) return false;
   try {
     const parsed = new URL(sourceUrl, "https://sweepza.invalid");
-    if (parsed.pathname.startsWith("/api/images/listing-fallback/")) {
-      return true;
-    }
-
     return (
-      parsed.pathname === "/opengraph-image" &&
-      ["sweepza.invalid", "sweepza.com", "www.sweepza.com"].includes(
-        parsed.hostname,
-      )
+      GENERATED_MEDIA_HOSTS.has(parsed.hostname) &&
+      (parsed.pathname.startsWith("/api/images/listing-fallback/") ||
+        parsed.pathname === "/opengraph-image")
     );
   } catch {
     return false;

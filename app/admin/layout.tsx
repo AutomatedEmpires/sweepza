@@ -91,7 +91,7 @@ export default async function AdminLayout({
     <div className="min-h-screen bg-paper">
       <div className="mx-auto flex max-w-6xl flex-col md:flex-row">
         <AdminNav counts={counts} />
-        <main className="min-w-0 flex-1">{children}</main>
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );

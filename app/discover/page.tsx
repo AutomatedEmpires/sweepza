@@ -3,7 +3,6 @@ import { DiscoverFeed } from "@/components/discover-feed";
 import { DiscoverModeToggle } from "@/components/discover-mode-toggle";
 import { CATEGORY_HUBS, parseCategoryFilter } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
-import { withPublicFallback } from "@/lib/db/resilient";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
 import { APP_NAME, SITE_URL } from "@/lib/site";
@@ -48,18 +47,16 @@ export default async function DiscoverPage({
 
   // The unfiltered feed is shared by every visitor, so serve it from the
   // cached path; search/category views are per-request and stay uncached.
-  // Either way a data-layer failure degrades to the designed empty state.
-  const listings = await withPublicFallback(
+  // Primary feed failures must reach this route's retryable error boundary;
+  // an empty catalog and an unavailable catalog are different user states.
+  const listings =
     q || category
-      ? getPublicListings({
+      ? await getPublicListings({
           searchQuery: q || undefined,
           categories: category ? [category] : undefined,
           limit: 60,
         })
-      : getCachedPublicListings(60),
-    [],
-    "discover_feed",
-  );
+      : await getCachedPublicListings(60);
 
   const itemListJsonLd =
     listings.length > 0
