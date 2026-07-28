@@ -35,7 +35,7 @@ export function ListingMedia({
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  const presentationSource = listingMediaPresentationUrl(sourceUrl);
+  const presentationSource = listingMediaPresentationUrl(sourceUrl, category);
   const generatedFallback =
     isGeneratedListingFallbackUrl(presentationSource);
   const usableSource =

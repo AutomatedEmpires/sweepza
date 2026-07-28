@@ -19,6 +19,14 @@ describe("listing media presentation URLs", () => {
     ).toBe(
       `/api/images/listing-fallback/experiences?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`,
     );
+    expect(
+      listingMediaPresentationUrl(
+        "https://sweepza.com/opengraph-image",
+        "Travel",
+      ),
+    ).toBe(
+      `/api/images/listing-fallback/travel?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`,
+    );
   });
 
   it("normalizes unknown generated categories and leaves real media untouched", () => {
@@ -42,6 +50,16 @@ describe("listing media presentation URLs", () => {
       ),
     ).toBe(true);
     expect(isGeneratedListingFallbackUrl("/images/prize.jpg")).toBe(false);
+    expect(
+      isGeneratedListingFallbackUrl(
+        "https://sweepza.com/opengraph-image",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedListingFallbackUrl(
+        "https://example.com/opengraph-image",
+      ),
+    ).toBe(false);
     expect(isGeneratedListingFallbackUrl(undefined)).toBe(false);
   });
 });

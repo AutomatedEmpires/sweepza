@@ -57,8 +57,16 @@ export function isGeneratedListingFallbackUrl(
 ): boolean {
   if (!sourceUrl) return false;
   try {
-    return new URL(sourceUrl, "https://sweepza.invalid").pathname.startsWith(
-      "/api/images/listing-fallback/",
+    const parsed = new URL(sourceUrl, "https://sweepza.invalid");
+    if (parsed.pathname.startsWith("/api/images/listing-fallback/")) {
+      return true;
+    }
+
+    return (
+      parsed.pathname === "/opengraph-image" &&
+      ["sweepza.invalid", "sweepza.com", "www.sweepza.com"].includes(
+        parsed.hostname,
+      )
     );
   } catch {
     return false;
@@ -72,15 +80,20 @@ export function isGeneratedListingFallbackUrl(
  */
 export function listingMediaPresentationUrl(
   sourceUrl: string | null | undefined,
+  category?: string | null,
 ): string | undefined {
   if (!sourceUrl) return undefined;
   if (!isGeneratedListingFallbackUrl(sourceUrl)) return sourceUrl;
 
   const parsed = new URL(sourceUrl, "https://sweepza.invalid");
-  const rawCategory = parsed.pathname.split("/").filter(Boolean).at(-1);
-  const category = normalizeFallbackCategory(
-    rawCategory ? decodeURIComponent(rawCategory) : undefined,
+  const routeCategory = parsed.pathname.startsWith(
+    "/api/images/listing-fallback/",
+  )
+    ? parsed.pathname.split("/").filter(Boolean).at(-1)
+    : undefined;
+  const normalizedCategory = normalizeFallbackCategory(
+    routeCategory ? decodeURIComponent(routeCategory) : category,
   );
 
-  return `${listingFallbackImageUrl(category)}?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`;
+  return `${listingFallbackImageUrl(normalizedCategory)}?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`;
 }
