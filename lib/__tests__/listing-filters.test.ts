@@ -160,7 +160,12 @@ describe("filterListings", () => {
         "United States of America",
         "USCA",
         "US / Canada",
+        "US and Canada",
+        "U.S. and Canada",
+        "USA & Canada",
         "United States and Canada",
+        "Canada and US",
+        "Canada & USA",
         "Canada and United States",
       ].map((eligibilityCountry) => makeListing({ eligibilityCountry }));
       const canada = makeListing({ eligibilityCountry: "Canada" });

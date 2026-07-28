@@ -87,6 +87,24 @@ describe("listing eligibility state codes", () => {
     ).toBe(false);
   });
 
+  it("accepts state and province codes for common US and Canada aliases", () => {
+    for (const eligibilityCountry of [
+      "US and Canada",
+      "U.S. and Canada",
+      "USA & Canada",
+      "Canada and US",
+      "Canada & USA",
+    ]) {
+      const parsed = hostListingSubmissionSchema.parse({
+        ...common,
+        eligibilityCountry,
+        eligibilityStates: ["TX", "ON"],
+      });
+
+      expect(parsed.eligibilityStates).toEqual(["TX", "ON"]);
+    }
+  });
+
   it("uses the canonical UTC-12 date-only boundary for submission", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-22T11:59:59.999Z"));
