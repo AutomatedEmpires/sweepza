@@ -63,7 +63,10 @@ describe("mobile navigation and jewel theme", () => {
     expect(layout).toContain("THEME_COLORS.sunrise.paper");
     expect(layout).toContain("THEME_COLORS.midnight.paper");
     expect(layout).toContain("data-sweepza-theme-color");
+    expect(layout).toContain("data-sweepza-sunrise");
+    expect(layout).toContain("data-sweepza-midnight");
     expect(layout).toContain("s==='light'||s==='dark'||s==='auto'");
+    expect(layout).not.toContain("JSON.stringify");
     expect(layout).not.toContain("prefers-color-scheme");
     expect(theme).toContain('meta[data-sweepza-theme-color]');
     expect(theme).toContain("THEME_COLORS.midnight.paper");

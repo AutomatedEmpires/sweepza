@@ -61,6 +61,8 @@ function applyTheme(resolved: ResolvedTheme): void {
     themeColor.dataset.sweepzaThemeColor = "";
     document.head.append(themeColor);
   }
+  themeColor.dataset.sweepzaSunrise = THEME_COLORS.sunrise.paper;
+  themeColor.dataset.sweepzaMidnight = THEME_COLORS.midnight.paper;
   themeColor.content =
     resolved === "dark"
       ? THEME_COLORS.midnight.paper

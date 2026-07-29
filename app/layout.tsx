@@ -48,7 +48,8 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-const THEME_BOOTSTRAP_SCRIPT = `(function(){var p='auto';try{var s=localStorage.getItem('sweepza-theme');if(s==='light'||s==='dark'||s==='auto')p=s;}catch(e){}var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));var r=d?'dark':'light';document.documentElement.setAttribute('data-theme',r);var m=document.querySelector('meta[data-sweepza-theme-color]');if(m)m.setAttribute('content',d?${JSON.stringify(THEME_COLORS.midnight.paper)}:${JSON.stringify(THEME_COLORS.sunrise.paper)});})();`;
+const THEME_BOOTSTRAP_SCRIPT =
+  "(function(){var p='auto';try{var s=localStorage.getItem('sweepza-theme');if(s==='light'||s==='dark'||s==='auto')p=s;}catch(e){}var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));var r=d?'dark':'light';document.documentElement.setAttribute('data-theme',r);var m=document.querySelector('meta[data-sweepza-theme-color]');if(m){var c=m.getAttribute(d?'data-sweepza-midnight':'data-sweepza-sunrise');if(c)m.setAttribute('content',c);}})();";
 
 // Only read the per-request nonce when CSP enforcement is active: headers()
 // makes every route dynamic, and in the default report-only mode the static
@@ -80,6 +81,8 @@ export default async function RootLayout({
           name="theme-color"
           content={THEME_COLORS.sunrise.paper}
           data-sweepza-theme-color
+          data-sweepza-sunrise={THEME_COLORS.sunrise.paper}
+          data-sweepza-midnight={THEME_COLORS.midnight.paper}
           suppressHydrationWarning
         />
         <script
