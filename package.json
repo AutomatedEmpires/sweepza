@@ -52,7 +52,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.0",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.18",
     "tailwindcss": "^3.4.15",
     "tsx": "4.23.1",
     "typescript": "^5.8.3",
