@@ -139,6 +139,127 @@ describe("policy client — reach", () => {
     }
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("defaults official_direct to deny when no destination policy is supplied", async () => {
+    const fetchImpl = vi.fn();
+    const client = createSourceHttpClient(
+      descriptor({
+        id: "official_direct",
+        tier: "official",
+        allowedHosts: [],
+        allowedPathPrefixes: [],
+      }),
+      { fetchImpl: fetchImpl as never },
+    );
+
+    const result = await client.get("https://sponsor.example/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(0);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("re-applies an official destination policy before following a redirect", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "https://sponsor.example/rules") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://unreviewed.example/rules" },
+        });
+      }
+      return new Response("must not be fetched", { status: 200 });
+    });
+    const client = createSourceHttpClient(
+      descriptor({
+        id: "official_direct",
+        tier: "official",
+        allowedHosts: [],
+        allowedPathPrefixes: [],
+      }),
+      {
+        fetchImpl,
+        urlPolicy: (url) => new URL(url).hostname === "sponsor.example",
+      },
+    );
+
+    const result = await client.get("https://sponsor.example/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(1);
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("awaits a fresh asynchronous policy decision for a redirect hop", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "https://sponsor.example/rules") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://sponsor.example/final-rules" },
+        });
+      }
+      return new Response("must not be fetched", { status: 200 });
+    });
+    const policy = vi.fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const client = createSourceHttpClient(
+      descriptor({
+        id: "official_direct",
+        tier: "official",
+        allowedHosts: [],
+        allowedPathPrefixes: [],
+      }),
+      { fetchImpl, urlPolicy: policy },
+    );
+
+    const result = await client.get("https://sponsor.example/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(1);
+    }
+    expect(policy).toHaveBeenNthCalledWith(1, "https://sponsor.example/rules");
+    expect(policy).toHaveBeenNthCalledWith(
+      2,
+      "https://sponsor.example/final-rules",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies an unreadable asynchronous destination policy as an internal authority failure", async () => {
+    const fetchImpl = vi.fn();
+    const client = createSourceHttpClient(
+      descriptor({
+        id: "official_direct",
+        tier: "official",
+        allowedHosts: [],
+        allowedPathPrefixes: [],
+      }),
+      {
+        fetchImpl: fetchImpl as never,
+        urlPolicy: async () => {
+          throw new Error("policy ledger unavailable");
+        },
+      },
+    );
+
+    const result = await client.get("https://sponsor.example/rules");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("policy_unavailable");
+      expect(result.message).toContain("policy ledger unavailable");
+      expect(result.attempts).toBe(0);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
 
 describe("policy client — failure classification", () => {
@@ -388,6 +509,47 @@ describe("policy client — bounded image assets", () => {
     ]);
   });
 
+  it("awaits a fresh asynchronous policy decision for an image redirect", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "https://sponsor.example/image") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://sponsor.example/revoked-image" },
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    });
+    const policy = vi.fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const client = createSourceHttpClient(
+      descriptor({
+        id: "official_direct",
+        tier: "official",
+        allowedHosts: [],
+        allowedPathPrefixes: [],
+      }),
+      { fetchImpl, urlPolicy: policy },
+    );
+
+    const result = await client.getAsset("https://sponsor.example/image");
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.failure).toBe("blocked_by_policy");
+      expect(result.attempts).toBe(1);
+    }
+    expect(policy).toHaveBeenNthCalledWith(1, "https://sponsor.example/image");
+    expect(policy).toHaveBeenNthCalledWith(
+      2,
+      "https://sponsor.example/revoked-image",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("stops reading when the asset exceeds its byte cap", async () => {
     const client = createFixtureHttpClient(descriptor({ maxRetries: 0 }), {
       "https://example.com/huge.jpg": {
@@ -481,6 +643,7 @@ describe("SSRF — non-public destinations", () => {
     const client = createSourceHttpClient(open(), {
       fetchImpl: fetchImpl as never,
       lookupImpl: async () => ["127.0.0.1"], // the rebinding-style case
+      urlPolicy: () => true,
     });
 
     const result = await client.get("https://sponsor.example.org/rules");
@@ -498,6 +661,7 @@ describe("SSRF — non-public destinations", () => {
     const client = createSourceHttpClient(open(), {
       fetchImpl: fetchImpl as never,
       lookupImpl: async () => ["93.184.216.34", "169.254.169.254"],
+      urlPolicy: () => true,
     });
 
     const result = await client.get("https://sponsor.example.org/rules");
@@ -514,6 +678,7 @@ describe("SSRF — non-public destinations", () => {
     const client = createSourceHttpClient(open(), {
       fetchImpl: fetchImpl as never,
       lookupImpl: async () => ["93.184.216.34"],
+      urlPolicy: () => true,
     });
 
     const result = await client.get("https://sponsor.example.org/rules");

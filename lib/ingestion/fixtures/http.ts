@@ -126,5 +126,11 @@ export function createFixtureHttpClient(
   return createSourceHttpClient(descriptor, {
     fetchImpl: createFixtureFetch(pages, options),
     sleepImpl: async () => {},
+    // Production official_direct is default-deny without a database-backed
+    // destination policy. Fixtures provide the equivalent exact authority:
+    // only URLs present in this test's recorded page set may be requested.
+    ...(descriptor.id === "official_direct"
+      ? { urlPolicy: (url: string) => Boolean(matchPage(pages, url)) }
+      : {}),
   });
 }

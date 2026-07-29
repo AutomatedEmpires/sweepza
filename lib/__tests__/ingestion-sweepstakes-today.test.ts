@@ -118,7 +118,10 @@ describe("sweepstakesTodayAdapter.discover", () => {
       workQueue,
       limit: 1,
     });
-    await workQueue.complete(first[0].discoveryWorkKey!);
+    await workQueue.complete(
+      first[0].discoveryWorkKey!,
+      first[0].discoveryWorkClaimToken!,
+    );
 
     const second = await sweepstakesTodayAdapter.discover({
       http: createFixtureHttpClient(descriptor, PAGES),

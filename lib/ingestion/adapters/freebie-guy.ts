@@ -164,7 +164,7 @@ export const freebieGuyAdapter: SourceAdapter = {
     for (const item of await workQueue.take(limit)) {
       const post = item.payload as unknown as FreebieGuyPost;
       if (!post.url || !post.title) {
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
       attempted += 1;
@@ -172,7 +172,7 @@ export const freebieGuyAdapter: SourceAdapter = {
 
       if (detail.status === "not_modified") {
         answered += 1; // the source responded; nothing changed
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
       if (detail.status !== "ok") {
@@ -181,9 +181,9 @@ export const freebieGuyAdapter: SourceAdapter = {
           lastFailure = { url: detail.url, failure: detail.failure, message: detail.message };
         } else if (detail.failure === "not_found") {
           answered += 1; // a 404/410 is a real answer about that post
-          await workQueue.complete(item.key);
+          await workQueue.complete(item.key, item.claimToken);
         } else {
-          await workQueue.defer(item.key);
+          await workQueue.defer(item.key, item.claimToken);
         }
         continue;
       }
@@ -193,7 +193,7 @@ export const freebieGuyAdapter: SourceAdapter = {
       // quietly rather than sending an already-over sweepstakes to review.
       if (isClosedPost(detail.body)) {
         await http.commitFetchState(post.url, detail);
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
 
@@ -204,6 +204,7 @@ export const freebieGuyAdapter: SourceAdapter = {
           sourceUrl: post.url,
           hint: { title: post.title },
           discoveryWorkKey: item.key,
+          discoveryWorkClaimToken: item.claimToken,
         });
         // Completion belongs to the orchestrator after the lead reaches a
         // durable terminal outcome. Until then a failed official fetch/LLM/DB
@@ -212,7 +213,7 @@ export const freebieGuyAdapter: SourceAdapter = {
       }
       // No sponsor link may be a page still being populated. Do not save its
       // validator or complete its work item; a later run must fetch it again.
-      await workQueue.defer(item.key);
+      await workQueue.defer(item.key, item.claimToken);
     }
 
     // Every detail we tried failed transiently and nothing answered: that is an

@@ -9,6 +9,7 @@ import {
 } from "@/lib/ingestion/source";
 import { env } from "@/lib/env";
 import type { SourceComplianceState } from "@/lib/ingestion/compliance";
+import { getOfficialDestinationPolicyReadiness } from "@/lib/db/official-destination-policy";
 
 // Source-health view for the admin operations console. Combines three things
 // the founder needs in one place: the reviewed policy (descriptor), the actual
@@ -16,10 +17,10 @@ import type { SourceComplianceState } from "@/lib/ingestion/compliance";
 // runs the SAME gate the orchestrator uses so "would this run right now, and if
 // not, why?" is answered on screen.
 //
-// Resilient by design: the source_registry / ingestion_run tables may not exist
-// in an environment where the migrations have not been applied. A missing table
-// degrades to "no data yet" rather than throwing — an admin console must render
-// even before ingestion is provisioned.
+// Resilient by design: source_registry, ingestion_run, or the durable work queue
+// may not exist in an environment where the migrations have not been applied.
+// A missing table degrades to "no data yet" rather than throwing — an admin
+// console must render even before ingestion is provisioned.
 
 export interface SourceRunStat {
   status: string;
@@ -29,6 +30,7 @@ export interface SourceRunStat {
   failed: number;
   requestsMade: number;
   notModified: number;
+  notes: string | null;
   startedAt: string;
   finishedAt: string | null;
 }
@@ -53,16 +55,45 @@ export interface SourceHealthRow {
   requestBudgetPerRun: number;
   /** The live gate verdict for this source, right now. */
   gate: { allowed: boolean; detail: string };
+  /**
+   * Whether policy and operational approval would let this source execute when
+   * the deployment switch is enabled. A healthy refresh wait still counts as
+   * ready because it is cadence, not an operator action.
+   */
+  policyReady: boolean;
   recentRuns: SourceRunStat[];
 }
 
 export interface SourceHealthView {
   ingestionEnabled: boolean;
-  /** True only when both operational tables are readable. */
+  /** True only when every ingestion control/audit table is readable. */
   tablesPresent: boolean;
   registryReadable: boolean;
   runsReadable: boolean;
+  queueReadable: boolean;
   rows: SourceHealthRow[];
+}
+
+export type IngestionReadinessBlocker =
+  | "disabled"
+  | "configuration_incomplete"
+  | "operational_data_unreadable"
+  | "official_source_not_ready";
+
+export interface IngestionReadiness {
+  enabled: boolean;
+  configured: boolean;
+  ready: boolean;
+  operationalDataReadable: boolean;
+  officialSourceReady: boolean;
+  directOfficialIntakeReady: boolean;
+  eligibleDiscoverySources: number;
+  blockers: IngestionReadinessBlocker[];
+}
+
+export interface OfficialDestinationReadinessSnapshot {
+  readable: boolean;
+  ready: boolean;
 }
 
 interface RegistryRow {
@@ -87,6 +118,7 @@ interface RunRow {
   failed: number;
   requests_made: number | null;
   not_modified: number | null;
+  notes: string | null;
   started_at: string;
   finished_at: string | null;
 }
@@ -103,6 +135,7 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
   let runs: RunRow[] = [];
   let registryReadable = false;
   let runsReadable = false;
+  let queueReadable = false;
 
   try {
     const supabase = createServiceRoleClient();
@@ -124,7 +157,7 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
       const { data: runData, error: runErr } = await supabase
         .from("ingestion_run")
         .select(
-          "source, status, gate_decision, discovered, created, failed, requests_made, not_modified, started_at, finished_at",
+          "source, status, gate_decision, discovered, created, failed, requests_made, not_modified, notes, started_at, finished_at",
         )
         .order("started_at", { ascending: false })
         .limit(60);
@@ -134,6 +167,18 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
       }
     } catch {
       // Preserve registry approvals when only run history fails.
+    }
+
+    try {
+      const { error: queueErr } = await supabase
+        .from("source_discovery_work_item")
+        .select("source_id")
+        .limit(1);
+      if (!queueErr) {
+        queueReadable = true;
+      }
+    } catch {
+      // A missing queue blocks every durable discovery/intake lane.
     }
   } catch {
     // Supabase not configured, or tables absent — render code-level policy only.
@@ -152,6 +197,7 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
         failed: run.failed,
         requestsMade: run.requests_made ?? 0,
         notModified: run.not_modified ?? 0,
+        notes: run.notes,
         startedAt: run.started_at,
         finishedAt: run.finished_at,
       });
@@ -161,19 +207,33 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
 
   const rows: SourceHealthRow[] = SOURCE_REGISTRY.map((descriptor) => {
     const record = recordById.get(descriptor.id) ?? null;
+    const approvalRecord = record
+      ? {
+          id: record.id,
+          complianceState: record.compliance_state,
+          killSwitch: record.kill_switch,
+          circuitOpenedAt: record.circuit_opened_at,
+          lastRunAt: record.last_run_at,
+        }
+      : null;
     const decision = evaluateSourceGate({
       descriptor,
-      record: record
-        ? {
-            id: record.id,
-            complianceState: record.compliance_state,
-            killSwitch: record.kill_switch,
-            circuitOpenedAt: record.circuit_opened_at,
-            lastRunAt: record.last_run_at,
-          }
-        : null,
+      record: approvalRecord,
       ingestionEnabled: env.INGESTION_ENABLED,
     });
+    const policyDecision = evaluateSourceGate({
+      descriptor,
+      record: approvalRecord,
+      ingestionEnabled: "true",
+    });
+    const lastRunAt = approvalRecord?.lastRunAt;
+    const healthyCadenceWait =
+      !policyDecision.allowed &&
+      policyDecision.reason === "refresh_not_due" &&
+      typeof lastRunAt === "string" &&
+      !Number.isNaN(Date.parse(lastRunAt));
+    const policyReady =
+      policyDecision.allowed || healthyCadenceWait;
 
     return {
       id: descriptor.id,
@@ -194,17 +254,87 @@ export async function getSourceHealth(): Promise<SourceHealthView> {
       refreshIntervalMinutes: descriptor.refreshIntervalMinutes,
       requestBudgetPerRun: descriptor.requestBudgetPerRun,
       gate: { allowed: decision.allowed, detail: describeGateDecision(decision) },
+      policyReady,
       recentRuns: runsBySource.get(descriptor.id) ?? [],
     };
   });
 
   return {
     ingestionEnabled,
-    tablesPresent: registryReadable && runsReadable,
+    tablesPresent: registryReadable && runsReadable && queueReadable,
     registryReadable,
     runsReadable,
+    queueReadable,
     rows,
   };
+}
+
+export function summarizeIngestionReadiness(
+  health: SourceHealthView,
+  configured: boolean,
+  officialDestinations: OfficialDestinationReadinessSnapshot,
+): IngestionReadiness {
+  const operationalDataReadable =
+    health.tablesPresent && officialDestinations.readable;
+  const officialSourceReady =
+    officialDestinations.readable &&
+    officialDestinations.ready &&
+    health.rows.some(
+      (row) => row.id === "official_direct" && row.policyReady,
+    );
+  const directOfficialIntakeReady =
+    operationalDataReadable && officialSourceReady;
+  const eligibleDiscoverySources = health.rows.filter(
+    (row) => row.tier === "discovery" && row.policyReady,
+  ).length;
+  const blockers: IngestionReadinessBlocker[] = [];
+
+  if (!health.ingestionEnabled) blockers.push("disabled");
+  if (!configured) blockers.push("configuration_incomplete");
+  if (!operationalDataReadable) blockers.push("operational_data_unreadable");
+  if (!officialSourceReady) blockers.push("official_source_not_ready");
+
+  return {
+    enabled: health.ingestionEnabled,
+    configured,
+    ready: blockers.length === 0,
+    operationalDataReadable,
+    officialSourceReady,
+    directOfficialIntakeReady,
+    eligibleDiscoverySources,
+    blockers,
+  };
+}
+
+export async function getIngestionReadiness(): Promise<IngestionReadiness> {
+  const health = await getSourceHealth();
+  const configured = Boolean(
+    env.NEXT_PUBLIC_SUPABASE_URL &&
+      env.SUPABASE_SERVICE_ROLE_KEY &&
+      env.CRON_SECRET &&
+      env.ANTHROPIC_API_KEY,
+  );
+
+  let officialDestinations: OfficialDestinationReadinessSnapshot = {
+    readable: false,
+    ready: false,
+  };
+  try {
+    const destinationReadiness =
+      await getOfficialDestinationPolicyReadiness();
+    officialDestinations = {
+      readable: true,
+      ready: destinationReadiness.ready,
+    };
+  } catch {
+    // An unreadable policy authority can never be reinterpreted as permission.
+  }
+
+  return summarizeIngestionReadiness(
+    health,
+    configured,
+    officialDestinations,
+  );
 }
 
 export function getDescriptorForDisplay(id: string): SourceDescriptor | undefined {

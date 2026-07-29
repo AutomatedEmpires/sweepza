@@ -474,6 +474,7 @@ export function dispositionForFailure(
       return { action: "retry", suppressPublicly: false, reason: "empty response — retry" };
 
     case "blocked_by_policy":
+    case "policy_unavailable":
     case "budget_exhausted":
       // Our own limits, not the source's fault — never a listing signal.
       return {

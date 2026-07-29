@@ -1,5 +1,15 @@
 import { Icon } from "@/components/icon";
+import { OfficialDestinationPolicyConsole } from "@/components/official-destination-policy-console";
+import { OfficialUrlIntakeConsole } from "@/components/official-url-intake-console";
+import { OfficialUrlIntakeStatus } from "@/components/official-url-intake-status";
+import { ensureCurrentAppUser } from "@/lib/auth";
+import { listCurrentOfficialDestinationPolicies } from "@/lib/db/official-destination-policy";
+import {
+  getOfficialUrlIntakeBacklogStatus,
+  type OfficialUrlIntakeBacklogStatus,
+} from "@/lib/db/official-url-intake-status";
 import { getSourceHealth, type SourceHealthRow } from "@/lib/db/source-health";
+import type { OfficialDestinationPolicy } from "@/lib/ingestion/official-destination-policy";
 
 export const metadata = {
   title: "Source Health",
@@ -147,6 +157,11 @@ function SourceCard({ row }: { row: SourceHealthRow }) {
                   {run.discovered} found · {run.created} created · {run.failed} failed · {run.requestsMade} reqs
                   {run.notModified > 0 ? ` · ${run.notModified} unchanged` : ""}
                 </span>
+                {run.notes ? (
+                  <span className="basis-full break-words text-graphite">
+                    {run.notes}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -157,7 +172,32 @@ function SourceCard({ row }: { row: SourceHealthRow }) {
 }
 
 export default async function AdminSourcesPage() {
+  const authUser = await ensureCurrentAppUser();
+  if (
+    !authUser ||
+    (!authUser.appUser.is_admin && !authUser.appUser.is_owner)
+  ) {
+    return null;
+  }
+
   const health = await getSourceHealth();
+  let officialUrlIntakeStatus: OfficialUrlIntakeBacklogStatus | null = null;
+  let officialUrlIntakeStatusReadable = false;
+  try {
+    officialUrlIntakeStatus = await getOfficialUrlIntakeBacklogStatus();
+    officialUrlIntakeStatusReadable = true;
+  } catch {
+    // Keep status visibly unavailable; never infer queue health from a failed read.
+  }
+  let officialDestinationPolicies: OfficialDestinationPolicy[] = [];
+  let officialDestinationPoliciesReadable = false;
+  try {
+    officialDestinationPolicies =
+      await listCurrentOfficialDestinationPolicies();
+    officialDestinationPoliciesReadable = true;
+  } catch {
+    // Keep the console useful while preserving fail-closed policy semantics.
+  }
   const productionApproved = health.rows.filter(
     (r) => r.registryState === "approved_for_production" && r.recordState === "approved_for_production",
   ).length;
@@ -192,10 +232,23 @@ export default async function AdminSourcesPage() {
         <p className="mt-4 rounded-card border border-line bg-paper px-4 py-3 text-sm text-graphite">
           Operational data is only partially readable in this environment. Approval records are{" "}
           {health.registryReadable ? "available" : "unavailable"}; run history is{" "}
-          {health.runsReadable ? "available" : "unavailable"}. The static code-level policy floor
+          {health.runsReadable ? "available" : "unavailable"}; the durable work queue is{" "}
+          {health.queueReadable ? "available" : "unavailable"}. The static code-level policy floor
           remains visible, but an unavailable read is never treated as approval.
         </p>
       ) : null}
+
+      <OfficialUrlIntakeStatus
+        status={officialUrlIntakeStatus}
+        readable={officialUrlIntakeStatusReadable}
+      />
+
+      <OfficialUrlIntakeConsole />
+
+      <OfficialDestinationPolicyConsole
+        policies={officialDestinationPolicies}
+        readable={officialDestinationPoliciesReadable}
+      />
 
       <div className="mt-5 grid gap-4">
         {health.rows.map((row) => (

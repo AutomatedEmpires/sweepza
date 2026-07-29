@@ -551,7 +551,7 @@ export function ListingCard({
               {listing.title}
             </Link>
           </h3>
-          <p className="mx-auto mt-2 line-clamp-2 max-w-[42ch] text-sm leading-6 text-graphite">
+          <p className="mx-auto mt-2 line-clamp-4 max-w-[42ch] text-sm leading-6 text-graphite">
             {listing.shortDescription}
           </p>
           <p className="mt-2 inline-flex max-w-full items-center justify-center gap-1.5 text-xs text-graphite">
@@ -594,35 +594,6 @@ export function ListingCard({
               {formatEndDate(listing.endDate)}
             </dd>
           </div>
-        </dl>
-
-        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line">
-          {[
-            {
-              label: "Entry schedule",
-              value: ENTRY_FREQUENCY_LABEL[listing.entryFrequency],
-            },
-            { label: "Source", value: sourceText },
-            ...eligibilityFacets.map((facet) => ({
-              label: facet.label,
-              value: facet.value,
-            })),
-          ].map((fact) => (
-            <div
-              key={fact.label}
-              className="min-w-0 bg-surface px-3 py-2.5 text-left"
-            >
-              <dt className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-ember">
-                {fact.label}
-              </dt>
-              <dd
-                className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-4 text-ink/80"
-                title={fact.value}
-              >
-                {fact.value}
-              </dd>
-            </div>
-          ))}
         </dl>
 
         {listing.officialRulesUrl && (

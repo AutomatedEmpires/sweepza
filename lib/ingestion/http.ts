@@ -21,6 +21,7 @@ import type { LookupFunction } from "node:net";
  */
 export type FetchFailureClass =
   | "blocked_by_policy"
+  | "policy_unavailable"
   | "timeout"
   | "network"
   | "not_found"
@@ -51,7 +52,11 @@ export function isRetryable(failure: FetchFailureClass): boolean {
  * transient once the next bounded run receives a fresh budget.
  */
 export function isRetryableOnLaterRun(failure: FetchFailureClass): boolean {
-  return isRetryable(failure) || failure === "budget_exhausted";
+  return (
+    isRetryable(failure) ||
+    failure === "budget_exhausted" ||
+    failure === "policy_unavailable"
+  );
 }
 
 export interface ConditionalState {
@@ -187,6 +192,16 @@ export interface HttpClientOptions {
   lookupImpl?: HostLookup | null;
   /** Loads/stores conditional-GET validators. Omitted → no conditional GET. */
   fetchState?: FetchStatePort;
+  /**
+   * Additional destination authority, applied to the initial URL and every
+   * HTML redirect, asset request, and asset redirect.
+   *
+   * official_direct has no static host allowlist because sponsor destinations
+   * are data. It therefore defaults to DENY unless this runtime policy is
+   * supplied; a caller can never turn the empty descriptor into blanket
+   * internet reach by forgetting the database-backed destination gate.
+   */
+  urlPolicy?: (rawUrl: string) => boolean | Promise<boolean>;
   signal?: AbortSignal;
   /** Identify ourselves honestly; a source may block us by this string. */
   userAgent?: string;
@@ -443,6 +458,14 @@ export function createSourceHttpClient(
   let failures = 0;
   let lastRequestAt = 0;
   let cadenceTail: Promise<void> = Promise.resolve();
+
+  async function isWithinReach(url: string): Promise<boolean> {
+    if (!isUrlAllowed(descriptor, url)) return false;
+    if (descriptor.id === "official_direct") {
+      return (await options.urlPolicy?.(url)) === true;
+    }
+    return options.urlPolicy ? options.urlPolicy(url) : true;
+  }
 
   // ---- concurrency + budget, enforced together ------------------------------
   //
@@ -1006,7 +1029,7 @@ export function createSourceHttpClient(
     let requestsMade = 0;
     let hopInit = init;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const blocked = guard(url);
+      const blocked = await guard(url);
       if (blocked) return { result: blocked, requestsMade };
       const resolved = await resolvePublicTarget(url);
       if (resolved.blocked) return { result: resolved.blocked, requestsMade };
@@ -1018,7 +1041,21 @@ export function createSourceHttpClient(
       }
 
       const target = outcome.hop.location;
-      const withinReach = isUrlAllowed(descriptor, target);
+      let withinReach: boolean;
+      try {
+        withinReach = await isWithinReach(target);
+      } catch (error) {
+        return {
+          result: policyFailure(
+            target,
+            "policy_unavailable",
+            `destination authority could not be refreshed before redirecting to ${target}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+          requestsMade,
+        };
+      }
 
       if (!withinReach) {
         if (mode === "resolve") {
@@ -1080,7 +1117,7 @@ export function createSourceHttpClient(
     let url = startUrl;
     let requestsMade = 0;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const blocked = guard(url);
+      const blocked = await guard(url);
       if (blocked) return { result: blocked, requestsMade };
       const resolved = await resolvePublicTarget(url);
       if (resolved.blocked) return { result: resolved.blocked, requestsMade };
@@ -1090,7 +1127,22 @@ export function createSourceHttpClient(
       if (outcome.hop.kind === "result") return { result: outcome.hop.result, requestsMade };
 
       const target = outcome.hop.location;
-      if (!isUrlAllowed(descriptor, target)) {
+      let withinReach: boolean;
+      try {
+        withinReach = await isWithinReach(target);
+      } catch (error) {
+        return {
+          result: policyFailure(
+            target,
+            "policy_unavailable",
+            `destination authority could not be refreshed before redirecting to ${target}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+          requestsMade,
+        };
+      }
+      if (!withinReach) {
         return {
           result: policyFailure(
             target,
@@ -1166,8 +1218,20 @@ export function createSourceHttpClient(
     return last;
   }
 
-  function guard(url: string): SourceFailureResult | null {
-    if (!isUrlAllowed(descriptor, url)) {
+  async function guard(url: string): Promise<SourceFailureResult | null> {
+    let withinReach: boolean;
+    try {
+      withinReach = await isWithinReach(url);
+    } catch (error) {
+      return policyFailure(
+        url,
+        "policy_unavailable",
+        `destination authority could not be refreshed for ${url}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (!withinReach) {
       return policyFailure(
         url,
         "blocked_by_policy",

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getSourceDescriptor } from "@/lib/ingestion/source";
 
 // The master switch is only a switch if something proves it is OFF. These assert
 // the thing that actually matters: when ingestion is disabled, runIngestion is
@@ -8,15 +9,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   runIngestion: vi.fn(),
+  recoverStaleIngestionRuns: vi.fn(),
   captureException: vi.fn(),
   env: { INGESTION_ENABLED: undefined as string | undefined, ANTHROPIC_API_KEY: "sk-test" },
 }));
 
 vi.mock("@/lib/ingestion/orchestrator", () => ({ runIngestion: mocks.runIngestion }));
+vi.mock("@/lib/db/ingestion", () => ({
+  recoverStaleIngestionRuns: mocks.recoverStaleIngestionRuns,
+}));
 vi.mock("@sentry/nextjs", () => ({ captureException: mocks.captureException }));
 vi.mock("@/lib/env", () => ({ env: mocks.env }));
 
-import { GET } from "../route";
+import { GET, maxDuration } from "../route";
 
 const SECRET = "cron-secret-for-tests";
 const vercelConfig = JSON.parse(
@@ -43,6 +48,11 @@ beforeEach(() => {
   mocks.runIngestion.mockResolvedValue([
     { source: "sweeps_advantage", status: "ok", created: 2 },
   ]);
+  mocks.recoverStaleIngestionRuns.mockResolvedValue({
+    recovered: 0,
+    recoveredAt: "2026-07-29T17:00:00.000Z",
+    cutoffAt: "2026-07-29T16:45:00.000Z",
+  });
 });
 
 describe("GET /api/cron/ingest — authorization", () => {
@@ -80,6 +90,29 @@ describe("GET /api/cron/ingest — the master switch", () => {
       "| `/api/cron/expire-stale` | twice daily 06:10 and 18:10 UTC |",
     );
 
+    const ingestionCron = vercelConfig.crons.find(
+      (cron) => cron.path === "/api/cron/ingest",
+    );
+    const officialSource = getSourceDescriptor("official_direct");
+    expect(ingestionCron).toBeDefined();
+    expect(officialSource).toBeDefined();
+
+    const [minuteField, hourField] = ingestionCron!.schedule.split(" ");
+    const minute = Number(minuteField);
+    const runMinutes = hourField
+      .split(",")
+      .map((hour) => Number(hour) * 60 + minute)
+      .sort((left, right) => left - right);
+    const cadenceGaps = runMinutes.map((value, index) => {
+      const next = runMinutes[(index + 1) % runMinutes.length];
+      return next > value ? next - value : 24 * 60 + next - value;
+    });
+
+    expect(cadenceGaps).toEqual([720, 720]);
+    expect(officialSource!.refreshIntervalMinutes).toBe(720);
+    expect(officialSource!.refreshIntervalMinutes).toBe(cadenceGaps[0]);
+    expect(maxDuration).toBe(300);
+
     mocks.env.INGESTION_ENABLED = undefined;
     const response = await GET(request(`Bearer ${SECRET}`));
 
@@ -97,6 +130,7 @@ describe("GET /api/cron/ingest — the master switch", () => {
     expect(body).toMatchObject({ ok: true, sources: [] });
     expect(body.skipped).toContain("INGESTION_ENABLED");
     // The point of the whole test file.
+    expect(mocks.recoverStaleIngestionRuns).not.toHaveBeenCalled();
     expect(mocks.runIngestion).not.toHaveBeenCalled();
   });
 
@@ -124,6 +158,7 @@ describe("GET /api/cron/ingest — extractor configuration", () => {
     expect(response.status).toBe(503);
     expect(body.error).toContain("ANTHROPIC_API_KEY");
     // Extraction is impossible, so a run could only burn the source's budget.
+    expect(mocks.recoverStaleIngestionRuns).not.toHaveBeenCalled();
     expect(mocks.runIngestion).not.toHaveBeenCalled();
   });
 });
@@ -134,9 +169,31 @@ describe("GET /api/cron/ingest — enabled", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mocks.recoverStaleIngestionRuns).toHaveBeenCalledOnce();
     expect(mocks.runIngestion).toHaveBeenCalledWith({ limit: 25 });
-    expect(body).toMatchObject({ ok: true, created: 2 });
+    expect(
+      mocks.recoverStaleIngestionRuns.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.runIngestion.mock.invocationCallOrder[0]);
+    expect(body).toMatchObject({
+      ok: true,
+      created: 2,
+      recoveredStaleRuns: 0,
+    });
     expect(body.sources).toHaveLength(1);
+  });
+
+  it("reports how many abandoned run records were recovered", async () => {
+    mocks.recoverStaleIngestionRuns.mockResolvedValue({
+      recovered: 2,
+      recoveredAt: "2026-07-29T17:00:00.000Z",
+      cutoffAt: "2026-07-29T16:45:00.000Z",
+    });
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.recoveredStaleRuns).toBe(2);
   });
 
   it("sums created across sources", async () => {
@@ -151,6 +208,52 @@ describe("GET /api/cron/ingest — enabled", () => {
     expect(body.created).toBe(5);
   });
 
+  it("keeps policy and cadence skips as a healthy no-op", async () => {
+    mocks.runIngestion.mockResolvedValue([
+      { source: "a", status: "skipped", gate: "refresh_not_due" },
+      { source: "b", status: "skipped", gate: "record_not_production_approved" },
+    ]);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, created: 0 });
+    expect(body.sources).toHaveLength(2);
+    expect(mocks.captureException).not.toHaveBeenCalled();
+  });
+
+  it("returns a failed cron response when any eligible source execution errors", async () => {
+    mocks.runIngestion.mockResolvedValue([
+      { source: "healthy_source", status: "ok", created: 3 },
+      { source: "failed_source", status: "error", failed: 1 },
+      { source: "waiting_source", status: "skipped", gate: "refresh_not_due" },
+    ]);
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({
+      ok: false,
+      error: "One or more ingestion sources failed.",
+      created: 3,
+    });
+    expect(body.sources).toHaveLength(3);
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("failed_source"),
+      }),
+      expect.objectContaining({
+        tags: { operation: "ingestion_cron" },
+        extra: expect.objectContaining({
+          failedSources: ["failed_source"],
+          created: 3,
+        }),
+      }),
+    );
+  });
+
   it("500s and reports to Sentry when the run throws", async () => {
     mocks.runIngestion.mockRejectedValue(new Error("source registry unreachable"));
 
@@ -159,6 +262,20 @@ describe("GET /api/cron/ingest — enabled", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toBe("source registry unreachable");
+    expect(mocks.captureException).toHaveBeenCalledOnce();
+  });
+
+  it("fails before live execution when stale-run recovery is unavailable", async () => {
+    mocks.recoverStaleIngestionRuns.mockRejectedValue(
+      new Error("ingestion ledger unavailable"),
+    );
+
+    const response = await GET(request(`Bearer ${SECRET}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("ingestion ledger unavailable");
+    expect(mocks.runIngestion).not.toHaveBeenCalled();
     expect(mocks.captureException).toHaveBeenCalledOnce();
   });
 });
