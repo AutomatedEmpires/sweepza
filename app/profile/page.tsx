@@ -180,22 +180,24 @@ export default async function ProfilePage() {
             </div>
           </ProfileSection>
 
-          <ProfileSection id="profile-appearance" title="Appearance">
-            <div className="flex min-h-[4.75rem] items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 shadow-e1">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ocean/10 text-ocean">
-                <Icon name="moon" size={17} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-ink">
-                  Theme
+          {authUser && (
+            <ProfileSection id="profile-appearance" title="Appearance">
+              <div className="flex min-h-[4.75rem] items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 shadow-e1">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ocean/10 text-ocean">
+                  <Icon name="moon" size={17} />
                 </span>
-                <span className="mt-0.5 block text-xs leading-relaxed text-graphite">
-                  Dark by default. Switch to light here when you prefer it.
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-ink">
+                    Theme
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-graphite">
+                    Dark by default. Switch to light here when you prefer it.
+                  </span>
                 </span>
-              </span>
-              <ThemeToggle className="shrink-0 bg-surface-2" />
-            </div>
-          </ProfileSection>
+                <ThemeToggle className="shrink-0 bg-surface-2" />
+              </div>
+            </ProfileSection>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">

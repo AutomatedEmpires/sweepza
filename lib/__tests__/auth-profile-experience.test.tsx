@@ -62,6 +62,9 @@ describe("profile account truth and preferences", () => {
     expect(profile).toContain('title="Appearance"');
     expect(profile).toContain("<ThemeToggle");
     expect(profile).toContain(
+      '{authUser && (\n            <ProfileSection id="profile-appearance"',
+    );
+    expect(profile).toContain(
       "Dark by default. Switch to light here when you prefer it.",
     );
     expect(profile).not.toContain("automatic, light, and dark");
