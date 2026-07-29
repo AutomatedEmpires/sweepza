@@ -84,4 +84,28 @@ describe("ListingMedia representative-photo disclosure", () => {
     expect(html).not.toContain("bg-pine/8");
     expect(html).not.toContain("bg-pine/12");
   });
+
+  it("keeps official attribution above countdowns and renders every known eligibility fact", () => {
+    const html = renderToStaticMarkup(
+      <ListingCard
+        listing={{
+          ...cardListing,
+          mainImageUrl: "https://cdn.example/official-prize.webp",
+          imageAttribution: "Example Sponsor",
+          eligibilityCountry: "US",
+          eligibilityStates: ["CA", "NV"],
+          ageRequirement: 18,
+          noPurchaseNecessary: true,
+          entryLimitNotes: "One entry per household",
+        }}
+      />,
+    );
+
+    expect(html).toContain("Image: Example Sponsor");
+    expect(html).toContain("top-[4.25rem]");
+    expect(html).toContain("US — CA, NV");
+    expect(html).toContain("18+");
+    expect(html).toContain("Confirmed");
+    expect(html).toContain("One entry per household");
+  });
 });

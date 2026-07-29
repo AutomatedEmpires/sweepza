@@ -475,6 +475,7 @@ export function ListingCard({
           priority={priority}
           imageClassName="transition duration-500 group-hover:scale-[1.03]"
           representativeLabelPosition={prizeValue ? "below-prize" : "top"}
+          attributionPosition={prizeValue ? "below-prize" : "top"}
           sizes={
             tone === "featured"
               ? "(min-width:1024px) 720px, 100vw"
@@ -568,7 +569,7 @@ export function ListingCard({
             <Icon name="repeat" size={12} />
             {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
           </span>
-          {presentEligibility.slice(0, 2).map((facet) => (
+          {presentEligibility.map((facet) => (
             <span
               key={facet.label}
               title={`${facet.label}: ${facet.value}`}

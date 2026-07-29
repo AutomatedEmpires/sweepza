@@ -47,7 +47,8 @@ Scheduled jobs (`vercel.json` crons, authorized with `CRON_SECRET`):
 
 | Cron | Schedule | Purpose |
 | --- | --- | --- |
-| `/api/cron/expire-stale` | daily 06:10 UTC | Expire active listings past their end date. |
+| `/api/cron/ingest` | twice daily 05:30 and 17:30 UTC | Run enabled, compliance-approved official-source ingestion; otherwise return a safe no-op. |
+| `/api/cron/expire-stale` | twice daily 06:10 and 18:10 UTC | Expire active listings past their end date after each ingestion window. |
 | `/api/cron/seeker-reminders` | daily 14:00 UTC | Claims one bounded, acknowledged seeker-scan wave and creates at most one durable digest per seeker/UTC day. It is database-free until both email gates are ready. |
 
 `/api/cron/email-deliveries` is implemented but intentionally unscheduled and

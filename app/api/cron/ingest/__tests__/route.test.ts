@@ -24,6 +24,10 @@ const vercelConfig = JSON.parse(
 ) as {
   crons: Array<{ path: string; schedule: string }>;
 };
+const operationsReadme = readFileSync(
+  new URL("../../../../../README.md", import.meta.url),
+  "utf8",
+);
 
 function request(auth?: string): Request {
   return new Request("https://sweepza.com/api/cron/ingest", {
@@ -69,6 +73,12 @@ describe("GET /api/cron/ingest — the master switch", () => {
       { path: "/api/cron/expire-stale", schedule: "10 6,18 * * *" },
       { path: "/api/cron/seeker-reminders", schedule: "0 14 * * *" },
     ]);
+    expect(operationsReadme).toContain(
+      "| `/api/cron/ingest` | twice daily 05:30 and 17:30 UTC |",
+    );
+    expect(operationsReadme).toContain(
+      "| `/api/cron/expire-stale` | twice daily 06:10 and 18:10 UTC |",
+    );
 
     mocks.env.INGESTION_ENABLED = undefined;
     const response = await GET(request(`Bearer ${SECRET}`));

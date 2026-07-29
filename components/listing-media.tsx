@@ -24,6 +24,7 @@ export function ListingMedia({
   className,
   imageClassName,
   representativeLabelPosition = "top",
+  attributionPosition = "bottom-right",
 }: {
   sourceUrl?: string;
   altText?: string;
@@ -36,6 +37,7 @@ export function ListingMedia({
   className?: string;
   imageClassName?: string;
   representativeLabelPosition?: "top" | "below-prize";
+  attributionPosition?: "top" | "below-prize" | "bottom-right";
 }) {
   const [failedUrls, setFailedUrls] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -100,7 +102,16 @@ export function ListingMedia({
               Representative photo
             </span>
           ) : attribution ? (
-            <span className="absolute bottom-2 right-2 max-w-[72%] truncate rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+            <span
+              className={cn(
+                "absolute z-10 truncate rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm",
+                attributionPosition === "bottom-right"
+                  ? "bottom-2 right-2 max-w-[72%]"
+                  : attributionPosition === "below-prize"
+                    ? "left-2 top-[4.25rem] max-w-[calc(100%-1rem)]"
+                    : "left-2 top-2 max-w-[calc(100%-5rem)]",
+              )}
+            >
               Image: {attribution}
             </span>
           ) : null}
