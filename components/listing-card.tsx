@@ -241,6 +241,10 @@ export function ListingCard({
               sponsorName={attributionName}
               category={listing.prizeCategory}
               attribution={listing.imageAttribution}
+              representative={
+                !listing.mainImageUrl &&
+                Boolean(listing.categoryFallbackImageUrl)
+              }
               priority={priority}
               imageClassName="transition duration-500 group-hover:scale-[1.03]"
               sizes="(min-width: 640px) 112px, 96px"
@@ -330,7 +334,7 @@ export function ListingCard({
 
         <div className="flex items-stretch gap-2 border-t border-line p-3 sm:px-4">
           {enterState === "waiting" ? (
-            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/8 px-3 text-[13px] font-medium text-pine">
+            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/[0.08] px-3 text-[13px] font-medium text-pine">
               <Icon name="clock" size={15} />
               <span className="min-w-0 truncate">
                 {enteredAt ? (
@@ -356,7 +360,7 @@ export function ListingCard({
                   : enterState === "expired"
                     ? "cursor-not-allowed bg-line text-graphite"
                     : enterState === "entered"
-                      ? "cursor-default bg-pine/12 text-pine"
+                      ? "cursor-default bg-pine/[0.12] text-pine"
                       : "bg-ember text-on-accent hover:bg-ember/90",
                 enterState === "again" && "animate-ready-glow",
               )}
@@ -454,7 +458,7 @@ export function ListingCard({
   return (
     <article
       className={cn(
-        "group flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-e1 transition duration-200 hover:-translate-y-0.5 hover:shadow-e2",
+        "group flex flex-col overflow-hidden rounded-card border border-gold/25 bg-surface shadow-e2 transition duration-200 hover:-translate-y-0.5 hover:border-gold/45 hover:shadow-e3",
         expired && "opacity-[0.78]",
       )}
     >
@@ -462,7 +466,7 @@ export function ListingCard({
       <div
         className={cn(
           "relative w-full overflow-hidden bg-line",
-          tone === "featured" ? "aspect-[16/9]" : "aspect-[16/11]",
+          tone === "featured" ? "aspect-[16/9]" : "aspect-[4/3]",
         )}
       >
         <ListingMedia
@@ -472,8 +476,13 @@ export function ListingCard({
           sponsorName={attributionName}
           category={listing.prizeCategory}
           attribution={listing.imageAttribution}
+          representative={
+            !listing.mainImageUrl && Boolean(listing.categoryFallbackImageUrl)
+          }
           priority={priority}
           imageClassName="transition duration-500 group-hover:scale-[1.03]"
+          representativeLabelPosition={prizeValue ? "below-prize" : "top"}
+          attributionPosition={prizeValue ? "below-prize" : "top"}
           sizes={
             tone === "featured"
               ? "(min-width:1024px) 720px, 100vw"
@@ -481,11 +490,30 @@ export function ListingCard({
           }
         />
 
-        {/* Legibility scrim only where the chip sits. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-ink/45 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+        <div className="absolute left-3 top-3 flex max-w-[calc(100%-4.75rem)] flex-wrap gap-2">
+          {prizeValue ? (
+            <span className="nums rounded-pill border border-gold bg-gold px-3 py-1.5 font-display text-lg leading-none text-on-won shadow-e2">
+              {prizeValue}
+            </span>
+          ) : null}
+        </div>
 
         <div className="absolute inset-x-3 bottom-3 flex items-end justify-between gap-2">
           <ContextTag context={context} variant="chip" />
+          <span
+            className={cn(
+              "nums shrink-0 rounded-pill border px-2.5 py-1.5 text-[11px] font-extrabold shadow-e1 backdrop-blur",
+              expired
+                ? "border-white/25 bg-black/65 text-white/75"
+                : urgentEnd
+                  ? "border-flame/70 bg-flame text-on-urgent"
+                  : "border-white/30 bg-black/65 text-white",
+            )}
+          >
+            {countdown}
+          </span>
         </div>
 
         <button
@@ -518,35 +546,54 @@ export function ListingCard({
               {listing.title}
             </Link>
           </h3>
-          {prizeValue && (
-            <div className="shrink-0 text-right">
-              <div className="font-display text-[22px] leading-none text-ink">
-                {prizeValue}
-              </div>
-              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-graphite">
-                {listing.winnerCount && listing.winnerCount > 1
-                  ? `${listing.winnerCount} winners`
-                  : "value"}
-              </div>
-            </div>
-          )}
+          {listing.winnerCount && listing.winnerCount > 1 ? (
+            <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-graphite">
+              {listing.winnerCount} winners
+            </p>
+          ) : null}
         </div>
 
         <p className="mt-1.5 line-clamp-1 text-sm text-graphite">
           {listing.shortDescription}
         </p>
 
-        <p className="mt-1 truncate text-xs font-medium text-graphite/80">
-          {attributionName ? `${attributionName} · ${sourceText}` : sourceText}
+        <p className="mt-2 truncate text-xs text-graphite">
+          <span className="font-bold text-ink/75">Sponsor:</span>{" "}
+          {attributionName || "Not stated"}
           {hostVerified && (
-            <span className="ml-1 inline-flex translate-y-0.5 text-pine">
+            <span
+              className="ml-1 inline-flex translate-y-0.5 text-pine"
+              aria-label="Verified sponsor"
+              title="Verified sponsor"
+            >
               <Icon name="verified" size={12} weight="fill" />
             </span>
           )}
         </p>
 
-        {/* Begins / Ends — Ends carries urgency. */}
-        <div className="mt-3.5 flex items-end justify-between border-t border-line pt-3">
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-line bg-surface-2 px-2.5 text-[10px] font-bold text-ink/75">
+            <Icon name="repeat" size={12} />
+            {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
+          </span>
+          {presentEligibility.map((facet) => (
+            <span
+              key={facet.label}
+              title={`${facet.label}: ${facet.value}`}
+              className="inline-flex min-h-7 max-w-full items-center gap-1 rounded-pill border border-line bg-surface-2 px-2.5 text-[10px] font-bold text-ink/75"
+            >
+              {facet.label === "Region" ? <Icon name="location" size={12} /> : null}
+              <span className="max-w-[10rem] truncate">{facet.value}</span>
+            </span>
+          ))}
+          <span className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-pine/25 bg-pine/[0.08] px-2.5 text-[10px] font-bold text-pine">
+            <Icon name="shield" size={12} />
+            {sourceText}
+          </span>
+        </div>
+
+        {/* Begins / Ends — Ends carries urgency and the exact date remains visible. */}
+        <div className="mt-3 flex items-end justify-between border-t border-line pt-3">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-graphite">
               Begins
@@ -586,7 +633,7 @@ export function ListingCard({
         {/* Action — one primary, one quiet route to the full record. */}
         <div className="mt-3.5 flex items-stretch gap-2">
           {enterState === "waiting" ? (
-            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/8 px-4 text-[13px] font-medium text-pine">
+            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/[0.08] px-4 text-[13px] font-medium text-pine">
               <Icon name="clock" size={15} />
               <span className="min-w-0 truncate">
                 {enteredAt ? (
@@ -612,7 +659,7 @@ export function ListingCard({
                 : enterState === "expired"
                   ? "cursor-not-allowed bg-line text-graphite"
                   : enterState === "entered"
-                    ? "cursor-default bg-pine/12 text-pine"
+                    ? "cursor-default bg-pine/[0.12] text-pine"
                     : "bg-ember text-on-accent hover:bg-ember/90",
               // The recurrence invitation: a calm breathing ring while a
               // re-entry window is open again.
@@ -648,7 +695,7 @@ export function ListingCard({
               </>
             ) : (
               <>
-                Enter now <Icon name="send" size={15} />
+                Open official entry <Icon name="externalLink" size={15} />
               </>
             )}
             </button>

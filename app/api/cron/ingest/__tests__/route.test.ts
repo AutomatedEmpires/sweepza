@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The master switch is only a switch if something proves it is OFF. These assert
@@ -18,6 +19,15 @@ vi.mock("@/lib/env", () => ({ env: mocks.env }));
 import { GET } from "../route";
 
 const SECRET = "cron-secret-for-tests";
+const vercelConfig = JSON.parse(
+  readFileSync(new URL("../../../../../vercel.json", import.meta.url), "utf8"),
+) as {
+  crons: Array<{ path: string; schedule: string }>;
+};
+const operationsReadme = readFileSync(
+  new URL("../../../../../README.md", import.meta.url),
+  "utf8",
+);
 
 function request(auth?: string): Request {
   return new Request("https://sweepza.com/api/cron/ingest", {
@@ -57,6 +67,26 @@ describe("GET /api/cron/ingest — authorization", () => {
 });
 
 describe("GET /api/cron/ingest — the master switch", () => {
+  it("schedules ingestion before expiry twice daily without bypassing the disabled gate", async () => {
+    expect(vercelConfig.crons).toEqual([
+      { path: "/api/cron/ingest", schedule: "30 5,17 * * *" },
+      { path: "/api/cron/expire-stale", schedule: "10 6,18 * * *" },
+      { path: "/api/cron/seeker-reminders", schedule: "0 14 * * *" },
+    ]);
+    expect(operationsReadme).toContain(
+      "| `/api/cron/ingest` | twice daily 05:30 and 17:30 UTC |",
+    );
+    expect(operationsReadme).toContain(
+      "| `/api/cron/expire-stale` | twice daily 06:10 and 18:10 UTC |",
+    );
+
+    mocks.env.INGESTION_ENABLED = undefined;
+    const response = await GET(request(`Bearer ${SECRET}`));
+
+    expect(response.status).toBe(200);
+    expect(mocks.runIngestion).not.toHaveBeenCalled();
+  });
+
   it("is a 200 no-op that DOES NOT run ingestion when the switch is unset", async () => {
     mocks.env.INGESTION_ENABLED = undefined;
 

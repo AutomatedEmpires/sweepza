@@ -24,30 +24,30 @@
   /* ------------------------------------------------------------------ */
 
   /* Sunrise — day */
-  --sun-paper: 255 250 244;      /* #FFFAF4  warm ivory    */
+  --sun-paper: 247 243 255;      /* #F7F3FF  lilac canvas  */
   --sun-surface: 255 255 255;    /* #FFFFFF  card          */
-  --sun-surface-2: 247 244 238;  /* #F7F4EE  raised        */
-  --sun-ink: 23 35 33;           /* #172321  text          */
-  --sun-graphite: 91 106 101;    /* #5B6A65  muted text    */
-  --sun-line: 226 231 226;       /* #E2E7E2  hairline      */
-  --sun-ember: 190 64 50;        /* #BE4032  coral action  */
-  --sun-flame: 193 55 44;        /* #C1372C  urgency       */
-  --sun-gold: 142 96 24;         /* #8E6018  winner only   */
-  --sun-ocean: 48 99 150;        /* #306396  information   */
-  --sun-pine: 20 116 102;        /* #147466  trust / teal  */
+  --sun-surface-2: 239 232 255;  /* #EFE8FF  raised        */
+  --sun-ink: 28 11 49;           /* #1C0B31  aubergine     */
+  --sun-graphite: 96 78 124;     /* #604E7C  muted text    */
+  --sun-line: 216 202 238;       /* #D8CAEE  hairline      */
+  --sun-ember: 109 40 217;       /* #6D28D9  violet action */
+  --sun-flame: 190 24 93;        /* #BE185D  urgency       */
+  --sun-gold: 128 83 0;          /* #805300  winner only   */
+  --sun-ocean: 29 78 216;        /* #1D4ED8  information   */
+  --sun-pine: 4 120 87;          /* #047857  trust         */
 
   /* Midnight — night */
-  --mid-paper: 17 25 22;         /* #111916  ink canvas    */
-  --mid-surface: 24 34 30;       /* #18221E  card          */
-  --mid-surface-2: 32 44 39;     /* #202C27  raised        */
-  --mid-ink: 247 245 238;        /* #F7F5EE  warm light    */
-  --mid-graphite: 171 187 180;   /* #ABBBAF  muted text    */
-  --mid-line: 45 59 53;          /* #2D3B35  hairline      */
-  --mid-ember: 255 128 108;      /* #FF806C  coral action  */
-  --mid-flame: 255 126 116;      /* #FF7E74  urgency       */
-  --mid-gold: 229 189 90;        /* #E5BD5A  winner only   */
-  --mid-ocean: 138 186 240;      /* #8ABAF0  information   */
-  --mid-pine: 104 211 195;       /* #68D3C3  trust / teal  */
+  --mid-paper: 16 6 31;          /* #10061F  velvet canvas */
+  --mid-surface: 28 13 50;       /* #1C0D32  card          */
+  --mid-surface-2: 41 19 73;     /* #291349  raised        */
+  --mid-ink: 255 248 232;        /* #FFF8E8  warm light    */
+  --mid-graphite: 197 181 220;   /* #C5B5DC  muted text    */
+  --mid-line: 77 52 111;         /* #4D346F  hairline      */
+  --mid-ember: 203 107 255;      /* #CB6BFF  neon violet   */
+  --mid-flame: 255 93 143;       /* #FF5D8F  urgency       */
+  --mid-gold: 255 208 92;        /* #FFD05C  winner only   */
+  --mid-ocean: 90 184 255;       /* #5AB8FF  information   */
+  --mid-pine: 70 227 173;        /* #46E3AD  trust         */
 
   /* ------------------------------------------------------------------ */
   /* 2 · NON-COLOR SCALES — mode-stable. (--font-sans / --font-display   */
@@ -110,9 +110,9 @@
   --color-on-info: 255 255 255;
   --color-on-trust: 255 255 255;
 
-  --shadow-e1: 0 1px 2px rgb(23 19 15 / 0.04), 0 2px 8px rgb(23 19 15 / 0.05);
-  --shadow-e2: 0 4px 14px rgb(23 19 15 / 0.08), 0 2px 6px rgb(23 19 15 / 0.05);
-  --shadow-e3: 0 18px 48px rgb(23 19 15 / 0.16), 0 6px 16px rgb(23 19 15 / 0.08);
+  --shadow-e1: 0 1px 2px rgb(53 25 91 / 0.06), 0 3px 10px rgb(53 25 91 / 0.08);
+  --shadow-e2: 0 8px 24px rgb(53 25 91 / 0.14), 0 2px 8px rgb(53 25 91 / 0.08);
+  --shadow-e3: 0 22px 56px rgb(53 25 91 / 0.22), 0 8px 22px rgb(109 40 217 / 0.12);
 
   color-scheme: light;
 }
@@ -140,16 +140,16 @@
   --color-trust: var(--mid-pine);
   /* Midnight action colors are bright by design (they must read as TEXT on
      the dark canvas), so the text sitting on them flips to ink. Measured:
-     ember 5.9:1 · flame 6.8:1 · gold 11.3:1 · ocean ~7:1 · pine 9.0:1. */
+     ember 6.6:1 · flame 6.8:1 · gold 13.5:1 · ocean 9.1:1 · pine 12.0:1. */
   --color-on-accent: var(--mid-paper);
   --color-on-urgent: var(--mid-paper);
   --color-on-won: var(--mid-paper);
   --color-on-info: var(--mid-paper);
   --color-on-trust: var(--mid-paper);
 
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.30), 0 2px 8px rgb(0 0 0 / 0.36);
-  --shadow-e2: 0 4px 14px rgb(0 0 0 / 0.44), 0 2px 6px rgb(0 0 0 / 0.34);
-  --shadow-e3: 0 18px 48px rgb(0 0 0 / 0.60), 0 6px 16px rgb(0 0 0 / 0.40);
+  --shadow-e1: 0 2px 10px rgb(0 0 0 / 0.40), 0 0 12px rgb(203 107 255 / 0.08);
+  --shadow-e2: 0 8px 28px rgb(0 0 0 / 0.52), 0 0 20px rgb(203 107 255 / 0.12);
+  --shadow-e3: 0 24px 64px rgb(0 0 0 / 0.68), 0 0 32px rgb(203 107 255 / 0.18);
 
   color-scheme: dark;
 }

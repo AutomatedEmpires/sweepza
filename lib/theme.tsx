@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { THEME_COLORS } from "@/lib/generated/theme-colors";
 
 // Sweepza theming — the day/night hybrid engine.
 //
@@ -51,6 +52,21 @@ function readStoredPreference(): ThemePreference {
 
 function applyTheme(resolved: ResolvedTheme): void {
   document.documentElement.setAttribute("data-theme", resolved);
+  let themeColor = document.head.querySelector<HTMLMetaElement>(
+    "meta[data-sweepza-theme-color]",
+  );
+  if (!themeColor) {
+    themeColor = document.createElement("meta");
+    themeColor.name = "theme-color";
+    themeColor.dataset.sweepzaThemeColor = "";
+    document.head.append(themeColor);
+  }
+  themeColor.dataset.sweepzaSunrise = THEME_COLORS.sunrise.paper;
+  themeColor.dataset.sweepzaMidnight = THEME_COLORS.midnight.paper;
+  themeColor.content =
+    resolved === "dark"
+      ? THEME_COLORS.midnight.paper
+      : THEME_COLORS.sunrise.paper;
 }
 
 interface ThemeContextValue {
