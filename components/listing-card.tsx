@@ -19,7 +19,10 @@ import {
   formatPrizeValue,
 } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
-import { openOfficialSource } from "@/lib/open-official-source";
+import {
+  OFFICIAL_SOURCE_BLOCKED_MESSAGE,
+  openOfficialSource,
+} from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
@@ -426,7 +429,7 @@ export function ListingCard({
             className="border-t border-flame/25 bg-flame/[0.08] px-3 py-2 text-xs font-medium text-flame sm:px-4"
             role="alert"
           >
-            Your browser blocked the official entry page. Allow pop-ups and try again.
+            {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
           </p>
         ) : null}
 
@@ -720,7 +723,7 @@ export function ListingCard({
             className="mt-3 rounded-2xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame"
             role="alert"
           >
-            Your browser blocked the official entry page. Allow pop-ups and try again.
+            {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
           </p>
         ) : null}
 

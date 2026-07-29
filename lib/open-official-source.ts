@@ -1,5 +1,8 @@
 type OpenEntryTab = () => Window | null;
 
+export const OFFICIAL_SOURCE_BLOCKED_MESSAGE =
+  "Your browser blocked the official entry page. Allow pop-ups and try again.";
+
 /**
  * Opens an untrusted official-source URL without retaining access to Sweepza.
  * Returning false lets callers keep entry state unchanged when a browser

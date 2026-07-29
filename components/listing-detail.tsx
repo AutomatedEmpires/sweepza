@@ -22,7 +22,10 @@ import {
   formatRelativeTime,
 } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
-import { openOfficialSource } from "@/lib/open-official-source";
+import {
+  OFFICIAL_SOURCE_BLOCKED_MESSAGE,
+  openOfficialSource,
+} from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
@@ -35,6 +38,19 @@ const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
   claimed_by_host:
     "Originally found by Sweepza, then claimed by a host whose authority was reviewed.",
 };
+
+function eligibilityFacet(
+  eligibility: ReturnType<typeof describeEligibility>,
+  label: string,
+) {
+  return (
+    eligibility.facets.find((facet) => facet.label === label) ?? {
+      label,
+      value: "Not stated",
+      certainty: "unknown" as const,
+    }
+  );
+}
 
 function countdownLabel(listing: Listing, now: Date): string {
   if (isExpired(listing, now)) return "This sweepstakes has ended";
@@ -213,9 +229,9 @@ export function ListingDetail({
     ageRequirement: listing.ageRequirement,
     entryLimitNotes: listing.entryLimitNotes,
   });
-  const region = eligibility.facets[0];
-  const minimumAge = eligibility.facets[1];
-  const entryLimits = eligibility.facets[3];
+  const region = eligibilityFacet(eligibility, "Region");
+  const minimumAge = eligibilityFacet(eligibility, "Minimum age");
+  const entryLimits = eligibilityFacet(eligibility, "Entry limits");
 
   // ---- Action block, reused in the sticky rail (desktop) and inline (mobile) ----
   const actionBlock = (
@@ -308,7 +324,7 @@ export function ListingDetail({
           className="hidden rounded-xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame lg:block"
           role="alert"
         >
-          Your browser blocked the official entry page. Allow pop-ups and try again.
+          {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
         </p>
       ) : null}
 
@@ -500,6 +516,9 @@ export function ListingDetail({
               <InfoCell icon="host" label="Sponsor">
                 {attributionName ?? "Not stated"}
               </InfoCell>
+              <InfoCell icon="info" label="Source">
+                {sourceText}
+              </InfoCell>
               <InfoCell icon="gift" label="Prize">
                 {listing.prizeName}
               </InfoCell>
@@ -533,14 +552,13 @@ export function ListingDetail({
                   {minimumAge.value}
                 </span>
               </InfoCell>
+              <InfoCell icon="rules" label="Purchase requirements">
+                <span className="text-graphite">Check the Official Rules</span>
+              </InfoCell>
               <InfoCell icon="repeat" label="Entry schedule">
                 {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
               </InfoCell>
-              <InfoCell
-                icon="rules"
-                label={entryLimits.label}
-                className="sm:col-span-2 lg:col-span-3"
-              >
+              <InfoCell icon="rules" label={entryLimits.label}>
                 <span
                   className={
                     entryLimits.certainty === "unknown"
@@ -672,7 +690,7 @@ export function ListingDetail({
               className="mb-2 rounded-xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame"
               role="alert"
             >
-              Your browser blocked the official entry page. Allow pop-ups and try again.
+              {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
             </p>
           ) : null}
           {confirmEntry && (!entered || readyAgain) ? (

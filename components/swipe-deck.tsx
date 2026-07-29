@@ -15,7 +15,10 @@ import { track } from "@/lib/analytics";
 import { cn } from "@/lib/cn";
 import { getListingEntryAction } from "@/lib/listing-entry-action";
 import { useNow } from "@/lib/now";
-import { openOfficialSource } from "@/lib/open-official-source";
+import {
+  OFFICIAL_SOURCE_BLOCKED_MESSAGE,
+  openOfficialSource,
+} from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import {
   IDLE_SWIPE_ENTRY_FLOW,
@@ -570,7 +573,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
             The official entry page did not open
           </p>
           <p className="mt-1 text-xs leading-relaxed text-graphite">
-            Check your pop-up settings and try again. No entry was recorded.
+            {OFFICIAL_SOURCE_BLOCKED_MESSAGE} No entry was recorded.
           </p>
           <div className="mt-3 flex gap-2">
             <button

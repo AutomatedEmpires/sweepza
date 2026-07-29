@@ -37,9 +37,11 @@ describe("listing presentation contract", () => {
 
     for (const label of [
       "Sponsor",
+      "Source",
       "Prize",
       "Estimated value",
       "Winners",
+      "Purchase requirements",
       "Entry schedule",
     ]) {
       expect(detail).toContain(`label="${label}"`);

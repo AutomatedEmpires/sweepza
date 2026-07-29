@@ -263,13 +263,13 @@ export default async function TodayPage() {
               <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:items-center">
                 <Link
                   href="/discover"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ember px-5 text-sm font-extrabold text-on-accent shadow-e2 transition hover:-translate-y-0.5 hover:shadow-e3"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ember px-5 text-sm font-extrabold text-on-accent shadow-e2 transition hover:-translate-y-0.5 hover:shadow-e3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
                   Browse sweeps <Icon name="caretRight" size={17} />
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-line bg-surface px-5 text-sm font-bold text-ink transition hover:bg-surface-2"
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-line bg-surface px-5 text-sm font-bold text-ink transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
                   Save my run
                 </Link>

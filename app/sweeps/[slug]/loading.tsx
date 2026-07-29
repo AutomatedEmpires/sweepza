@@ -47,14 +47,10 @@ export default function ListingDetailLoading() {
           <div className="mt-8">
             <div className="mb-3 h-6 w-56 animate-pulse rounded bg-ink/[0.08]" />
             <div className="grid gap-px overflow-hidden rounded-sheet border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 10 }, (_, index) => (
+              {Array.from({ length: 12 }, (_, index) => (
                 <div
                   key={index}
-                  className={
-                    index === 9
-                      ? "min-h-24 bg-surface p-4 sm:col-span-2 lg:col-span-3"
-                      : "min-h-24 bg-surface p-4"
-                  }
+                  className="min-h-24 bg-surface p-4"
                 >
                   <div className="h-3 w-20 animate-pulse rounded bg-ink/[0.06]" />
                   <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-ink/[0.08]" />
