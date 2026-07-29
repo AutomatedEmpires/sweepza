@@ -225,119 +225,115 @@ export default async function TodayPage() {
   return (
     <div className="overflow-hidden">
       <SiteJsonLd />
-      <header className="relative border-b border-line bg-ink text-paper">
+      <header className="relative overflow-hidden border-b border-line bg-paper text-ink">
         <div
           aria-hidden
-          className="absolute -right-28 top-16 h-72 w-72 rounded-full bg-ocean/20 blur-3xl"
+          className="absolute -right-28 top-16 h-72 w-72 rounded-full bg-ember/20 blur-3xl"
         />
         <div
           aria-hidden
-          className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-ember/25 blur-3xl"
+          className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-gold/15 blur-3xl"
         />
-        <div className="relative mx-auto grid w-full max-w-[1440px] items-start gap-x-10 gap-y-0 px-4 pb-7 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:grid-cols-[0.78fr_1.22fr] lg:grid-rows-[auto_auto_1fr] lg:px-10 lg:py-12">
-          <h1 className="order-3 mt-5 max-w-[15ch] font-display text-[40px] leading-[0.98] tracking-[-0.055em] text-paper sm:text-[54px] lg:col-start-1 lg:row-start-2 lg:text-[62px]">
-            Real sweeps. One bold daily run.
-          </h1>
+        <div className="relative mx-auto w-full max-w-[1440px] px-4 pb-9 pt-4 sm:px-6 sm:pb-12 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-10">
+          <div className="overflow-hidden rounded-[2rem] border border-gold/45 bg-surface shadow-e3">
+            <Image
+              src="/brand/sweepza-casino-hero.webp"
+              alt="Sweepza slot-machine marquee in a purple and gold casino lounge, reading Sweepstakes Simplified"
+              width={2400}
+              height={1018}
+              priority
+              className="aspect-[4/3] w-full object-cover object-center sm:aspect-[16/9] lg:aspect-[1200/509]"
+              sizes="(min-width: 1440px) 1360px, (min-width: 1024px) calc(100vw - 80px), calc(100vw - 32px)"
+            />
+          </div>
 
-          <section
-            aria-labelledby="daily-drop-heading"
-            className="relative order-1 mb-6 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:mb-0 lg:self-center"
-          >
-            <div className="mb-3 flex items-center justify-between px-1">
-              <div>
-                <h2
-                  id="daily-drop-heading"
-                  className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper"
+          <div className="mt-6 grid items-start gap-8 lg:mt-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-10">
+            <div className="lg:sticky lg:top-24">
+              <p className="inline-flex min-h-8 items-center gap-2 rounded-pill border border-gold/45 bg-gold/[0.08] px-3 text-xs font-extrabold uppercase tracking-[0.16em] text-gold">
+                <Icon name="sparkle" size={14} weight="fill" />
+                Sweepstakes simplified
+              </p>
+              <h1 className="mt-4 max-w-[12ch] font-display text-[42px] leading-[0.98] tracking-[-0.055em] text-ink sm:text-[56px] lg:text-[66px]">
+                Real sweeps. One bold daily run.
+              </h1>
+              <p className="mt-4 max-w-[56ch] text-sm leading-6 text-graphite sm:text-base">
+                Scan the prize, sponsor, eligibility, deadline, and entry
+                rhythm. Then continue on the promotion&apos;s official site.
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:items-center">
+                <Link
+                  href="/discover"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ember px-5 text-sm font-extrabold text-on-accent shadow-e2 transition hover:-translate-y-0.5 hover:shadow-e3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
                 >
-                  Daily drop
-                </h2>
-                <p className="mt-0.5 text-sm font-semibold text-paper">
-                  {heroListing
-                    ? "One current listing at a glance"
-                    : "New listings appear after review"}
-                </p>
+                  Browse sweeps <Icon name="caretRight" size={17} />
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-line bg-surface px-5 text-sm font-bold text-ink transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                >
+                  Save my run
+                </Link>
               </div>
-              <span className="rounded-pill border border-paper/20 bg-paper/10 px-2.5 py-1 text-[11px] font-semibold text-paper/75">
-                Official entry
-              </span>
+              <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-semibold text-graphite">
+                {[
+                  "Official-source link-outs",
+                  "Expired sweeps hidden",
+                  "No win promises",
+                ].map((label) => (
+                  <li key={label} className="flex items-center gap-1.5">
+                    <Icon name="check" size={14} className="text-pine" />
+                    {label}
+                  </li>
+                ))}
+              </ul>
             </div>
-            {heroListing ? (
-              <ListingCard
-                listing={heroListing}
-                surface="scroll"
-                tone="featured"
-                priority
-              />
-            ) : (
-              <div className="rounded-card border border-dashed border-line bg-surface px-6 py-12 text-center">
-                <Icon name="discover" size={28} className="mx-auto text-pine" />
-                <h3 className="mt-3 text-lg font-bold text-ink">Fresh listings are being reviewed</h3>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-graphite">
-                  Sweepza only shows listings that meet the public catalog gates.
-                  Check Discover for the latest available inventory.
-                </p>
-              </div>
-            )}
-            <p className="px-1 pt-3 text-[11px] leading-5 text-paper/60">
-              Sweepza summarizes and tracks third-party promotions. The named
-              sponsor or administrator controls the promotion and its official rules.
-            </p>
-          </section>
 
-          <div className="order-2 max-w-xl lg:col-start-1 lg:row-start-1">
-            <div className="relative overflow-hidden rounded-sheet border border-gold/40 bg-paper/5 shadow-e3">
-              <Image
-                src="/brand/sweepza-logo-mobile.webp"
-                alt="Sweepza — Sweepstakes Simplified"
-                width={1200}
-                height={814}
-                priority
-                className="aspect-[2500/1696] w-full object-contain"
-                sizes="(min-width: 1024px) 520px, calc(100vw - 32px)"
-              />
-              <div className="flex items-center justify-between gap-3 border-t border-gold/30 bg-paper/[0.08] px-4 py-3">
-                <span className="inline-flex min-h-8 items-center gap-2 rounded-pill border border-gold bg-gold px-3 text-xs font-extrabold uppercase tracking-[0.14em] text-on-won shadow-e1">
-                  <Icon name="sparkle" size={14} weight="fill" />
-                  Prize lobby
-                </span>
-                <span className="nums rounded-pill bg-pine px-3 py-1.5 text-xs font-extrabold text-on-trust">
+            <section
+              aria-labelledby="daily-drop-heading"
+              className="relative rounded-[2rem] border border-gold/35 bg-surface p-3 shadow-e3 sm:p-4"
+            >
+              <div className="mb-3 flex items-center justify-between px-1">
+                <div>
+                  <h2
+                    id="daily-drop-heading"
+                    className="text-xs font-extrabold uppercase tracking-[0.16em] text-ember"
+                  >
+                    Daily drop
+                  </h2>
+                  <p className="mt-0.5 text-sm font-semibold text-ink">
+                    {heroListing
+                      ? "One current listing at a glance"
+                      : "New listings appear after review"}
+                  </p>
+                </div>
+                <span className="nums rounded-pill border border-pine/30 bg-pine/[0.08] px-2.5 py-1 text-[11px] font-bold text-pine">
                   {active.length} shown today
                 </span>
               </div>
-            </div>
-          </div>
-
-          <div className="order-4 max-w-xl lg:col-start-1 lg:row-start-3">
-            <p className="mt-3 max-w-[56ch] text-sm leading-6 text-paper/75 sm:text-base">
-              Scan the prize, sponsor, eligibility, deadline, and entry rhythm.
-              Then continue on the promotion&apos;s official site.
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:items-center">
-              <Link
-                href="/discover"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ember px-5 text-sm font-extrabold text-on-accent shadow-e2 transition hover:-translate-y-0.5 hover:shadow-e3"
-              >
-                Browse today&apos;s board <Icon name="caretRight" size={17} />
-              </Link>
-              <Link
-                href="/sign-up"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl border border-paper/25 bg-paper/10 px-5 text-sm font-bold text-paper transition hover:bg-paper/15"
-              >
-                Save my run
-              </Link>
-            </div>
-            <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-semibold text-paper/65">
-              {[
-                "Official-source link-outs",
-                "Expired sweeps hidden",
-                "No win promises",
-              ].map((label) => (
-                <li key={label} className="flex items-center gap-1.5">
-                  <Icon name="check" size={14} className="text-pine" />
-                  {label}
-                </li>
-              ))}
-            </ul>
+              {heroListing ? (
+                <ListingCard
+                  listing={heroListing}
+                  surface="scroll"
+                  tone="featured"
+                />
+              ) : (
+                <div className="rounded-card border border-dashed border-line bg-surface-2 px-6 py-12 text-center">
+                  <Icon name="discover" size={28} className="mx-auto text-pine" />
+                  <h3 className="mt-3 text-lg font-bold text-ink">
+                    Fresh listings are being reviewed
+                  </h3>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-graphite">
+                    Sweepza only shows listings that meet the public catalog
+                    gates. Check Discover for the latest available inventory.
+                  </p>
+                </div>
+              )}
+              <p className="px-1 pt-3 text-[11px] leading-5 text-graphite">
+                Sweepza summarizes and tracks third-party promotions. The named
+                sponsor or administrator controls the promotion and its
+                Official Rules.
+              </p>
+            </section>
           </div>
         </div>
       </header>

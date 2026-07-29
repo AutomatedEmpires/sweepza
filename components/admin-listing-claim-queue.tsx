@@ -49,7 +49,7 @@ function ClaimCard({ claim }: { claim: HostListingClaim }) {
       <p className="mt-1 whitespace-pre-wrap text-sm text-graphite">{claim.authority_evidence}</p>
       {claim.authority_evidence_url ? <a href={claim.authority_evidence_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-ember">Open evidence</a> : null}
       <textarea value={notes} onChange={(event) => setNotes(event.target.value)} minLength={5} maxLength={2000} rows={3} placeholder="Required decision notes" className="mt-4 w-full rounded-xl border border-line px-3 py-2 text-sm" />
-      <div className="mt-3 flex gap-2"><button type="button" disabled={pending !== null || notes.trim().length < 5} onClick={() => review("approve")} className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Approve</button><button type="button" disabled={pending !== null || notes.trim().length < 5} onClick={() => review("reject")} className="min-h-11 rounded-xl border border-flame/40 px-4 py-2 text-sm font-semibold text-flame disabled:opacity-60">Reject</button></div>
+      <div className="mt-3 flex gap-2"><button type="button" disabled={pending !== null || notes.trim().length < 5} onClick={() => review("approve")} className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-on-trust disabled:opacity-60">Approve</button><button type="button" disabled={pending !== null || notes.trim().length < 5} onClick={() => review("reject")} className="min-h-11 rounded-xl border border-flame/40 px-4 py-2 text-sm font-semibold text-flame disabled:opacity-60">Reject</button></div>
       {message ? <p role="status" className="mt-2 text-sm text-graphite">{message}</p> : null}
     </article>
   );

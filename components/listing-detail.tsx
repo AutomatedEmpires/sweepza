@@ -13,6 +13,7 @@ import { ListingMedia } from "@/components/listing-media";
 import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
+import { getListingEntryAction } from "@/lib/listing-entry-action";
 import { pickListingContext } from "@/lib/listing-context";
 import {
   ENTRY_FREQUENCY_LABEL,
@@ -21,7 +22,10 @@ import {
   formatRelativeTime,
 } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
-import { nextEntryAt } from "@/lib/sweep-routine";
+import {
+  OFFICIAL_SOURCE_BLOCKED_MESSAGE,
+  openOfficialSource,
+} from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import { listingShareUrl, shareLink } from "@/lib/share";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
@@ -35,6 +39,19 @@ const SOURCE_LABEL_NOTE: Record<Listing["sourceLabel"], string> = {
     "Originally found by Sweepza, then claimed by a host whose authority was reviewed.",
 };
 
+function eligibilityFacet(
+  eligibility: ReturnType<typeof describeEligibility>,
+  label: string,
+) {
+  return (
+    eligibility.facets.find((facet) => facet.label === label) ?? {
+      label,
+      value: "Not stated",
+      certainty: "unknown" as const,
+    }
+  );
+}
+
 function countdownLabel(listing: Listing, now: Date): string {
   if (isExpired(listing, now)) return "This sweepstakes has ended";
   const expiry = listingExpiration(listing.endDate, now);
@@ -45,26 +62,35 @@ function countdownLabel(listing: Listing, now: Date): string {
   return `Ends ${formatEndDate(listing.endDate)}`;
 }
 
-function Fact({
+function InfoCell({
   icon,
   label,
   children,
+  className,
 }: {
   icon: IconName;
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex gap-3 py-3">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink/[0.04] text-ink/60">
-        <Icon name={icon} size={16} />
-      </span>
-      <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-graphite">
+    <div
+      className={cn(
+        "grid min-h-24 grid-cols-[2.5rem_minmax(0,1fr)] gap-x-3 bg-surface px-4 py-4 sm:px-5",
+        className,
+      )}
+    >
+      <dt className="col-span-2 flex items-center gap-3 text-[11px] font-extrabold uppercase tracking-[0.14em] text-graphite">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ember/[0.1] text-ember">
+          <Icon name={icon} size={16} />
+        </span>
+        <span>
           {label}
-        </div>
-        <div className="mt-0.5 text-sm text-ink">{children}</div>
-      </div>
+        </span>
+      </dt>
+      <dd className="col-start-2 mt-1 min-w-0 text-sm font-medium leading-6 text-ink">
+        {children}
+      </dd>
     </div>
   );
 }
@@ -93,6 +119,7 @@ export function ListingDetail({
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [shareFlash, setShareFlash] = useState(false);
   const [confirmEntry, setConfirmEntry] = useState(false);
+  const [entryOpenFailed, setEntryOpenFailed] = useState(false);
   const [reopened, setReopened] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
@@ -132,17 +159,20 @@ export function ListingDetail({
     if (willSave) track("listing_saved", baseProps);
   }
   function handleEnter() {
-    if (expired || won) return;
+    if (!entryAction.canOpen) return;
     track("listing_enter_clicked", baseProps);
-    if (typeof window !== "undefined") {
-      window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
+    if (!openOfficialSource(listing.entryUrl)) {
+      setEntryOpenFailed(true);
+      return;
     }
+    setEntryOpenFailed(false);
     setConfirmEntry(true);
   }
   function handleMarkEntered() {
     setPrimary("entered");
     setReopened(false);
     setConfirmEntry(false);
+    setEntryOpenFailed(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
   function handleMarkWon() {
@@ -162,14 +192,26 @@ export function ListingDetail({
     }
   }
 
+  const activity = store?.getActivity(listing.id);
+  const enteredAt = activity?.enteredAt ?? listing.seekerState?.enteredAt;
+  const entryAction = getListingEntryAction({
+    listing,
+    uiState,
+    enteredAt,
+    now,
+    reopened,
+  });
+  const readyAgain = entryAction.state === "again";
+  const readyAgainAt = entryAction.nextEntryAt;
+
   const context = useMemo(
     () =>
       pickListingContext(
         listing,
-        { uiState, saved, activity: store?.getActivity(listing.id) },
+        { uiState, saved, activity },
         now,
       ),
-    [listing, uiState, saved, store, now],
+    [listing, uiState, saved, activity, now],
   );
 
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
@@ -187,36 +229,9 @@ export function ListingDetail({
     ageRequirement: listing.ageRequirement,
     entryLimitNotes: listing.entryLimitNotes,
   });
-  const publicEligibilityFacets = [
-    eligibility.facets[0],
-    eligibility.facets[1],
-    eligibility.facets[3],
-  ];
-
-  // Ready-again integration for entered recurring sweeps. Re-confirming an
-  // entry writes the same `entered` state again, intentionally refreshing the
-  // authoritative enteredAt timestamp for the next cadence window.
-  const enteredAt =
-    store?.getActivity(listing.id)?.enteredAt ??
-    listing.seekerState?.enteredAt;
-  const readyAgainAt = entered && enteredAt
-    ? nextEntryAt(enteredAt, listing.entryFrequency)
-    : null;
-  const readyAgainAtInitialRender = Boolean(
-    readyAgainAt && readyAgainAt.getTime() <= now.getTime(),
-  );
-  const readyAgain = readyAgainAtInitialRender || reopened;
-
-  const enterLabel = won
-    ? "You won this"
-    : expired
-      ? "Sweepstakes ended"
-      : entered && readyAgain
-        ? "Enter again"
-        : entered
-          ? "Entry recorded"
-        : "Enter now";
-  const enterDisabled = expired || won || (entered && !readyAgain);
+  const region = eligibilityFacet(eligibility, "Region");
+  const minimumAge = eligibilityFacet(eligibility, "Minimum age");
+  const entryLimits = eligibilityFacet(eligibility, "Entry limits");
 
   // ---- Action block, reused in the sticky rail (desktop) and inline (mobile) ----
   const actionBlock = (
@@ -241,47 +256,77 @@ export function ListingDetail({
         <span className="nums">{countdown}</span>
       </div>
 
+      {listing.officialRulesUrl ? (
+        <a
+          href={listing.officialRulesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-ember/70 bg-ember/[0.06] px-4 text-sm font-bold text-ember transition hover:bg-ember/[0.12]"
+        >
+          <Icon name="rules" size={17} />
+          Official Rules
+          <Icon name="externalLink" size={13} />
+        </a>
+      ) : null}
+
       <button
         type="button"
         onClick={handleEnter}
-        disabled={enterDisabled}
+        disabled={!entryAction.canOpen}
         className={cn(
-          "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-base font-semibold transition",
-          won
+          "flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 text-base font-extrabold tracking-[0.02em] transition",
+          entryAction.state === "won"
             ? "cursor-default bg-pine text-on-trust"
-            : expired
+            : entryAction.state === "expired" ||
+                entryAction.state === "upcoming" ||
+                entryAction.state === "unavailable"
               ? "cursor-not-allowed bg-line text-graphite"
-              : entered && readyAgain
-                ? "bg-pine/12 text-pine hover:bg-pine/18"
-                : entered
-                  ? "cursor-default bg-pine/12 text-pine"
-                : "bg-ember text-on-accent hover:bg-ember/90",
+              : entryAction.state === "recorded" ||
+                  entryAction.state === "waiting"
+                ? "cursor-default bg-pine/12 text-pine"
+                : entryAction.state === "again"
+                  ? "bg-pine text-on-trust shadow-e2 hover:-translate-y-0.5"
+                  : "bg-ember text-on-accent shadow-e2 hover:-translate-y-0.5 hover:shadow-e3",
         )}
       >
-        {won ? (
+        {entryAction.state === "won" ? (
           <>
-            <Icon name="trophy" size={18} weight="fill" /> {enterLabel}
+            <Icon name="trophy" size={18} weight="fill" />
+            {entryAction.label}
           </>
-        ) : entered && readyAgain ? (
+        ) : entryAction.state === "again" ? (
           <>
-            <Icon name="repeat" size={17} /> {enterLabel}
+            <Icon name="repeat" size={17} />
+            {entryAction.label}
           </>
-        ) : entered ? (
+        ) : entryAction.state === "recorded" ||
+          entryAction.state === "waiting" ? (
           <>
-            <Icon name="check" size={17} /> {enterLabel}
+            <Icon name="check" size={17} />
+            {entryAction.label}
           </>
-        ) : expired ? (
-          enterLabel
+        ) : entryAction.state === "open" ? (
+          <>
+            <Icon name="sparkle" size={17} weight="fill" />
+            {entryAction.label}
+          </>
         ) : (
-          <>
-            {enterLabel} <Icon name="send" size={16} />
-          </>
+          entryAction.label
         )}
       </button>
 
       <p className="text-center text-[11px] text-graphite">
         Opens the entry page provided for this listing · Sweepza never charges to enter
       </p>
+
+      {entryOpenFailed ? (
+        <p
+          className="hidden rounded-xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame lg:block"
+          role="alert"
+        >
+          {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
+        </p>
+      ) : null}
 
       {entered && !readyAgain && enteredAt && readyAgainAt ? (
         <p className="text-center text-xs text-graphite" role="timer">
@@ -297,7 +342,7 @@ export function ListingDetail({
         <div className="hidden rounded-xl border border-pine/25 bg-pine/5 p-3 lg:block" role="status">
           <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+            <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust">
               Yes, mark entered
             </button>
             <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
@@ -332,18 +377,6 @@ export function ListingDetail({
           {shareFlash ? "Copied" : "Share"}
         </button>
       </div>
-
-      {listing.officialRulesUrl && (
-        <a
-          href={listing.officialRulesUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-ink/[0.04] py-2.5 text-sm font-semibold text-ink/80 transition hover:bg-ink/[0.07]"
-        >
-          <Icon name="rules" size={15} /> Official rules (authoritative)
-          <Icon name="externalLink" size={12} />
-        </a>
-      )}
 
       {entered && !won && (
         <button
@@ -448,57 +481,101 @@ export function ListingDetail({
             {actionBlock}
           </div>
 
-          {/* Long description */}
-          <div className="mt-8">
-            <SectionHeading>About this prize</SectionHeading>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-graphite">
-              Sweepza normalized summary
-            </p>
-            <p className="whitespace-pre-line text-[15px] leading-relaxed text-ink/80">
+          <div className="mt-8 rounded-sheet border border-line bg-surface p-5 shadow-e1 sm:p-6">
+            <SectionHeading>About this sweep</SectionHeading>
+            <p className="whitespace-pre-line text-[15px] leading-7 text-ink/80">
               {listing.longDescription ?? listing.shortDescription}
             </p>
           </div>
 
-          {/* Facts: timeline / eligibility / entry / prize */}
-          <div className="mt-8 grid gap-x-8 sm:grid-cols-2">
-            <div className="divide-y divide-line">
-              <Fact icon="calendar" label="Opens">
-                {listing.startDate ? formatEndDate(listing.startDate) : "—"}
-              </Fact>
-              <Fact icon="clock" label={expired ? "Ended" : "Ends"}>
-                <span className={cn("nums", urgentEnd && "font-semibold text-flame")}>
+          <div className="mt-8">
+            <SectionHeading>Sweepstakes information</SectionHeading>
+            <dl className="grid gap-px overflow-hidden rounded-sheet border border-line bg-line shadow-e1 sm:grid-cols-2 lg:grid-cols-3">
+              <InfoCell icon="calendar" label="Opens">
+                <span className="nums">
+                  {listing.startDate
+                    ? formatEndDate(listing.startDate)
+                    : "Not stated"}
+                </span>
+              </InfoCell>
+              <InfoCell icon="clock" label={expired ? "Ended" : "Ends"}>
+                <span
+                  className={cn(
+                    "nums",
+                    urgentEnd && "font-semibold text-flame",
+                  )}
+                >
                   {formatEndDate(listing.endDate)}
                 </span>
-              </Fact>
-              <Fact icon="repeat" label="Entry">
-                {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
-                {listing.entryLimitNotes ? ` · ${listing.entryLimitNotes}` : ""}
-              </Fact>
-            </div>
-            <div className="divide-y divide-line">
-              {publicEligibilityFacets.map((facet) => (
-                <Fact
-                  key={facet.label}
-                  icon={facet.label === "Entry limits" ? "repeat" : facet.label === "Region" ? "location" : "gift"}
-                  label={facet.label}
-                >
-                  <span className={facet.certainty === "unknown" ? "text-graphite" : undefined}>
-                    {facet.value}
+                {!expired ? (
+                  <span className="mt-1 block text-xs text-graphite">
+                    {countdown}
                   </span>
-                </Fact>
-              ))}
-              {eligibility.hasUnknowns && (
-                <p className="py-3 text-xs text-graphite">
-                  Some eligibility terms were not stated in the source. Check the official rules before entering.
-                </p>
-              )}
-              <Fact icon="gift" label="Prize">
+                ) : null}
+              </InfoCell>
+              <InfoCell icon="host" label="Sponsor">
+                {attributionName ?? "Not stated"}
+              </InfoCell>
+              <InfoCell icon="info" label="Source">
+                {sourceText}
+              </InfoCell>
+              <InfoCell icon="gift" label="Prize">
                 {listing.prizeName}
+              </InfoCell>
+              <InfoCell icon="sparkle" label="Estimated value">
+                {prizeValue ?? "Not stated"}
+              </InfoCell>
+              <InfoCell icon="trophy" label="Winners">
                 {listing.winnerCount
-                  ? ` · ${listing.winnerCount} winner${listing.winnerCount > 1 ? "s" : ""}`
-                  : ""}
-              </Fact>
-            </div>
+                  ? `${listing.winnerCount} winner${listing.winnerCount > 1 ? "s" : ""}`
+                  : "Not stated"}
+              </InfoCell>
+              <InfoCell icon="location" label={region.label}>
+                <span
+                  className={
+                    region.certainty === "unknown"
+                      ? "text-graphite"
+                      : undefined
+                  }
+                >
+                  {region.value}
+                </span>
+              </InfoCell>
+              <InfoCell icon="profile" label={minimumAge.label}>
+                <span
+                  className={
+                    minimumAge.certainty === "unknown"
+                      ? "text-graphite"
+                      : undefined
+                  }
+                >
+                  {minimumAge.value}
+                </span>
+              </InfoCell>
+              <InfoCell icon="rules" label="Purchase requirements">
+                <span className="text-graphite">Check the Official Rules</span>
+              </InfoCell>
+              <InfoCell icon="repeat" label="Entry schedule">
+                {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
+              </InfoCell>
+              <InfoCell icon="rules" label={entryLimits.label}>
+                <span
+                  className={
+                    entryLimits.certainty === "unknown"
+                      ? "text-graphite"
+                      : undefined
+                  }
+                >
+                  {entryLimits.value}
+                </span>
+              </InfoCell>
+            </dl>
+            {eligibility.hasUnknowns ? (
+              <p className="mt-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-xs leading-5 text-graphite">
+                Some eligibility terms were not stated in the source. Check the
+                Official Rules before entering.
+              </p>
+            ) : null}
           </div>
 
           {/* Tags */}
@@ -607,14 +684,22 @@ export function ListingDetail({
 
       {/* ---- Mobile sticky enter bar ---- */}
       {!won && (
-        <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 border-t border-line bg-paper/95 px-4 py-3 backdrop-blur lg:hidden">
+          {entryOpenFailed && !confirmEntry ? (
+            <p
+              className="mb-2 rounded-xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame"
+              role="alert"
+            >
+              {OFFICIAL_SOURCE_BLOCKED_MESSAGE}
+            </p>
+          ) : null}
           {confirmEntry && (!entered || readyAgain) ? (
             <div className="rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
               <p className="text-center text-sm font-medium text-ink">
                 Did you complete the sponsor&apos;s entry?
               </p>
               <div className="mt-2 flex gap-2">
-                <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-white">
+                <button type="button" onClick={handleMarkEntered} className="min-h-11 flex-1 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust">
                   Yes, mark entered
                 </button>
                 <button type="button" onClick={() => setConfirmEntry(false)} className="min-h-11 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-graphite">
@@ -626,32 +711,39 @@ export function ListingDetail({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={enterDisabled}
+              disabled={!entryAction.canOpen}
               className={cn(
-                "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold transition",
-                expired
+                "flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 text-base font-extrabold tracking-[0.02em] transition",
+                entryAction.state === "expired" ||
+                  entryAction.state === "upcoming" ||
+                  entryAction.state === "unavailable"
                   ? "cursor-not-allowed bg-line text-graphite"
-                  : entered && readyAgain
+                  : entryAction.state === "again"
                     ? "bg-pine text-on-trust"
-                    : entered
+                    : entryAction.state === "recorded" ||
+                        entryAction.state === "waiting"
                       ? "cursor-default bg-pine/12 text-pine"
                     : "bg-ember text-on-accent",
               )}
             >
-              {expired ? (
-                "Sweepstakes ended"
-              ) : entered && readyAgain ? (
+              {entryAction.state === "again" ? (
                 <>
-                  <Icon name="repeat" size={17} /> Enter again
+                  <Icon name="repeat" size={17} />
+                  {entryAction.label}
                 </>
-              ) : entered ? (
+              ) : entryAction.state === "recorded" ||
+                entryAction.state === "waiting" ? (
                 <>
-                  <Icon name="check" size={17} /> Entry recorded
+                  <Icon name="check" size={17} />
+                  {entryAction.label}
+                </>
+              ) : entryAction.state === "open" ? (
+                <>
+                  <Icon name="sparkle" size={17} weight="fill" />
+                  {entryAction.label}
                 </>
               ) : (
-                <>
-                  Enter now <Icon name="send" size={16} />
-                </>
+                entryAction.label
               )}
             </button>
           )}

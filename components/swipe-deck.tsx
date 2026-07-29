@@ -12,6 +12,13 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { track } from "@/lib/analytics";
+import { cn } from "@/lib/cn";
+import { getListingEntryAction } from "@/lib/listing-entry-action";
+import { useNow } from "@/lib/now";
+import {
+  OFFICIAL_SOURCE_BLOCKED_MESSAGE,
+  openOfficialSource,
+} from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import {
   IDLE_SWIPE_ENTRY_FLOW,
@@ -43,32 +50,9 @@ const MAX_VISIBLE = 3;
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
-function openOfficialSource(url: string): boolean {
-  if (typeof window === "undefined") return false;
-
-  // Open a same-origin blank tab first so a blocked popup is observable. Then
-  // sever its opener and set a no-referrer policy before navigating to the
-  // untrusted external destination.
-  const entryTab = window.open("about:blank", "_blank");
-  if (!entryTab) return false;
-
-  try {
-    entryTab.opener = null;
-    entryTab.document.title = "Opening official entry…";
-    const referrerPolicy = entryTab.document.createElement("meta");
-    referrerPolicy.name = "referrer";
-    referrerPolicy.content = "no-referrer";
-    entryTab.document.head.append(referrerPolicy);
-    entryTab.location.replace(url);
-    return true;
-  } catch {
-    entryTab.close();
-    return false;
-  }
-}
-
 export function SwipeDeck({ listings }: { listings: Listing[] }) {
   const store = useSeekerState();
+  const now = useNow();
   const total = listings.length;
 
   const [index, setIndex] = useState(0);
@@ -80,6 +64,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
   const [entryFlow, setEntryFlow] = useState<SwipeEntryFlow>(
     IDLE_SWIPE_ENTRY_FLOW,
   );
+  const [entryNowMs, setEntryNowMs] = useState(now.getTime());
 
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const pointerIdRef = useRef<number | null>(null);
@@ -109,6 +94,27 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
   }, []);
 
   const current = listings[index];
+  const currentUiState = current
+    ? store?.getState(current.id) ??
+      current.seekerState?.primaryUiState ??
+      "none"
+    : "none";
+  const currentActivity = current
+    ? store?.getActivity(current.id)
+    : undefined;
+  const currentEnteredAt =
+    currentActivity?.enteredAt ?? current?.seekerState?.enteredAt;
+  const entryNow = new Date(Math.max(now.getTime(), entryNowMs));
+  const currentEntryAction = current
+    ? getListingEntryAction({
+        listing: current,
+        uiState: currentUiState,
+        enteredAt: currentEnteredAt,
+        now: entryNow,
+      })
+    : null;
+  const currentNextEntryAt =
+    currentEntryAction?.nextEntryAt?.getTime() ?? null;
 
   useEffect(() => {
     if (entryFlow.status === "idle") return;
@@ -126,6 +132,38 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
     };
   }, [entryFlow]);
 
+  useEffect(() => {
+    if (
+      !current ||
+      currentEntryAction?.state !== "waiting" ||
+      currentNextEntryAt === null
+    ) {
+      return;
+    }
+
+    let timer: number | null = null;
+    const schedule = () => {
+      const remaining = currentNextEntryAt - Date.now();
+      if (remaining <= 0) {
+        setEntryNowMs(Date.now());
+        return;
+      }
+      timer = window.setTimeout(
+        schedule,
+        Math.min(remaining, 2_147_000_000),
+      );
+    };
+
+    schedule();
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [
+    current,
+    currentEntryAction?.state,
+    currentNextEntryAt,
+  ]);
+
   function commitDecision(action: SwipeAction) {
     if (leaving) return;
     const card = listings[index];
@@ -136,7 +174,10 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
       source_label: card.sourceLabel,
       surface: "swipe" as const,
     };
-    const prevPrimary = store?.getState(card.id) ?? "none";
+    const prevPrimary =
+      store?.getState(card.id) ??
+      card.seekerState?.primaryUiState ??
+      "none";
     const prevSaved = store ? store.isSaved(card.id) : false;
     const nextPrimary = primaryStateAfterSwipe(prevPrimary, action);
 
@@ -183,6 +224,11 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   function requestEntry() {
     if (leaving || !current || entryFlow.status === "awaiting_confirmation") {
+      return;
+    }
+    if (!currentEntryAction?.canOpen) {
+      setDragging(false);
+      setOffset({ x: 0, y: 0 });
       return;
     }
 
@@ -269,6 +315,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
       }
       return;
     }
+    if (event.target !== event.currentTarget) return;
     switch (event.key) {
       case "ArrowLeft":
         event.preventDefault();
@@ -293,6 +340,12 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (leaving || !current || entryFlow.status !== "idle") return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("a, button, input, select, textarea, [role='button']")
+    ) {
+      return;
+    }
     pointerIdRef.current = event.pointerId;
     startRef.current = { x: event.clientX, y: event.clientY };
     setDragging(true);
@@ -373,7 +426,9 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
 
   const saveStrength = clamp(offset.x / COMMIT_DISTANCE);
   const skipStrength = clamp(-offset.x / COMMIT_DISTANCE);
-  const enterStrength = clamp(-offset.y / COMMIT_DISTANCE);
+  const enterStrength = currentEntryAction?.canOpen
+    ? clamp(-offset.y / COMMIT_DISTANCE)
+    : 0;
   const saveOverlayStyle: CSSProperties = { opacity: saveStrength };
   const skipOverlayStyle: CSSProperties = { opacity: skipStrength };
   const enterOverlayStyle: CSSProperties = { opacity: enterStrength };
@@ -398,7 +453,8 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
         id="swipe-deck-help"
         className="sr-only lg:not-sr-only lg:-mt-3 lg:text-[11px] lg:font-medium lg:text-graphite"
       >
-        Keyboard: ← skip · → save · ↑ enter · Backspace undo
+        Keyboard: ← skip · → save · ↑ {currentEntryAction?.label.toLowerCase()} ·
+        Backspace undo
       </p>
 
       <div className="relative w-full">
@@ -430,6 +486,7 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
               key={listing.id}
               style={layerStyle}
               aria-hidden={!isTop}
+              inert={isTop ? undefined : true}
               onPointerDown={isTop ? onPointerDown : undefined}
               onPointerMove={isTop ? onPointerMove : undefined}
               onPointerUp={isTop ? onPointerEnd : undefined}
@@ -460,7 +517,9 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
                   </span>
                 </>
               ) : null}
-              <div className="pointer-events-none select-none">
+              <div
+                className={isTop ? "select-none" : "pointer-events-none select-none"}
+              >
                 <ListingCard listing={listing} surface="swipe" />
               </div>
             </div>
@@ -514,15 +573,18 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
             The official entry page did not open
           </p>
           <p className="mt-1 text-xs leading-relaxed text-graphite">
-            Check your pop-up settings and try again. No entry was recorded.
+            {OFFICIAL_SOURCE_BLOCKED_MESSAGE} No entry was recorded.
           </p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={requestEntry}
-              className="min-h-11 flex-1 rounded-xl bg-ember px-3 py-2 text-xs font-semibold text-on-accent"
+              disabled={!currentEntryAction?.canOpen}
+              className="min-h-11 flex-1 rounded-xl bg-ember px-3 py-2 text-xs font-semibold text-on-accent disabled:cursor-not-allowed disabled:bg-line disabled:text-graphite"
             >
-              Try again
+              {currentEntryAction?.canOpen
+                ? "Try again"
+                : currentEntryAction?.label}
             </button>
             <button
               type="button"
@@ -565,16 +627,34 @@ export function SwipeDeck({ listings }: { listings: Listing[] }) {
               ref={enterActionRef}
               type="button"
               onClick={() => triggerLeave("enter")}
-              aria-label="Open official entry page"
-              className="grid h-12 w-12 place-items-center rounded-full bg-pine text-on-trust shadow-e1 transition hover:bg-pine/90"
+              disabled={!currentEntryAction?.canOpen}
+              aria-label={currentEntryAction?.label}
+              className={cn(
+                "flex min-h-12 min-w-12 max-w-[9rem] items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-extrabold leading-tight shadow-e1 transition",
+                currentEntryAction?.canOpen
+                  ? "bg-pine text-on-trust hover:bg-pine/90"
+                  : "cursor-not-allowed border border-line bg-surface-2 text-graphite",
+              )}
             >
-              <Icon name="send" size={20} />
+              <Icon
+                name={
+                  currentEntryAction?.state === "won"
+                    ? "trophy"
+                    : currentEntryAction?.state === "again"
+                      ? "repeat"
+                      : currentEntryAction?.canOpen
+                        ? "send"
+                        : "clock"
+                }
+                size={18}
+              />
+              <span>{currentEntryAction?.label}</span>
             </button>
           </div>
 
           <p className="text-center text-[11px] text-graphite">
-            Drag a card, tap a button, or use ← Skip · → Save · ↑ Open entry ·
-            ⌫ Undo.
+            Drag a card, tap a button, or use ← Skip · → Save · ↑{" "}
+            {currentEntryAction?.label} · ⌫ Undo.
           </p>
         </>
       )}

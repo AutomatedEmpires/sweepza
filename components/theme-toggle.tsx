@@ -4,18 +4,15 @@ import { Icon, type IconName } from "@/components/icon";
 import { cn } from "@/lib/cn";
 import { useTheme, type ThemePreference } from "@/lib/theme";
 
-// A compact, always-reachable control that cycles the theme preference:
-// Auto (follow the local clock) -> Light (Sunrise) -> Dark (Midnight) -> Auto.
-// Icon-only to sit cleanly in the top bar; state is announced via aria-label.
+// Dashboard-only theme control. Midnight is the product default; this explicit
+// choice switches between Midnight and the optional Sunrise palette.
 
 const NEXT: Record<ThemePreference, ThemePreference> = {
-  auto: "light",
   light: "dark",
-  dark: "auto",
+  dark: "light",
 };
 
 const META: Record<ThemePreference, { icon: IconName; label: string }> = {
-  auto: { icon: "themeAuto", label: "Auto" },
   light: { icon: "sun", label: "Light" },
   dark: { icon: "moon", label: "Dark" },
 };

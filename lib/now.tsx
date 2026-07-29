@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 // Shared render clock. Time-relative UI (countdowns, "ends today", freshness,
 // routine buckets) must render identically during SSR and the first client
@@ -19,10 +25,28 @@ export function NowProvider({
   value: number;
   children: ReactNode;
 }) {
-  return <NowContext.Provider value={value}>{children}</NowContext.Provider>;
+  const [now, setNow] = useState(value);
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const interval = window.setInterval(update, 60_000);
+    const updateWhenVisible = () => {
+      if (document.visibilityState === "visible") update();
+    };
+
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", updateWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", updateWhenVisible);
+    };
+  }, []);
+
+  return <NowContext.Provider value={now}>{children}</NowContext.Provider>;
 }
 
-/** Frozen render instant as a Date. Stable across SSR + first hydration. */
+/** Shared render clock: frozen for hydration, then advanced after mount. */
 export function useNow(): Date {
   const value = useContext(NowContext);
   return value !== null ? new Date(value) : new Date();

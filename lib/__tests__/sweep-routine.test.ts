@@ -10,8 +10,8 @@ import {
 import type { Listing } from "@/lib/types/listing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Fixed mid-day reference so day-boundary math is deterministic.
-const NOW = new Date("2026-07-06T12:00:00");
+// Fixed UTC reference so day-boundary math is deterministic everywhere.
+const NOW = new Date("2026-07-06T12:00:00.000Z");
 
 function listing(overrides: Partial<Listing> = {}): Listing {
   return {
@@ -35,13 +35,17 @@ function snapshot(partial: Partial<RoutineSnapshot>): RoutineSnapshot {
 }
 
 describe("nextEntryAt", () => {
-  const entered = "2026-07-05T15:30:00";
+  const entered = "2026-07-05T15:30:00.000Z";
 
-  it("daily re-opens at the start of the next local day", () => {
+  it("daily re-opens after a conservative rolling 24-hour window", () => {
     const next = nextEntryAt(entered, "daily")!;
-    expect(next.getHours()).toBe(0);
-    expect(next.getMinutes()).toBe(0);
-    expect(next.getDate()).toBe(6);
+    expect(next.toISOString()).toBe("2026-07-06T15:30:00.000Z");
+  });
+
+  it("keeps the rolling reset instant stable for entries recorded outside UTC", () => {
+    expect(
+      nextEntryAt("2026-07-29T23:30:00.000-07:00", "daily")?.toISOString(),
+    ).toBe("2026-07-31T06:30:00.000Z");
   });
 
   it("instant_win follows the daily cadence", () => {
@@ -79,12 +83,12 @@ describe("isReadyAgain", () => {
   });
 
   it("is true when a daily entry from yesterday has re-opened", () => {
-    const activity = { enteredAt: "2026-07-05T09:00:00" };
+    const activity = { enteredAt: "2026-07-05T09:00:00.000Z" };
     expect(isReadyAgain(listing({ entryFrequency: "daily" }), activity, NOW)).toBe(true);
   });
 
   it("is false when today's daily entry hasn't reset yet", () => {
-    const activity = { enteredAt: "2026-07-06T08:00:00" };
+    const activity = { enteredAt: "2026-07-06T08:00:00.000Z" };
     expect(isReadyAgain(listing({ entryFrequency: "daily" }), activity, NOW)).toBe(false);
   });
 
