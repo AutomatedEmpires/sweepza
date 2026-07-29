@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Icon, type IconName } from "@/components/icon";
 import { ListingCard } from "@/components/listing-card";
 import { TodayDashboard } from "@/components/today-dashboard";
@@ -193,11 +194,9 @@ export default async function TodayPage() {
           </p>
         </header>
 
-        {gamification.stats.totalEntries > 0 && (
-          <div className="px-4 lg:px-0">
-            <GamificationStrip data={gamification} />
-          </div>
-        )}
+        <div className="px-4 lg:px-0">
+          <GamificationStrip data={gamification} />
+        </div>
 
         <TodayDashboard listings={routineListings} />
 
@@ -226,48 +225,63 @@ export default async function TodayPage() {
   return (
     <div className="overflow-hidden">
       <SiteJsonLd />
-      <header className="relative border-b border-line">
+      <header className="relative border-b border-line bg-ink text-paper">
         <div
           aria-hidden
-          className="absolute -right-28 top-16 h-72 w-72 rounded-full bg-pine/8 blur-3xl"
+          className="absolute -right-28 top-16 h-72 w-72 rounded-full bg-ocean/20 blur-3xl"
         />
         <div
           aria-hidden
-          className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-ember/8 blur-3xl"
+          className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-ember/25 blur-3xl"
         />
-        <div className="relative mx-auto grid w-full max-w-[1440px] items-center gap-10 px-5 py-12 sm:px-6 sm:py-16 lg:grid-cols-[0.82fr_1.18fr] lg:px-10 lg:py-20">
-          <div className="max-w-xl">
-            <div className="inline-flex min-h-8 items-center gap-2 rounded-pill border border-pine/20 bg-pine/8 px-3 text-xs font-bold text-pine">
-              <Icon name="sparkle" size={14} weight="fill" />
-              A calmer way to keep up
+        <div className="relative mx-auto grid w-full max-w-[1440px] items-start gap-6 px-4 pb-7 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:gap-10 lg:px-10 lg:py-12">
+          <div className="order-2 max-w-xl lg:order-1">
+            <div className="relative overflow-hidden rounded-sheet border border-gold/40 bg-paper/5 shadow-e3">
+              <Image
+                src="/brand/sweepza-logo-mobile.webp"
+                alt="Sweepza — Sweepstakes Simplified"
+                width={1200}
+                height={814}
+                priority
+                className="aspect-[2500/1696] w-full object-contain"
+                sizes="(min-width: 1024px) 520px, calc(100vw - 32px)"
+              />
+              <div className="flex items-center justify-between gap-3 border-t border-gold/30 bg-paper/[0.08] px-4 py-3">
+                <span className="inline-flex min-h-8 items-center gap-2 rounded-pill border border-gold bg-gold px-3 text-xs font-extrabold uppercase tracking-[0.14em] text-on-won shadow-e1">
+                  <Icon name="sparkle" size={14} weight="fill" />
+                  Prize lobby
+                </span>
+                <span className="nums rounded-pill bg-pine px-3 py-1.5 text-xs font-extrabold text-on-trust">
+                  {active.length} shown today
+                </span>
+              </div>
             </div>
-            <h1 className="mt-5 max-w-[13ch] font-display text-[44px] leading-[1.01] tracking-[-0.055em] text-ink sm:text-[56px] lg:text-[68px]">
-              Find the sweeps. Remember the routine.
+            <h1 className="mt-5 max-w-[15ch] font-display text-[40px] leading-[0.98] tracking-[-0.055em] text-paper sm:text-[54px] lg:text-[62px]">
+              Real sweeps. One bold daily run.
             </h1>
-            <p className="mt-5 max-w-[56ch] text-base leading-7 text-graphite sm:text-lg">
-              Discover current promotions, compare Sweepza&apos;s normalized
-              summary with official source details, and keep saved, entered,
-              and ready-again sweeps organized.
+            <p className="mt-3 max-w-[56ch] text-sm leading-6 text-paper/75 sm:text-base">
+              Scan the prize, sponsor, eligibility, deadline, and entry rhythm.
+              Then continue on the promotion&apos;s official site.
             </p>
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:items-center">
               <Link
                 href="/discover"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ember px-6 text-sm font-bold text-on-accent shadow-e1 transition hover:-translate-y-0.5 hover:shadow-e2"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ember px-5 text-sm font-extrabold text-on-accent shadow-e2 transition hover:-translate-y-0.5 hover:shadow-e3"
               >
-                Explore current sweeps <Icon name="caretRight" size={17} />
+                Browse today&apos;s board <Icon name="caretRight" size={17} />
               </Link>
               <Link
                 href="/sign-up"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-6 text-sm font-bold text-ink transition hover:border-ink/20 hover:bg-surface-2"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl border border-paper/25 bg-paper/10 px-5 text-sm font-bold text-paper transition hover:bg-paper/15"
               >
-                Create a free account
+                Save my run
               </Link>
             </div>
-            <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-graphite">
+            <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-semibold text-paper/65">
               {[
-                "Official source link-outs",
-                "Free for seekers",
-                "No outcome promises",
+                "Official-source link-outs",
+                "Expired sweeps hidden",
+                "No win promises",
               ].map((label) => (
                 <li key={label} className="flex items-center gap-1.5">
                   <Icon name="check" size={14} className="text-pine" />
@@ -277,58 +291,29 @@ export default async function TodayPage() {
             </ul>
           </div>
 
-          <div className="relative rounded-[1.75rem] border border-line bg-surface-2 p-3 shadow-e3 sm:p-4">
+          <div className="relative order-1 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:order-2">
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-ember">
-                  Product preview
-                </p>
-                <p className="mt-0.5 text-sm font-semibold text-ink">
-                  One live listing, one clear next step
+                <h2 className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper">
+                  Daily drop
+                </h2>
+                <p className="mt-0.5 text-sm font-semibold text-paper">
+                  {heroListing
+                    ? "One current listing at a glance"
+                    : "New listings appear after review"}
                 </p>
               </div>
-              <span className="rounded-pill border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-graphite">
-                Today
+              <span className="rounded-pill border border-paper/20 bg-paper/10 px-2.5 py-1 text-[11px] font-semibold text-paper/75">
+                Official entry
               </span>
             </div>
             {heroListing ? (
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_13.5rem]">
-                <ListingCard
-                  listing={heroListing}
-                  surface="scroll"
-                  tone="featured"
-                  priority
-                />
-                <aside className="rounded-card border border-line bg-surface p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-extrabold text-ink">Your routine</p>
-                    <Icon name="today" size={18} className="text-ember" />
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-graphite">
-                    Sweepza brings the most useful action forward.
-                  </p>
-                  <div className="mt-4 space-y-2.5">
-                    {[
-                      { icon: "bookmark" as const, label: "Saved", note: "Keep it close" },
-                      { icon: "check" as const, label: "Entered", note: "Confirm it once" },
-                      { icon: "repeat" as const, label: "Ready again", note: "Know when to return" },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-2.5"
-                      >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-pine/10 text-pine">
-                          <Icon name={item.icon} size={14} />
-                        </span>
-                        <span>
-                          <span className="block text-xs font-bold text-ink">{item.label}</span>
-                          <span className="block text-[11px] leading-4 text-graphite">{item.note}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </aside>
-              </div>
+              <ListingCard
+                listing={heroListing}
+                surface="scroll"
+                tone="featured"
+                priority
+              />
             ) : (
               <div className="rounded-card border border-dashed border-line bg-surface px-6 py-12 text-center">
                 <Icon name="discover" size={28} className="mx-auto text-pine" />
@@ -339,7 +324,7 @@ export default async function TodayPage() {
                 </p>
               </div>
             )}
-            <p className="px-1 pt-3 text-[11px] leading-5 text-graphite">
+            <p className="px-1 pt-3 text-[11px] leading-5 text-paper/60">
               Sweepza summarizes and tracks third-party promotions. The named
               sponsor or administrator controls the promotion and its official rules.
             </p>

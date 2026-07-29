@@ -1,10 +1,11 @@
+import { BottomNav } from "@/components/bottom-nav";
 import { PublicFooter } from "@/components/public-footer";
 import { PublicHeader } from "@/components/public-header";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
 export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-paper">
+    <div className="min-h-dvh bg-paper pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-0">
       <ServiceWorkerRegistration />
       <a
         href="#main-content"
@@ -17,6 +18,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <PublicFooter />
+      <BottomNav />
     </div>
   );
 }

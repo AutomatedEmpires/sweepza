@@ -1,0 +1,87 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { ListingCard } from "@/components/listing-card";
+import { ListingMedia } from "@/components/listing-media";
+import type { Listing } from "@/lib/types/listing";
+
+const requiredProps = {
+  prizeName: "A listed prize",
+  category: "Travel",
+  sizes: "320px",
+};
+
+const cardListing: Listing = {
+  id: "listing-media-card",
+  slug: "travel-prize",
+  title: "Travel prize",
+  shortDescription: "An official-source sweepstakes listing",
+  prizeName: "Vacation package",
+  prizeValue: 500,
+  prizeCurrency: "USD",
+  prizeCategory: "Travel",
+  categoryFallbackImageUrl: "/api/images/listing-fallback/travel",
+  entryUrl: "https://sponsor.example/enter",
+  endDate: "2099-12-31",
+  entryFrequency: "one_time",
+  sourceLabel: "found_by_sweepza",
+  lifecycleStatus: "active",
+  listingVerificationStatus: "reviewed",
+};
+
+describe("ListingMedia representative-photo disclosure", () => {
+  it("labels generated fallback media visibly and with honest alt text", () => {
+    const html = renderToStaticMarkup(
+      <ListingMedia
+        {...requiredProps}
+        sourceUrl="/api/images/listing-fallback/travel"
+        altText="Official beachfront vacation package"
+      />,
+    );
+
+    expect(html).toContain("Representative photo");
+    expect(html).toContain(
+      'alt="Representative photo for travel prize listings; not the official promotion image."',
+    );
+    expect(html).not.toContain(
+      'alt="Official beachfront vacation package"',
+    );
+    expect(html).toContain('style="position:absolute;inset:0"');
+  });
+
+  it("uses an owned representative photo when listing media is absent", () => {
+    const html = renderToStaticMarkup(<ListingMedia {...requiredProps} />);
+
+    expect(html).toContain(
+      "/images/listing-fallbacks/travel.webp",
+    );
+    expect(html).toContain("Representative photo");
+  });
+
+  it("preserves official alt text and attribution for external media", () => {
+    const html = renderToStaticMarkup(
+      <ListingMedia
+        {...requiredProps}
+        sourceUrl="https://cdn.example/official-prize.webp"
+        altText="Official sponsor photo of the vacation package"
+        attribution="Example Sponsor"
+      />,
+    );
+
+    expect(html).toContain(
+      'alt="Official sponsor photo of the vacation package"',
+    );
+    expect(html).toContain("Image: Example Sponsor");
+    expect(html).not.toContain("Representative photo");
+  });
+
+  it("keeps card disclosure below the prize pill and renders the value once", () => {
+    const html = renderToStaticMarkup(
+      <ListingCard listing={cardListing} />,
+    );
+
+    expect(html).toContain("top-[4.25rem]");
+    expect(html.match(/\$500/g)).toHaveLength(1);
+    expect(html).not.toContain("bg-pine/8");
+    expect(html).not.toContain("bg-pine/12");
+  });
+});

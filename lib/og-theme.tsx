@@ -12,11 +12,12 @@
 // never assert no-purchase on a sponsor's behalf, never promise wins. This
 // file is a scanned surface in lib/__tests__/honest-copy.test.ts.
 
-export const OG_PAPER = "#FFFAF4"; // --sun-paper
-export const OG_INK = "#172321"; // --sun-ink
-export const OG_GRAPHITE = "#5B6A65"; // --sun-graphite
-export const OG_EMBER = "#BE4032"; // --sun-ember
-export const OG_PINE = "#147466"; // --sun-pine
+export const OG_PAPER = "#F7F3FF"; // --sun-paper
+export const OG_INK = "#1C0B31"; // --sun-ink
+export const OG_GRAPHITE = "#604E7C"; // --sun-graphite
+export const OG_EMBER = "#6D28D9"; // --sun-ember
+export const OG_GOLD = "#805300"; // --sun-gold
+export const OG_PINE = "#047857"; // --sun-pine
 
 export const OG_TRUST_CHIPS = [
   "Free to enter — always",
@@ -30,7 +31,7 @@ export function TrustChip({ children }: { children: string }) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        border: `2px solid ${OG_PINE}`,
+        border: `2px solid ${OG_GOLD}`,
         borderRadius: 999,
         padding: "10px 22px",
         color: OG_PINE,

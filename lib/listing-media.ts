@@ -1,7 +1,5 @@
 import type { PrizeCategory } from "@/lib/types/listing";
 
-export const LISTING_FALLBACK_PRESENTATION_VERSION = "brand-20260728";
-
 export interface ListingFallbackTheme {
   code: string;
   label: string;
@@ -38,6 +36,42 @@ const DISPLAY_TO_CODE: Partial<Record<PrizeCategory, string>> = {
   "Seasonal/Holiday": "seasonal",
 };
 
+export type ListingFallbackAssetName =
+  | "cash-gift-card.webp"
+  | "travel.webp"
+  | "electronics.webp"
+  | "general-prize.webp";
+
+const ASSET_BY_CATEGORY: Record<string, ListingFallbackAssetName> = {
+  cash: "cash-gift-card.webp",
+  gift_cards: "general-prize.webp",
+  travel: "travel.webp",
+  experiences: "travel.webp",
+  electronics: "electronics.webp",
+  vehicles: "general-prize.webp",
+  outdoor: "general-prize.webp",
+  home: "general-prize.webp",
+  food_beverage: "general-prize.webp",
+  fashion_beauty: "general-prize.webp",
+  family_kids: "general-prize.webp",
+  seasonal: "general-prize.webp",
+  other: "general-prize.webp",
+};
+
+const CATEGORY_BY_ASSET: Record<ListingFallbackAssetName, string> = {
+  "cash-gift-card.webp": "cash",
+  "travel.webp": "travel",
+  "electronics.webp": "electronics",
+  "general-prize.webp": "other",
+};
+
+const OWNED_FALLBACK_ASSET_PREFIX = "/images/listing-fallbacks/";
+const OWNED_FALLBACK_ASSET_PATHS = new Set(
+  Object.keys(CATEGORY_BY_ASSET).map(
+    (assetName) => `${OWNED_FALLBACK_ASSET_PREFIX}${assetName}`,
+  ),
+);
+
 const GENERATED_MEDIA_HOSTS = new Set([
   "sweepza.invalid",
   "sweepza.com",
@@ -58,6 +92,23 @@ export function listingFallbackImageUrl(category: string | null | undefined): st
   return `/api/images/listing-fallback/${normalizeFallbackCategory(category)}`;
 }
 
+export function listingFallbackAssetUrl(
+  category: string | null | undefined,
+): string {
+  const normalizedCategory = normalizeFallbackCategory(category);
+  const assetName =
+    ASSET_BY_CATEGORY[normalizedCategory] ?? ASSET_BY_CATEGORY.other;
+
+  return `${OWNED_FALLBACK_ASSET_PREFIX}${assetName}`;
+}
+
+export function listingFallbackAltText(
+  category: string | null | undefined,
+): string {
+  const theme = listingFallbackTheme(category);
+  return `Representative photo for ${theme.label.toLowerCase()} listings; not the official promotion image.`;
+}
+
 export function isGeneratedListingFallbackUrl(
   sourceUrl: string | null | undefined,
 ): boolean {
@@ -67,7 +118,8 @@ export function isGeneratedListingFallbackUrl(
     return (
       GENERATED_MEDIA_HOSTS.has(parsed.hostname) &&
       (parsed.pathname.startsWith("/api/images/listing-fallback/") ||
-        parsed.pathname === "/opengraph-image")
+        parsed.pathname === "/opengraph-image" ||
+        OWNED_FALLBACK_ASSET_PATHS.has(parsed.pathname))
     );
   } catch {
     return false;
@@ -76,8 +128,8 @@ export function isGeneratedListingFallbackUrl(
 
 /**
  * Category fallbacks may have been persisted as absolute production URLs.
- * Present them through the current deployment and a versioned cache key so a
- * brand release is not held behind the route's intentionally long CDN TTL.
+ * Present them through the current deployment's owned static assets so a
+ * release is not held behind the generated route's intentionally long CDN TTL.
  */
 export function listingMediaPresentationUrl(
   sourceUrl: string | null | undefined,
@@ -92,9 +144,20 @@ export function listingMediaPresentationUrl(
   )
     ? parsed.pathname.split("/").filter(Boolean).at(-1)
     : undefined;
+  const ownedAssetName = parsed.pathname.startsWith(
+    OWNED_FALLBACK_ASSET_PREFIX,
+  )
+    ? parsed.pathname.split("/").filter(Boolean).at(-1)
+    : undefined;
+  const ownedAssetCategory =
+    ownedAssetName && ownedAssetName in CATEGORY_BY_ASSET
+      ? CATEGORY_BY_ASSET[ownedAssetName as ListingFallbackAssetName]
+      : undefined;
   const normalizedCategory = normalizeFallbackCategory(
-    routeCategory ? decodeURIComponent(routeCategory) : category,
+    routeCategory
+      ? decodeURIComponent(routeCategory)
+      : category ?? ownedAssetCategory,
   );
 
-  return `${listingFallbackImageUrl(normalizedCategory)}?v=${LISTING_FALLBACK_PRESENTATION_VERSION}`;
+  return listingFallbackAssetUrl(normalizedCategory);
 }

@@ -66,7 +66,7 @@ export function MobileShell({
         Skip to content
       </a>
       <SideRail />
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col lg:mx-0 lg:max-w-none lg:flex-1">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col sm:max-w-2xl md:max-w-3xl lg:mx-0 lg:max-w-none lg:flex-1">
         {utility ? (
           <div className="border-b border-line bg-surface/70">{utility}</div>
         ) : null}
@@ -75,7 +75,7 @@ export function MobileShell({
         <main
           id="main-content"
           tabIndex={-1}
-          className="w-full flex-1 pb-20 focus:outline-none lg:mx-auto lg:max-w-7xl lg:px-8 lg:pb-10"
+          className="w-full flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] focus:outline-none lg:mx-auto lg:max-w-7xl lg:px-8 lg:pb-10"
         >
           {children}
         </main>

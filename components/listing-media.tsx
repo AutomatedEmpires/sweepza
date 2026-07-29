@@ -6,6 +6,8 @@ import { cn } from "@/lib/cn";
 import { canOptimizeImage } from "@/lib/image";
 import {
   isGeneratedListingFallbackUrl,
+  listingFallbackAltText,
+  listingFallbackAssetUrl,
   listingFallbackTheme,
   listingMediaPresentationUrl,
 } from "@/lib/listing-media";
@@ -21,6 +23,7 @@ export function ListingMedia({
   sizes,
   className,
   imageClassName,
+  representativeLabelPosition = "top",
 }: {
   sourceUrl?: string;
   altText?: string;
@@ -32,38 +35,71 @@ export function ListingMedia({
   sizes: string;
   className?: string;
   imageClassName?: string;
+  representativeLabelPosition?: "top" | "below-prize";
 }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [failedUrls, setFailedUrls] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   const presentationSource = listingMediaPresentationUrl(sourceUrl, category);
-  const generatedFallback =
-    isGeneratedListingFallbackUrl(presentationSource);
+  const representativeSource = listingFallbackAssetUrl(category);
+  const representativePhoto =
+    isGeneratedListingFallbackUrl(presentationSource) ||
+    !presentationSource ||
+    failedUrls.has(presentationSource);
+  const candidateSource = representativePhoto
+    ? representativeSource
+    : presentationSource;
   const usableSource =
-    presentationSource && failedUrl !== presentationSource
-      ? presentationSource
+    candidateSource && !failedUrls.has(candidateSource)
+      ? candidateSource
       : null;
   const theme = listingFallbackTheme(category);
+  const representativeAltText = listingFallbackAltText(category);
+
+  function handleImageError(url: string) {
+    setFailedUrls((current) => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  }
 
   return (
-    <div className={cn("absolute inset-0 overflow-hidden", className)}>
+    <div
+      className={cn("overflow-hidden", className)}
+      style={{ position: "absolute", inset: 0 }}
+    >
       {usableSource ? (
         <>
           <Image
             src={usableSource}
-            alt={altText ?? prizeName}
+            alt={
+              representativePhoto
+                ? representativeAltText
+                : altText ?? prizeName
+            }
             fill
             priority={priority}
-            className={cn(
-              generatedFallback
-                ? "bg-surface-2 object-contain"
-                : "object-cover",
-              imageClassName,
-            )}
+            className={cn("bg-surface-2 object-cover", imageClassName)}
             sizes={sizes}
             unoptimized={!canOptimizeImage(usableSource)}
-            onError={() => setFailedUrl(usableSource)}
+            onError={() => handleImageError(usableSource)}
           />
-          {attribution ? (
+          {representativePhoto ? (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute left-2 z-10 max-w-[calc(100%-1rem)] rounded-md bg-black/70 px-2 py-1 text-center text-[9px] font-bold uppercase leading-tight tracking-[0.06em] text-white backdrop-blur-sm",
+                representativeLabelPosition === "below-prize"
+                  ? "top-[4.25rem]"
+                  : "top-2",
+              )}
+            >
+              Representative photo
+            </span>
+          ) : attribution ? (
             <span className="absolute bottom-2 right-2 max-w-[72%] truncate rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
               Image: {attribution}
             </span>
@@ -72,7 +108,7 @@ export function ListingMedia({
       ) : (
         <div
           role="img"
-          aria-label={`Category illustration for ${prizeName}${sponsorName ? ` from ${sponsorName}` : ""}`}
+          aria-label={`Representative photo unavailable for ${theme.label.toLowerCase()} listings. ${prizeName}${sponsorName ? ` from ${sponsorName}` : ""}.`}
           className="relative flex h-full w-full flex-col justify-between overflow-hidden bg-surface-2 p-5 text-ink sm:p-6"
         >
           <span
@@ -89,7 +125,7 @@ export function ListingMedia({
               Sweepza
             </span>
             <span className="rounded-full border border-line bg-surface px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-graphite">
-              Category illustration
+              Representative photo unavailable
             </span>
           </div>
 
