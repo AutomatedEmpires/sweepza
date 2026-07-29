@@ -3,8 +3,9 @@
 // app/discover/[category]/opengraph-image.tsx). Centralized so the two cards
 // cannot drift apart visually or — more importantly — in what they claim.
 //
-// Brand values are the light-theme tokens from app/tokens.css; satori can't
-// read CSS variables, so the hex values are pinned here with their names.
+// Brand values are generated from the light-theme tokens in app/tokens.css.
+// Satori cannot read CSS variables, so the build syncs concrete values into a
+// typed generated module instead of maintaining a second hand-edited palette.
 //
 // OG_TRUST_CHIPS is claim copy that travels off-site with every shared link.
 // Canon (see app/opengraph-image.tsx history and lib/category-hubs.ts): the
@@ -12,12 +13,14 @@
 // never assert no-purchase on a sponsor's behalf, never promise wins. This
 // file is a scanned surface in lib/__tests__/honest-copy.test.ts.
 
-export const OG_PAPER = "#F7F3FF"; // --sun-paper
-export const OG_INK = "#1C0B31"; // --sun-ink
-export const OG_GRAPHITE = "#604E7C"; // --sun-graphite
-export const OG_EMBER = "#6D28D9"; // --sun-ember
-export const OG_GOLD = "#805300"; // --sun-gold
-export const OG_PINE = "#047857"; // --sun-pine
+import { THEME_COLORS } from "@/lib/generated/theme-colors";
+
+export const OG_PAPER = THEME_COLORS.sunrise.paper;
+export const OG_INK = THEME_COLORS.sunrise.ink;
+export const OG_GRAPHITE = THEME_COLORS.sunrise.graphite;
+export const OG_EMBER = THEME_COLORS.sunrise.ember;
+export const OG_GOLD = THEME_COLORS.sunrise.gold;
+export const OG_PINE = THEME_COLORS.sunrise.pine;
 
 export const OG_TRUST_CHIPS = [
   "Free to enter — always",

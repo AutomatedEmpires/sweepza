@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { THEME_COLORS } from "@/lib/generated/theme-colors";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/site";
 
 // Web app manifest — Sweepza is a daily-routine product, so installability
@@ -22,8 +23,8 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#f7f3ff",
-    theme_color: "#f7f3ff",
+    background_color: THEME_COLORS.sunrise.paper,
+    theme_color: THEME_COLORS.sunrise.paper,
     categories: ["entertainment", "lifestyle"],
     icons: [
       { src: "/icon.svg", type: "image/svg+xml", sizes: "any" },

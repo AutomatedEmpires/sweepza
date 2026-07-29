@@ -15,6 +15,7 @@ import {
   APP_TAGLINE,
   SITE_URL,
 } from "@/lib/site";
+import { THEME_COLORS } from "@/lib/generated/theme-colors";
 
 // One contemporary variable family keeps the marketing site and daily utility
 // coherent while retaining excellent legibility at dense card sizes.
@@ -44,8 +45,14 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f3ff" },
-    { media: "(prefers-color-scheme: dark)", color: "#10061f" },
+    {
+      media: "(prefers-color-scheme: light)",
+      color: THEME_COLORS.sunrise.paper,
+    },
+    {
+      media: "(prefers-color-scheme: dark)",
+      color: THEME_COLORS.midnight.paper,
+    },
   ],
   width: "device-width",
   initialScale: 1,

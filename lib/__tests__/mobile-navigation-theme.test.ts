@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { THEME_COLORS } from "@/lib/generated/theme-colors";
+import { buildThemeColors } from "../../scripts/theme-colors-lib.mjs";
 
 const source = (relativePath: string) =>
   readFileSync(join(process.cwd(), relativePath), "utf8");
@@ -52,21 +54,22 @@ describe("mobile navigation and jewel theme", () => {
     const ogTheme = source("lib/og-theme.tsx");
     const icon = source("app/icon.svg");
 
-    expect(tokens).toContain("--sun-paper: 247 243 255");
-    expect(tokens).toContain("--sun-ember: 109 40 217");
-    expect(tokens).toContain("--sun-gold: 128 83 0");
-    expect(tokens).toContain("--mid-paper: 16 6 31");
-    expect(tokens).toContain("--mid-ember: 203 107 255");
-    expect(tokens).toContain("--mid-gold: 255 208 92");
     expect(tokens).not.toContain("--sun-ember: 190 64 50");
 
-    expect(layout).toContain('color: "#f7f3ff"');
-    expect(layout).toContain('color: "#10061f"');
-    expect(manifest).toContain('background_color: "#f7f3ff"');
-    expect(manifest).toContain('theme_color: "#f7f3ff"');
-    expect(ogTheme).toContain('OG_PAPER = "#F7F3FF"');
-    expect(ogTheme).toContain('OG_EMBER = "#6D28D9"');
-    expect(ogTheme).toContain('OG_GOLD = "#805300"');
+    expect(THEME_COLORS).toEqual(buildThemeColors(tokens));
+
+    expect(layout).toContain("THEME_COLORS.sunrise.paper");
+    expect(layout).toContain("THEME_COLORS.midnight.paper");
+    expect(manifest).toContain("THEME_COLORS.sunrise.paper");
+    expect(ogTheme).toContain(
+      "OG_PAPER = THEME_COLORS.sunrise.paper",
+    );
+    expect(ogTheme).toContain(
+      "OG_EMBER = THEME_COLORS.sunrise.ember",
+    );
+    expect(ogTheme).toContain(
+      "OG_GOLD = THEME_COLORS.sunrise.gold",
+    );
     expect(icon).toContain('fill="#10061f"');
     expect(icon).toContain('stroke="#cb6bff"');
     expect(icon).toContain('stroke="#ffd05c"');
@@ -78,6 +81,9 @@ describe("mobile navigation and jewel theme", () => {
     expect(page).toContain("order-2 max-w-xl lg:order-1");
     expect(page).toContain("relative order-1");
     expect(page).toContain("lg:order-2");
+    expect(page.indexOf("relative order-1")).toBeLessThan(
+      page.indexOf("order-2 max-w-xl"),
+    );
     expect(page).toContain(
       'className="aspect-[2500/1696] w-full object-contain"',
     );

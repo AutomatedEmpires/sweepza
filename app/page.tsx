@@ -235,6 +235,45 @@ export default async function TodayPage() {
           className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-ember/25 blur-3xl"
         />
         <div className="relative mx-auto grid w-full max-w-[1440px] items-start gap-6 px-4 pb-7 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:gap-10 lg:px-10 lg:py-12">
+          <div className="relative order-1 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:order-2">
+            <div className="mb-3 flex items-center justify-between px-1">
+              <div>
+                <h2 className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper">
+                  Daily drop
+                </h2>
+                <p className="mt-0.5 text-sm font-semibold text-paper">
+                  {heroListing
+                    ? "One current listing at a glance"
+                    : "New listings appear after review"}
+                </p>
+              </div>
+              <span className="rounded-pill border border-paper/20 bg-paper/10 px-2.5 py-1 text-[11px] font-semibold text-paper/75">
+                Official entry
+              </span>
+            </div>
+            {heroListing ? (
+              <ListingCard
+                listing={heroListing}
+                surface="scroll"
+                tone="featured"
+                priority
+              />
+            ) : (
+              <div className="rounded-card border border-dashed border-line bg-surface px-6 py-12 text-center">
+                <Icon name="discover" size={28} className="mx-auto text-pine" />
+                <h2 className="mt-3 text-lg font-bold text-ink">Fresh listings are being reviewed</h2>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-graphite">
+                  Sweepza only shows listings that meet the public catalog gates.
+                  Check Discover for the latest available inventory.
+                </p>
+              </div>
+            )}
+            <p className="px-1 pt-3 text-[11px] leading-5 text-paper/60">
+              Sweepza summarizes and tracks third-party promotions. The named
+              sponsor or administrator controls the promotion and its official rules.
+            </p>
+          </div>
+
           <div className="order-2 max-w-xl lg:order-1">
             <div className="relative overflow-hidden rounded-sheet border border-gold/40 bg-paper/5 shadow-e3">
               <Image
@@ -289,45 +328,6 @@ export default async function TodayPage() {
                 </li>
               ))}
             </ul>
-          </div>
-
-          <div className="relative order-1 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:order-2">
-            <div className="mb-3 flex items-center justify-between px-1">
-              <div>
-                <h2 className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper">
-                  Daily drop
-                </h2>
-                <p className="mt-0.5 text-sm font-semibold text-paper">
-                  {heroListing
-                    ? "One current listing at a glance"
-                    : "New listings appear after review"}
-                </p>
-              </div>
-              <span className="rounded-pill border border-paper/20 bg-paper/10 px-2.5 py-1 text-[11px] font-semibold text-paper/75">
-                Official entry
-              </span>
-            </div>
-            {heroListing ? (
-              <ListingCard
-                listing={heroListing}
-                surface="scroll"
-                tone="featured"
-                priority
-              />
-            ) : (
-              <div className="rounded-card border border-dashed border-line bg-surface px-6 py-12 text-center">
-                <Icon name="discover" size={28} className="mx-auto text-pine" />
-                <h2 className="mt-3 text-lg font-bold text-ink">Fresh listings are being reviewed</h2>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-graphite">
-                  Sweepza only shows listings that meet the public catalog gates.
-                  Check Discover for the latest available inventory.
-                </p>
-              </div>
-            )}
-            <p className="px-1 pt-3 text-[11px] leading-5 text-paper/60">
-              Sweepza summarizes and tracks third-party promotions. The named
-              sponsor or administrator controls the promotion and its official rules.
-            </p>
           </div>
         </div>
       </header>
