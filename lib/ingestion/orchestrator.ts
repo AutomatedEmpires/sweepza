@@ -14,6 +14,7 @@ import {
 import {
   createSourceHttpClient,
   isRetryable,
+  isRetryableOnLaterRun,
   type FetchFailureClass,
   type FetchStatePort,
 } from "@/lib/ingestion/http";
@@ -39,6 +40,7 @@ import {
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
 import { listCurrentOfficialDestinationPolicies } from "@/lib/db/official-destination-policy";
+import { enqueueDueOfficialUrlRevalidations } from "@/lib/db/official-url-intake";
 import { discoveryWorkQueue } from "@/lib/db/discovery-work";
 import { finalizeListingImage } from "@/lib/db/listing-media";
 import {
@@ -83,6 +85,16 @@ interface OfficialLeadBatchDiagnostics {
   availabilityFailures: number;
   successfulExtractions: number;
   extractionFailures: string[];
+}
+
+const MAX_FAILURE_DETAIL_CHARS = 500;
+
+function boundedFailureDetail(error: unknown): string {
+  const detail =
+    error instanceof Error ? error.message : String(error);
+  return (detail.trim() || "unknown failure")
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_FAILURE_DETAIL_CHARS);
 }
 
 /**
@@ -258,7 +270,7 @@ export async function runIngestion(
           );
         }
       };
-      const deferLead = async () => {
+      const deferLead = async (reason: string) => {
         if (lead.discoveryWorkKey) {
           if (!lead.discoveryWorkClaimToken) {
             throw new Error(
@@ -268,27 +280,52 @@ export async function runIngestion(
           await workQueue.defer(
             lead.discoveryWorkKey,
             lead.discoveryWorkClaimToken,
+            reason,
+          );
+        }
+      };
+      const quarantineLead = async (reason: string) => {
+        if (lead.discoveryWorkKey) {
+          if (!lead.discoveryWorkClaimToken) {
+            throw new Error(
+              `discovery work "${lead.discoveryWorkKey}" is missing its claim token`,
+            );
+          }
+          await workQueue.deadLetter(
+            lead.discoveryWorkKey,
+            lead.discoveryWorkClaimToken,
+            reason,
           );
         }
       };
       const urlKey = normalizeUrl(lead.officialUrl);
       if (!urlKey) {
-        await acknowledgeLead();
+        await quarantineLead("invalid_official_url");
         counts.skipped += 1;
         continue;
       }
 
       // Source approval never grants blanket internet reach. Each initial URL,
       // redirect, and image request requires a current attributed destination
-      // policy; a missing decision is retryable work, not permission.
+      // policy. A denied/missing decision is terminally quarantined rather than
+      // retried forever; an unreadable ledger remains a bounded retry.
       const destinationPolicies =
         await loadOfficialDestinationPolicies({ refresh: true }).catch(
           async (error: unknown) => {
-            await deferLead();
+            const policyFailure = boundedFailureDetail(error);
+            let deferFailure: string | null = null;
+            try {
+              await deferLead(
+                "official_destination_policy_unavailable",
+              );
+            } catch (deferError) {
+              deferFailure = boundedFailureDetail(deferError);
+            }
             throw new Error(
-              `official destination policy unavailable: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `official destination policy unavailable: ${policyFailure}` +
+                (deferFailure
+                  ? `; queue defer failed: ${deferFailure}`
+                  : ""),
             );
           },
         );
@@ -301,7 +338,9 @@ export async function runIngestion(
         destinationDenials.push(
           `${urlKey}: ${destinationDecision.reason}`,
         );
-        await deferLead();
+        await quarantineLead(
+          `official_destination_policy_denied:${destinationDecision.reason}`,
+        );
         continue;
       }
 
@@ -310,7 +349,7 @@ export async function runIngestion(
       // source cadence and performs no network request.
       const activeOfficialHttp = await ensureOfficialClient();
       if (!activeOfficialHttp) {
-        await deferLead();
+        await deferLead("official_source_lease_unavailable");
         throw new Error(
           `official_direct ${officialLeaseDenial ?? "lease unavailable"}`,
         );
@@ -332,13 +371,14 @@ export async function runIngestion(
         continue;
       }
       if (result.status === "failed") {
-        // 404/410 is a durable answer. Transient transport, policy, and budget
-        // failures remain queued with bounded backoff.
+        // 404/410 and non-retryable transport/policy outcomes are durable
+        // quarantine decisions. Only the central later-run retry taxonomy may
+        // re-enter the bounded queue.
         if (result.failure === "not_found") {
           healthyResponses += 1;
           officialHealthyResponses += 1;
           counts.skipped += 1;
-          await acknowledgeLead();
+          await quarantineLead("official_page_not_found");
           continue;
         }
         counts.failed += 1;
@@ -347,14 +387,20 @@ export async function runIngestion(
           // failure, not evidence that the sponsor is down. Preserve the work
           // and fail the run immediately; continuing would either use stale
           // permission or turn a compliance outage into a healthy cron.
-          await deferLead();
+          await deferLead("official_destination_policy_unavailable");
           throw new Error(result.message);
         }
         if (isSourceAvailabilityFailure(result.failure)) {
           availabilityFailures += 1;
           officialAvailabilityFailures += 1;
         }
-        await deferLead();
+        if (isRetryableOnLaterRun(result.failure)) {
+          await deferLead(`official_fetch_${result.failure}`);
+        } else {
+          await quarantineLead(
+            `terminal_official_fetch_${result.failure}`,
+          );
+        }
         continue;
       }
       if (result.status === "unextractable") {
@@ -369,7 +415,9 @@ export async function runIngestion(
           `${urlKey}: ${result.message.slice(0, 500)}`,
         );
         counts.failed += 1;
-        await deferLead();
+        await deferLead(
+          `official_extraction_failed:${result.message.slice(0, 500)}`,
+        );
         continue;
       }
 
@@ -394,7 +442,9 @@ export async function runIngestion(
         );
         counts.failed += 1;
         held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
-        await acknowledgeLead();
+        await quarantineLead(
+          `verification_failed:${verification.hardFailures.join(",")}`,
+        );
         continue;
       }
 
@@ -432,7 +482,7 @@ export async function runIngestion(
       if (imageResult.retryable) {
         counts.failed += 1;
         mediaRetries.push(urlKey);
-        await deferLead();
+        await deferLead("listing_media_retry_required");
         continue;
       }
 
@@ -461,6 +511,10 @@ export async function runIngestion(
     // operator-supplied work gets the daily official-source budget without
     // falsifying discovery provenance.
     if (officialDecision.allowed) {
+      await enqueueDueOfficialUrlRevalidations({
+        limit,
+        minAgeSeconds: official.refreshIntervalMinutes * 60,
+      });
       const directQueue = discoveryWorkQueue(official.id);
       const directLeads = await takeOfficialUrlIntakeLeads(
         directQueue,

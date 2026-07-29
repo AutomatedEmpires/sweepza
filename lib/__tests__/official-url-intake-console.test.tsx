@@ -6,12 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   deriveOfficialUrlIdempotencyKey,
   formatOfficialUrlIntakeSuccess,
+  formatOfficialUrlRevalidationSuccess,
   normalizeOfficialUrl,
   OfficialUrlIntakeConsole,
   OfficialUrlIntakeFeedbackMessage,
   parseOfficialUrlLines,
   prepareOfficialUrlIntake,
 } from "@/components/official-url-intake-console";
+import { normalizeOfficialUrl as normalizeSharedOfficialUrl } from "@/lib/official-url-normalization";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -19,6 +21,7 @@ vi.mock("next/navigation", () => ({
 
 describe("OfficialUrlIntakeConsole", () => {
   it("normalizes URLs before deriving stable SHA-256 idempotency keys", async () => {
+    expect(normalizeOfficialUrl).toBe(normalizeSharedOfficialUrl);
     const normalized = normalizeOfficialUrl(
       "  https://PROMOTIONS.Example.com/prizes/../rules?cycle=2026#terms  ",
     );
@@ -124,12 +127,25 @@ describe("OfficialUrlIntakeConsole", () => {
     );
   });
 
+  it("describes fresh generations without implying prior work was reopened", () => {
+    expect(formatOfficialUrlRevalidationSuccess(1, 0)).toBe(
+      "1 fresh validation generation was queued. Existing results were preserved and nothing was published.",
+    );
+    expect(formatOfficialUrlRevalidationSuccess(0, 2)).toBe(
+      "2 requests already have unfinished validation work and were left unchanged. Existing results were preserved and nothing was published.",
+    );
+  });
+
   it("renders explicit private-review boundaries and accessible submission states", () => {
     const html = renderToStaticMarkup(<OfficialUrlIntakeConsole />);
     expect(html).toContain("Bulk official URLs");
     expect(html).toContain("Private draft / review only");
     expect(html).toContain("This intake does not publish a promotion");
     expect(html).toContain("name=\"officialUrls\"");
+    expect(html).toContain("name=\"officialUrlIntakeOperation\"");
+    expect(html).toContain("New intake");
+    expect(html).toContain("Revalidate completed");
+    expect(html).toContain("without reopening prior work");
     expect(html).toContain("Queue private drafts");
 
     const pending = renderToStaticMarkup(

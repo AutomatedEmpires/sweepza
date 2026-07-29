@@ -28,7 +28,11 @@ describe("discovery work generations", () => {
       { key: "ready", payload: {} },
     ]);
     const [blocked] = await queue.take(1);
-    await queue.defer("blocked", blocked.claimToken);
+    await queue.defer(
+      "blocked",
+      blocked.claimToken,
+      "retryable fixture failure",
+    );
     expect(await queue.take(1)).toEqual([
       expect.objectContaining({ key: "ready", payload: {} }),
     ]);
@@ -51,6 +55,27 @@ describe("discovery work generations", () => {
         payload: { title: "Corrected" },
       }),
     );
+    expect(corrected.claimToken).not.toBe(stale.claimToken);
+  });
+
+  it("rejects a stale dead-letter after changed payload creates a new claim", async () => {
+    const queue = createMemoryDiscoveryWorkQueue();
+    await queue.enqueue([{ key: "post-1", payload: { title: "Original" } }]);
+    const [stale] = await queue.take(1);
+
+    await queue.enqueue([{ key: "post-1", payload: { title: "Corrected" } }]);
+    const [corrected] = await queue.take(1);
+
+    await expect(
+      queue.deadLetter(
+        stale.key,
+        stale.claimToken,
+        "stale worker rejected the item",
+      ),
+    ).rejects.toThrow('discovery work claim lost for "post-1"');
+    await expect(
+      queue.complete(corrected.key, corrected.claimToken),
+    ).resolves.toBeUndefined();
     expect(corrected.claimToken).not.toBe(stale.claimToken);
   });
 });

@@ -21,6 +21,24 @@ function normalizePathPrefix(value: string): string {
   return trimmed.replace(/\/+$/, "");
 }
 
+export function toLocalEndOfDayIso(dateValue: string): string | null {
+  const normalized = dateValue.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  const localEndOfDay = new Date(`${normalized}T23:59:59.999`);
+  if (
+    Number.isNaN(localEndOfDay.getTime()) ||
+    localEndOfDay.getFullYear() !== year ||
+    localEndOfDay.getMonth() !== month - 1 ||
+    localEndOfDay.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return localEndOfDay.toISOString();
+}
+
 export function OfficialDestinationPolicyConsole({
   policies,
   readable,
@@ -73,9 +91,7 @@ export function OfficialDestinationPolicyConsole({
       termsUrl: String(formData.get("termsUrl") ?? ""),
       robotsUrl: String(formData.get("robotsUrl") ?? ""),
       reason: String(formData.get("reason") ?? ""),
-      reviewExpiresAt: expiryDate
-        ? new Date(`${expiryDate}T23:59:59.999Z`).toISOString()
-        : null,
+      reviewExpiresAt: expiryDate ? toLocalEndOfDayIso(expiryDate) : null,
       productionApprovalConfirmed:
         formData.get("productionApprovalConfirmed") === "on",
     };
@@ -296,12 +312,17 @@ export function OfficialDestinationPolicyConsole({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Review expires</span>
+            <span className="font-medium text-ink">
+              Review expires (local date)
+            </span>
             <input
               name="reviewExpiresAt"
               type="date"
               className={inputClass}
             />
+            <span className="text-xs text-graphite">
+              Access ends at 11:59 PM in this browser&apos;s time zone.
+            </span>
           </label>
         </div>
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { requireAdminApi } from "@/lib/admin-guard";
 import { ensureCurrentAppUser } from "@/lib/auth";
 import { appendOfficialDestinationPolicyEvent } from "@/lib/db/official-destination-policy";
@@ -78,12 +79,15 @@ export async function POST(request: Request) {
       );
     }
 
+    Sentry.captureException(error, {
+      tags: { operation: "official_destination_policy_append" },
+    });
     return NextResponse.json(
       {
         error:
           "Destination policy decision could not be recorded. No permission changed.",
       },
-      { status: 422 },
+      { status: 500 },
     );
   }
 }

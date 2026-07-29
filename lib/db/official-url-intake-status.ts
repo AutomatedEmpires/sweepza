@@ -2,17 +2,12 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
-const OFFICIAL_QUEUE_SOURCE_ID = "official_direct";
-const COUNT_COLUMNS = "item_key";
-
-interface CountResult {
-  count: number | null;
-  error: { message: string } | null;
-}
-
-interface OldestPendingResult {
-  data: Array<{ discovered_at: string }> | null;
-  error: { message: string } | null;
+interface BacklogSnapshotRow {
+  pending?: unknown;
+  retrying?: unknown;
+  completed?: unknown;
+  dead_lettered?: unknown;
+  oldest_pending_at?: unknown;
 }
 
 export interface OfficialUrlIntakeBacklogStatus {
@@ -25,22 +20,17 @@ export interface OfficialUrlIntakeBacklogStatus {
   sampledAt: string;
 }
 
-function requireCount(label: string, result: CountResult): number {
-  if (result.error) {
-    throw new Error(
-      `getOfficialUrlIntakeBacklogStatus ${label} failed: ${result.error.message}`,
-    );
-  }
-  if (
-    result.count === null ||
-    !Number.isSafeInteger(result.count) ||
-    result.count < 0
-  ) {
+function requireCount(label: string, value: unknown): number {
+  const count =
+    typeof value === "string" && /^\d+$/.test(value)
+      ? Number(value)
+      : value;
+  if (!Number.isSafeInteger(count) || (count as number) < 0) {
     throw new Error(
       `getOfficialUrlIntakeBacklogStatus ${label} returned no exact count`,
     );
   }
-  return result.count;
+  return count as number;
 }
 
 /**
@@ -54,47 +44,34 @@ export async function getOfficialUrlIntakeBacklogStatus(
   now = new Date(),
 ): Promise<OfficialUrlIntakeBacklogStatus> {
   const supabase = createServiceRoleClient();
-
-  const countQuery = () =>
-    supabase
-      .from("source_discovery_work_item")
-      .select(COUNT_COLUMNS, { count: "exact", head: true })
-      .eq("source_id", OFFICIAL_QUEUE_SOURCE_ID);
-
-  const [pendingResult, retryingResult, completedResult, deadLetteredResult, oldestResult] =
-    await Promise.all([
-      countQuery().is("completed_at", null).eq("attempts", 0),
-      countQuery().is("completed_at", null).gt("attempts", 0),
-      countQuery()
-        .not("completed_at", "is", null)
-        .is("dead_lettered_at", null),
-      countQuery().not("dead_lettered_at", "is", null),
-      supabase
-        .from("source_discovery_work_item")
-        .select("discovered_at")
-        .eq("source_id", OFFICIAL_QUEUE_SOURCE_ID)
-        .is("completed_at", null)
-        .order("discovered_at", { ascending: true })
-        .limit(1),
-    ]);
-
-  const pending = requireCount("pending count", pendingResult);
-  const retrying = requireCount("retrying count", retryingResult);
-  const completed = requireCount("completed count", completedResult);
-  const deadLettered = requireCount(
-    "dead-letter count",
-    deadLetteredResult,
+  const { data, error } = await supabase.rpc(
+    "get_official_url_intake_backlog_status",
   );
-
-  const oldest = oldestResult as OldestPendingResult;
-  if (oldest.error) {
+  if (error) {
     throw new Error(
-      `getOfficialUrlIntakeBacklogStatus oldest pending failed: ${oldest.error.message}`,
+      `getOfficialUrlIntakeBacklogStatus snapshot failed: ${error.message}`,
     );
   }
 
+  if (!Array.isArray(data) || data.length !== 1) {
+    throw new Error(
+      "getOfficialUrlIntakeBacklogStatus snapshot returned no exact row",
+    );
+  }
+  const row = data[0] as BacklogSnapshotRow;
+  const pending = requireCount("pending count", row.pending);
+  const retrying = requireCount("retrying count", row.retrying);
+  const completed = requireCount("completed count", row.completed);
+  const deadLettered = requireCount(
+    "dead-letter count",
+    row.dead_lettered,
+  );
+
   const openCount = pending + retrying;
-  const oldestPendingAt = oldest.data?.[0]?.discovered_at ?? null;
+  const oldestPendingAt =
+    typeof row.oldest_pending_at === "string"
+      ? row.oldest_pending_at
+      : null;
   if (openCount > 0 && !oldestPendingAt) {
     throw new Error(
       "getOfficialUrlIntakeBacklogStatus oldest pending row was unavailable",

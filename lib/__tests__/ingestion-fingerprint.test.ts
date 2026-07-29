@@ -28,6 +28,23 @@ describe("normalizeUrl", () => {
     );
   });
 
+  it("does not collapse encoded query delimiters into separate query pairs", () => {
+    const encodedDelimiters = normalizeUrl(
+      "https://brand.com/rules?a=x%26b%3Dy",
+    );
+    const separatePairs = normalizeUrl(
+      "https://brand.com/rules?a=x&b=y",
+    );
+
+    expect(encodedDelimiters).toBe(
+      "https://brand.com/rules?a=x%26b%3Dy",
+    );
+    expect(separatePairs).toBe(
+      "https://brand.com/rules?a=x&b=y",
+    );
+    expect(encodedDelimiters).not.toBe(separatePairs);
+  });
+
   it("returns null for junk or non-http schemes", () => {
     expect(normalizeUrl("not a url")).toBeNull();
     expect(normalizeUrl("mailto:a@b.com")).toBeNull();

@@ -5,6 +5,8 @@ import { ensureCurrentAppUser } from "@/lib/auth";
 import {
   enqueueOfficialUrlIntake,
   OfficialUrlIntakeIdempotencyConflictError,
+  OfficialUrlIntakeRevalidationNotFoundError,
+  revalidateOfficialUrlIntake,
 } from "@/lib/db/official-url-intake";
 import { officialUrlIntakeBatchSchema } from "@/lib/official-url-intake-schema";
 
@@ -47,6 +49,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (parsed.data.operation === "revalidate") {
+      const result = await revalidateOfficialUrlIntake({
+        actorAppUserId: operator.appUserId,
+        entries: parsed.data.entries,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          revalidated: result.revalidated,
+          pending: result.pending,
+          status: "queued_for_private_draft_revalidation",
+        },
+        { status: 202 },
+      );
+    }
+
     const result = await enqueueOfficialUrlIntake({
       actorAppUserId: operator.appUserId,
       entries: parsed.data.entries,
@@ -70,8 +88,22 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+    if (error instanceof OfficialUrlIntakeRevalidationNotFoundError) {
+      return NextResponse.json(
+        {
+          error:
+            "Revalidation requires an exact URL request that was queued previously. Queue it as new intake first.",
+        },
+        { status: 409 },
+      );
+    }
     Sentry.captureException(error, {
-      tags: { operation: "official_url_intake" },
+      tags: {
+        operation:
+          parsed.data.operation === "revalidate"
+            ? "official_url_revalidation"
+            : "official_url_intake",
+      },
     });
     return NextResponse.json(
       {

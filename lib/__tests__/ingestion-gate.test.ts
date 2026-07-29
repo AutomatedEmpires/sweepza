@@ -134,6 +134,115 @@ describe("source execution gate", () => {
       expect(decision.allowed).toBe(true);
     });
 
+    it("honors the capability's code-level kill switch", () => {
+      const official = SOURCE_REGISTRY.find(
+        (source) => source.id === "official_direct",
+      );
+      expect(official).toBeDefined();
+
+      const decision = evaluateSourceGate({
+        descriptor: official
+          ? { ...official, killSwitch: true }
+          : undefined,
+        record: record({
+          id: "official_direct",
+          complianceState: "approved_for_production",
+        }),
+        ingestionEnabled: "true",
+      });
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.reason).toBe("kill_switch");
+      }
+    });
+
+    it.each(["paused", "blocked", "revoked"] as const)(
+      "preserves the registry %s containment state",
+      (complianceState) => {
+        const official = SOURCE_REGISTRY.find(
+          (source) => source.id === "official_direct",
+        );
+        expect(official).toBeDefined();
+
+        const decision = evaluateSourceGate({
+          descriptor: official
+            ? { ...official, complianceState }
+            : undefined,
+          record: record({
+            id: "official_direct",
+            complianceState: "approved_for_production",
+          }),
+          ingestionEnabled: "true",
+        });
+
+        expect(decision.allowed).toBe(false);
+        if (!decision.allowed) {
+          expect(decision.reason).toBe(
+            "registry_not_production_approved",
+          );
+          expect(decision.detail).toContain(complianceState);
+        }
+      },
+    );
+
+    it.each(["draft", "research_required"] as const)(
+      "refuses the pre-review registry state %s",
+      (complianceState) => {
+        const official = SOURCE_REGISTRY.find(
+          (source) => source.id === "official_direct",
+        );
+        expect(official).toBeDefined();
+
+        const decision = evaluateSourceGate({
+          descriptor: official
+            ? { ...official, complianceState }
+            : undefined,
+          record: record({
+            id: "official_direct",
+            complianceState: "approved_for_production",
+          }),
+          ingestionEnabled: "true",
+        });
+
+        expect(decision.allowed).toBe(false);
+        if (!decision.allowed) {
+          expect(decision.reason).toBe(
+            "registry_not_production_approved",
+          );
+        }
+      },
+    );
+
+    it("fails closed for an unknown future registry state", () => {
+      const official = SOURCE_REGISTRY.find(
+        (source) => source.id === "official_direct",
+      );
+      expect(official).toBeDefined();
+
+      const decision = evaluateSourceGate({
+        descriptor: official
+          ? {
+              ...official,
+              complianceState:
+                "future_unreviewed_state" as SourceComplianceState,
+            }
+          : undefined,
+        record: record({
+          id: "official_direct",
+          complianceState: "approved_for_production",
+        }),
+        ingestionEnabled: "true",
+      });
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.reason).toBe(
+          "registry_not_production_approved",
+        );
+      }
+    });
+
     it("does not extend the exception to a fixed-host or discovery descriptor", () => {
       for (const candidate of [
         descriptor({

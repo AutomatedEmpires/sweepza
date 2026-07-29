@@ -62,7 +62,7 @@ export interface DiscoveryWorkQueue {
   enqueue(items: DiscoveryWorkItem[]): Promise<void>;
   take(limit: number): Promise<ClaimedDiscoveryWorkItem[]>;
   complete(key: string, claimToken: string): Promise<void>;
-  defer(key: string, claimToken: string): Promise<void>;
+  defer(key: string, claimToken: string, reason: string): Promise<void>;
   deadLetter(key: string, claimToken: string, reason: string): Promise<void>;
 }
 

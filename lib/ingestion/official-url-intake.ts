@@ -41,6 +41,19 @@ export async function takeOfficialUrlIntakeLeads(
       continue;
     }
 
+    if (
+      parsed.data.refresh &&
+      item.key !==
+        `${parsed.data.refresh.requestItemKey}:refresh:${parsed.data.refresh.generation}`
+    ) {
+      await queue.deadLetter(
+        item.key,
+        item.claimToken,
+        "invalid_official_url_intake_payload: refresh generation does not match the claimed queue key",
+      );
+      continue;
+    }
+
     leads.push({
       lead: {
         officialUrl: parsed.data.officialUrl,

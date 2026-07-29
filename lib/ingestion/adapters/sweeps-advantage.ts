@@ -182,7 +182,13 @@ export const sweepsAdvantageAdapter: SourceAdapter = {
         if (resolved.status === "failed" && resolved.failure === "not_found") {
           await workQueue.complete(item.key, item.claimToken);
         } else {
-          await workQueue.defer(item.key, item.claimToken);
+          await workQueue.defer(
+            item.key,
+            item.claimToken,
+            `sweeps_advantage_redirect_${
+              resolved.status === "failed" ? resolved.failure : "not_modified"
+            }`,
+          );
         }
         continue;
       }

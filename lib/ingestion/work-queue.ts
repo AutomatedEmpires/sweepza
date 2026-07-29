@@ -10,6 +10,7 @@ export function createMemoryDiscoveryWorkQueue(): DiscoveryWorkQueue {
       deferred: boolean;
       claimToken: string | null;
       deadLetterReason: string | null;
+      lastFailureReason: string | null;
     }
   >();
   let claimSequence = 0;
@@ -29,6 +30,9 @@ export function createMemoryDiscoveryWorkQueue(): DiscoveryWorkQueue {
           deadLetterReason: changed
             ? null
             : (existing?.deadLetterReason ?? null),
+          lastFailureReason: changed
+            ? null
+            : (existing?.lastFailureReason ?? null),
         });
       }
     },
@@ -55,14 +59,16 @@ export function createMemoryDiscoveryWorkQueue(): DiscoveryWorkQueue {
       }
       existing.completed = true;
       existing.claimToken = null;
+      existing.lastFailureReason = null;
     },
-    async defer(key, claimToken) {
+    async defer(key, claimToken, reason) {
       const existing = items.get(key);
       if (!existing || existing.claimToken !== claimToken) {
         throw new Error(`discovery work claim lost for "${key}"`);
       }
       existing.deferred = true;
       existing.claimToken = null;
+      existing.lastFailureReason = reason.slice(0, 1000);
     },
     async deadLetter(key, claimToken, reason) {
       const existing = items.get(key);
@@ -71,7 +77,8 @@ export function createMemoryDiscoveryWorkQueue(): DiscoveryWorkQueue {
       }
       existing.completed = true;
       existing.claimToken = null;
-      existing.deadLetterReason = reason;
+      existing.deadLetterReason = reason.slice(0, 1000);
+      existing.lastFailureReason = null;
     },
   };
 }

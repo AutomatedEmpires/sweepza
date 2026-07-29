@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
-import { isRegistrablePublicHostname } from "@/lib/public-hostname";
+import type { OfficialUrlIntakeOperation } from "@/lib/official-url-intake-schema";
+import { normalizeOfficialUrl } from "@/lib/official-url-normalization";
 
 const MAX_BATCH_SIZE = 500;
-const MAX_URL_LENGTH = 2048;
 const IDEMPOTENCY_KEY_PREFIX = "official-url:sha256:";
+
+export { normalizeOfficialUrl };
 
 export interface OfficialUrlIntakeEntry {
   idempotencyKey: string;
@@ -33,41 +35,6 @@ export type OfficialUrlIntakeFeedback =
   | { kind: "pending" }
   | { kind: "success"; message: string }
   | { kind: "error"; message: string; details?: string[] };
-
-function invalidUrl(message: string): never {
-  throw new Error(message);
-}
-
-export function normalizeOfficialUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) invalidUrl("URL is empty.");
-  if (trimmed.length > MAX_URL_LENGTH) {
-    invalidUrl(`URL exceeds ${MAX_URL_LENGTH} characters.`);
-  }
-
-  let url: URL;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    invalidUrl("Enter a valid absolute HTTPS URL.");
-  }
-
-  if (url.protocol !== "https:") {
-    invalidUrl("URL must use HTTPS.");
-  }
-  if (url.username || url.password) {
-    invalidUrl("URL must not contain credentials.");
-  }
-  if (url.port) {
-    invalidUrl("URL must use the default HTTPS port.");
-  }
-  if (!isRegistrablePublicHostname(url.hostname)) {
-    invalidUrl("URL must use a registrable public hostname.");
-  }
-
-  url.hash = "";
-  return url.toString();
-}
 
 export function parseOfficialUrlLines(
   value: string,
@@ -173,6 +140,24 @@ export function formatOfficialUrlIntakeSuccess(
   return `${outcome} Nothing was published.`;
 }
 
+export function formatOfficialUrlRevalidationSuccess(
+  revalidated: number,
+  pending: number,
+): string {
+  const queued =
+    revalidated > 0
+      ? `${revalidated} fresh validation ${revalidated === 1 ? "generation was" : "generations were"} queued.`
+      : "";
+  const unchanged =
+    pending > 0
+      ? `${pending} ${pending === 1 ? "request already has" : "requests already have"} unfinished validation work and ${pending === 1 ? "was" : "were"} left unchanged.`
+      : "";
+  const outcome =
+    [queued, unchanged].filter(Boolean).join(" ") ||
+    "No fresh validation work was queued.";
+  return `${outcome} Existing results were preserved and nothing was published.`;
+}
+
 export function OfficialUrlIntakeFeedbackMessage({
   feedback,
 }: {
@@ -217,6 +202,8 @@ export function OfficialUrlIntakeConsole() {
   const feedbackId = useId();
   const submittingRef = useRef(false);
   const [value, setValue] = useState("");
+  const [operation, setOperation] =
+    useState<OfficialUrlIntakeOperation>("enqueue");
   const [feedback, setFeedback] = useState<OfficialUrlIntakeFeedback>({
     kind: "idle",
   });
@@ -249,10 +236,19 @@ export function OfficialUrlIntakeConsole() {
       const response = await fetch("/api/admin/ingestion/official-urls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entries: prepared.entries }),
+        body: JSON.stringify({
+          operation,
+          entries: prepared.entries,
+        }),
       });
       const body = (await response.json().catch(() => null)) as
-        | { accepted?: number; replayed?: number; error?: string }
+        | {
+            accepted?: number;
+            replayed?: number;
+            revalidated?: number;
+            pending?: number;
+            error?: string;
+          }
         | null;
 
       if (!response.ok) {
@@ -265,16 +261,24 @@ export function OfficialUrlIntakeConsole() {
         return;
       }
 
-      const accepted =
-        typeof body?.accepted === "number"
-          ? body.accepted
-          : prepared.entries.length;
-      const replayed =
-        typeof body?.replayed === "number" ? body.replayed : 0;
+      const message =
+        operation === "revalidate"
+          ? formatOfficialUrlRevalidationSuccess(
+              typeof body?.revalidated === "number"
+                ? body.revalidated
+                : prepared.entries.length,
+              typeof body?.pending === "number" ? body.pending : 0,
+            )
+          : formatOfficialUrlIntakeSuccess(
+              typeof body?.accepted === "number"
+                ? body.accepted
+                : prepared.entries.length,
+              typeof body?.replayed === "number" ? body.replayed : 0,
+            );
       setValue("");
       setFeedback({
         kind: "success",
-        message: formatOfficialUrlIntakeSuccess(accepted, replayed),
+        message,
       });
       router.refresh();
     } catch (error) {
@@ -368,6 +372,55 @@ export function OfficialUrlIntakeConsole() {
           </span>
         </div>
 
+        <fieldset
+          disabled={pending}
+          className="grid gap-2 rounded-xl border border-line bg-paper p-3 sm:grid-cols-2"
+        >
+          <legend className="px-1 text-sm font-medium text-ink">
+            Intake action
+          </legend>
+          <label className="flex cursor-pointer gap-2 rounded-lg border border-line px-3 py-2 text-sm text-ink has-[:checked]:border-ember has-[:checked]:bg-ember/10">
+            <input
+              type="radio"
+              name="officialUrlIntakeOperation"
+              value="enqueue"
+              checked={operation === "enqueue"}
+              onChange={() => {
+                setOperation("enqueue");
+                setFeedback({ kind: "idle" });
+              }}
+              className="mt-0.5 accent-ember"
+            />
+            <span>
+              <span className="block font-semibold">New intake</span>
+              <span className="block text-xs leading-relaxed text-graphite">
+                Queue generation one; an exact replay stays unchanged.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer gap-2 rounded-lg border border-line px-3 py-2 text-sm text-ink has-[:checked]:border-ember has-[:checked]:bg-ember/10">
+            <input
+              type="radio"
+              name="officialUrlIntakeOperation"
+              value="revalidate"
+              checked={operation === "revalidate"}
+              onChange={() => {
+                setOperation("revalidate");
+                setFeedback({ kind: "idle" });
+              }}
+              className="mt-0.5 accent-ember"
+            />
+            <span>
+              <span className="block font-semibold">
+                Revalidate completed
+              </span>
+              <span className="block text-xs leading-relaxed text-graphite">
+                Queue a fresh generation without reopening prior work.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
         <div id={feedbackId}>
           <OfficialUrlIntakeFeedbackMessage feedback={feedback} />
         </div>
@@ -378,7 +431,13 @@ export function OfficialUrlIntakeConsole() {
             disabled={pending}
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-on-accent transition hover:bg-ember/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "Queueing private drafts…" : "Queue private drafts"}
+            {pending
+              ? operation === "revalidate"
+                ? "Queueing fresh validation…"
+                : "Queueing private drafts…"
+              : operation === "revalidate"
+                ? "Queue fresh validation"
+                : "Queue private drafts"}
           </button>
         </div>
       </form>

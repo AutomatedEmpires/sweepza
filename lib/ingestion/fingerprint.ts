@@ -38,12 +38,12 @@ export function normalizeUrl(raw: string | null | undefined): string | null {
       url.searchParams.delete(key);
     }
   }
-  const sorted = [...url.searchParams.entries()].sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const search = sorted.length
-    ? `?${sorted.map(([k, v]) => `${k}=${v}`).join("&")}`
-    : "";
+  // URLSearchParams operates on decoded names and values. Re-serialize through
+  // it after sorting so reserved delimiters inside a value stay percent-encoded
+  // instead of collapsing into additional query pairs.
+  url.searchParams.sort();
+  const serializedSearch = url.searchParams.toString();
+  const search = serializedSearch ? `?${serializedSearch}` : "";
 
   const path = url.pathname.replace(/\/+$/, "");
   return `https://${host}${path}${search}`;

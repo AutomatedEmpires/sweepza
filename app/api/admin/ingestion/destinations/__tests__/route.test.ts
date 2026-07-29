@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   appendOfficialDestinationPolicyEvent: vi.fn(),
+  captureException: vi.fn(),
   ensureCurrentAppUser: vi.fn(),
   requireAdminApi: vi.fn(),
 }));
 
+vi.mock("@sentry/nextjs", () => ({
+  captureException: mocks.captureException,
+}));
 vi.mock("@/lib/admin-guard", () => ({
   requireAdminApi: mocks.requireAdminApi,
 }));
@@ -49,6 +53,7 @@ function draftDecision(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mocks.appendOfficialDestinationPolicyEvent.mockReset();
+  mocks.captureException.mockReset();
   mocks.ensureCurrentAppUser.mockReset();
   mocks.requireAdminApi.mockReset();
   mocks.requireAdminApi.mockResolvedValue({ ok: true });
@@ -158,14 +163,35 @@ describe("POST /api/admin/ingestion/destinations", () => {
   });
 
   it.each([
-    ["40001", "changed while you were reviewing"],
-    ["23505", "submission key was already used"],
-  ])("maps database conflict %s to a safe retry response", async (code, copy) => {
-    mocks.appendOfficialDestinationPolicyEvent.mockRejectedValue({ code });
+    ["40001", 409, "changed while you were reviewing"],
+    ["23505", 409, "submission key was already used"],
+    ["42501", 403, "Admin or owner access required"],
+  ])(
+    "maps known database error %s without operational alerting",
+    async (code, status, copy) => {
+      mocks.appendOfficialDestinationPolicyEvent.mockRejectedValue({ code });
+
+      const response = await POST(request(draftDecision()));
+
+      expect(response.status).toBe(status);
+      expect((await response.json()).error).toContain(copy);
+      expect(mocks.captureException).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports an unexpected write failure and returns 500", async () => {
+    const failure = new Error("policy store unavailable");
+    mocks.appendOfficialDestinationPolicyEvent.mockRejectedValue(failure);
 
     const response = await POST(request(draftDecision()));
 
-    expect(response.status).toBe(409);
-    expect((await response.json()).error).toContain(copy);
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Destination policy decision could not be recorded. No permission changed.",
+    });
+    expect(mocks.captureException).toHaveBeenCalledWith(failure, {
+      tags: { operation: "official_destination_policy_append" },
+    });
   });
 });

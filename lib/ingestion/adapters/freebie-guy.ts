@@ -183,7 +183,11 @@ export const freebieGuyAdapter: SourceAdapter = {
           answered += 1; // a 404/410 is a real answer about that post
           await workQueue.complete(item.key, item.claimToken);
         } else {
-          await workQueue.defer(item.key, item.claimToken);
+          await workQueue.defer(
+            item.key,
+            item.claimToken,
+            `freebie_detail_fetch_${detail.failure}`,
+          );
         }
         continue;
       }
@@ -213,7 +217,11 @@ export const freebieGuyAdapter: SourceAdapter = {
       }
       // No sponsor link may be a page still being populated. Do not save its
       // validator or complete its work item; a later run must fetch it again.
-      await workQueue.defer(item.key, item.claimToken);
+      await workQueue.defer(
+        item.key,
+        item.claimToken,
+        "freebie_detail_missing_official_url",
+      );
     }
 
     // Every detail we tried failed transiently and nothing answered: that is an

@@ -138,14 +138,22 @@ export const sweepstakesTodayAdapter: SourceAdapter = {
         if (detail.failure === "not_found") {
           await workQueue.complete(item.key, item.claimToken);
         } else {
-          await workQueue.defer(item.key, item.claimToken);
+          await workQueue.defer(
+            item.key,
+            item.claimToken,
+            `sweepstakes_today_detail_${detail.failure}`,
+          );
         }
         continue;
       }
 
       const officialUrl = parseSweepstakesTodayOfficialUrl(detail.body);
       if (!officialUrl) {
-        await workQueue.defer(item.key, item.claimToken);
+        await workQueue.defer(
+          item.key,
+          item.claimToken,
+          "sweepstakes_today_detail_missing_official_url",
+        );
         continue;
       }
 

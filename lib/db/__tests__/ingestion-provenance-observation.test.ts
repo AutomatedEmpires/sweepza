@@ -13,6 +13,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
+  canonicalProvenanceIdentityForTest,
   createIngestedListingWithProvenance,
   type ProvenanceInput,
 } from "@/lib/db/ingestion";
@@ -87,6 +88,57 @@ function clientWithRpc(
       .mockResolvedValueOnce(results[1]),
   };
 }
+
+describe("canonical provenance identity", () => {
+  it("is stable across insertion order without consulting host locale data", () => {
+    const first = {
+      "ä": 1,
+      z: 2,
+      A: 3,
+      "😀": 4,
+      "�": 5,
+      nested: { b: 2, a: 1 },
+    };
+    const second = {
+      nested: { a: 1, b: 2 },
+      "�": 5,
+      "😀": 4,
+      A: 3,
+      z: 2,
+      "ä": 1,
+    };
+    const localeCompare = vi
+      .spyOn(String.prototype, "localeCompare")
+      .mockImplementation(() => {
+        throw new Error("host locale ordering must not be used");
+      });
+
+    try {
+      const firstIdentity =
+        canonicalProvenanceIdentityForTest(first);
+      expect(firstIdentity).toMatch(/^[0-9a-f]{64}$/);
+      expect(
+        canonicalProvenanceIdentityForTest(second),
+      ).toBe(firstIdentity);
+    } finally {
+      localeCompare.mockRestore();
+    }
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite numeric evidence %s instead of hashing it as null",
+    (value) => {
+      const nullIdentity = canonicalProvenanceIdentityForTest({
+        confidence: null,
+      });
+
+      expect(() =>
+        canonicalProvenanceIdentityForTest({ confidence: value }),
+      ).toThrow("provenance contains a non-finite number");
+      expect(nullIdentity).toMatch(/^[0-9a-f]{64}$/);
+    },
+  );
+});
 
 describe("ingestion provenance observation persistence", () => {
   beforeEach(() => {
@@ -234,6 +286,20 @@ describe("ingestion provenance observation persistence", () => {
     expect(secondIdentity).toMatch(/^[0-9a-f]{64}$/);
     expect(secondIdentity).not.toBe(firstIdentity);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite extraction confidence %s before any database write",
+    async (extractionConfidence) => {
+      await expect(
+        createIngestedListingWithProvenance(
+          candidate(),
+          provenance({ extractionConfidence }),
+        ),
+      ).rejects.toThrow("provenance contains a non-finite number");
+
+      expect(mocks.createServiceRoleClient).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("listing ingestion observation migration contract", () => {

@@ -49,6 +49,32 @@ describe("discovery work claim persistence", () => {
     );
   });
 
+  it("returns zero for an empty official-intake batch without crossing the RPC boundary", async () => {
+    await expect(enqueueOfficialUrlIntakeWork([])).resolves.toBe(0);
+
+    expect(mocks.createServiceRoleClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+    ["a negative count", -1],
+    ["more inserts than supplied", 2],
+  ])("rejects %s returned by the official-intake RPC", async (_name, data) => {
+    mocks.rpc.mockResolvedValue({ data, error: null });
+
+    await expect(
+      enqueueOfficialUrlIntakeWork([
+        {
+          key: "immutable-key",
+          payload: { officialUrl: "https://example.com" },
+        },
+      ]),
+    ).rejects.toThrow(
+      "enqueueOfficialUrlIntakeWork failed: invalid inserted count",
+    );
+  });
+
   it("maps a conflicting replay to the typed 409 boundary", async () => {
     mocks.rpc.mockResolvedValue({
       data: null,
@@ -91,6 +117,7 @@ describe("discovery work claim persistence", () => {
     await queue.defer(
       "work-2",
       "66666666-6666-4666-8666-666666666666",
+      "provider unavailable",
     );
     await queue.deadLetter(
       "work-3",
@@ -123,6 +150,7 @@ describe("discovery work claim persistence", () => {
         p_source_id: "official_direct",
         p_item_key: "work-2",
         p_claim_token: "66666666-6666-4666-8666-666666666666",
+        p_reason: "provider unavailable",
       },
     );
     expect(mocks.rpc).toHaveBeenNthCalledWith(
@@ -147,5 +175,23 @@ describe("discovery work claim persistence", () => {
         "55555555-5555-4555-8555-555555555555",
       ),
     ).rejects.toThrow('claim lost for "work-1"');
+  });
+
+  it("bounds persisted retry diagnostics before crossing the RPC boundary", async () => {
+    const queue = discoveryWorkQueue("official_direct");
+    mocks.rpc.mockResolvedValue({ data: true, error: null });
+
+    await queue.defer(
+      "work-1",
+      "55555555-5555-4555-8555-555555555555",
+      `  ${"x".repeat(1500)}  `,
+    );
+
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "defer_source_discovery_work",
+      expect.objectContaining({
+        p_reason: "x".repeat(1000),
+      }),
+    );
   });
 });

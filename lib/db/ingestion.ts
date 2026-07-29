@@ -167,7 +167,12 @@ function canonicalJson(value: unknown): string {
   if (typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right));
+      // ECMAScript relational string comparison is a specified UTF-16 code
+      // unit ordering. Unlike localeCompare, it cannot change with host locale
+      // or ICU data, so the same evidence hashes identically in every runtime.
+      .sort(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      );
     return `{${entries
       .map(
         ([key, item]) =>
@@ -175,9 +180,14 @@ function canonicalJson(value: unknown): string {
       )
       .join(",")}}`;
   }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("provenance contains a non-finite number");
+    }
+    return JSON.stringify(value);
+  }
   if (
     typeof value === "string" ||
-    typeof value === "number" ||
     typeof value === "boolean"
   ) {
     const serialized = JSON.stringify(value);
@@ -186,10 +196,16 @@ function canonicalJson(value: unknown): string {
   throw new Error("provenance contains a non-JSON value");
 }
 
-function provenanceIdentity(payload: ProvenancePayload): string {
+export function canonicalProvenanceIdentityForTest(
+  value: unknown,
+): string {
   return createHash("sha256")
-    .update(canonicalJson(payload))
+    .update(canonicalJson(value))
     .digest("hex");
+}
+
+function provenanceIdentity(payload: ProvenancePayload): string {
+  return canonicalProvenanceIdentityForTest(payload);
 }
 
 /**
@@ -203,8 +219,12 @@ export async function createIngestedListingWithProvenance(
   candidate: NormalizedCandidate,
   input: ProvenanceInput,
 ): Promise<{ listingId: string; created: boolean; suspectedDuplicateIds: string[] }> {
-  const supabase = createServiceRoleClient();
   const provenance = provenancePayload(input);
+  // Validate and identify evidence before the first service-role write. Native
+  // JSON serialization maps NaN and infinities to null; allowing that RPC to
+  // run first could persist evidence under a value its identity never meant.
+  const observationIdentity = provenanceIdentity(provenance);
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase.rpc("create_ingested_listing_with_provenance", {
     p_candidate: candidate,
     p_provenance: provenance,
@@ -232,7 +252,7 @@ export async function createIngestedListingWithProvenance(
     "record_listing_ingestion_observation",
     {
       p_listing_id: result.listing_id,
-      p_provenance_identity: provenanceIdentity(provenance),
+      p_provenance_identity: observationIdentity,
       p_provenance: provenance,
     },
   );

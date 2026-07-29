@@ -20,12 +20,14 @@ import {
 //   3. ToS posture         — a completed ToS review that permits our use
 //   4. approval record     — the founder's audited decision, in the database
 //
-// official_direct is the narrow exception to conditions 2–3 at this capability
-// layer: one static descriptor cannot truthfully approve every sponsor on the
-// internet. Its host/path ToS + robots evidence is enforced separately by the
-// append-only official-destination gate before the HTTP client or lease exists.
-// It still requires the master switch, its own production approval record,
-// global kill switches, circuit state, and cadence here.
+// official_direct is the narrow exception to the registry's terminal
+// production state and static ToS/robots checks at this capability layer: one
+// static descriptor cannot truthfully approve every sponsor on the internet.
+// The capability must still have reached a reviewed rung. Its host/path ToS +
+// robots evidence is enforced separately by the append-only
+// official-destination gate before the HTTP client or lease exists. It still
+// requires the master switch, its own production approval record, global kill
+// switches, circuit state, and cadence here.
 //
 // Fixture execution requires none of these: it never leaves the process.
 
@@ -63,6 +65,28 @@ export interface GateInput {
   ingestionEnabled: string | null | undefined;
   /** Injected so the refresh window is testable without faking the clock. */
   now?: Date;
+}
+
+const OFFICIAL_CAPABILITY_REVIEWED_STATES: ReadonlySet<SourceComplianceState> =
+  new Set([
+    "reviewed",
+    "approved_for_fixtures",
+    "approved_for_manual_check",
+    "approved_for_production",
+  ]);
+
+function officialCapabilityIneligibility(
+  descriptor: SourceDescriptor,
+): DescriptorIneligibility | null {
+  if (descriptor.killSwitch) return "kill_switch";
+  if (
+    !OFFICIAL_CAPABILITY_REVIEWED_STATES.has(
+      descriptor.complianceState,
+    )
+  ) {
+    return "registry_not_production_approved";
+  }
+  return null;
 }
 
 /** Operator-facing wording for each registry-side denial. */
@@ -123,9 +147,7 @@ export function evaluateSourceGate(input: GateInput): GateDecision {
     descriptor.allowedHosts.length === 0 &&
     descriptor.allowedPathPrefixes.length === 0;
   const ineligible = destinationScopedOfficialCapability
-    ? descriptor.killSwitch
-      ? "kill_switch"
-      : null
+    ? officialCapabilityIneligibility(descriptor)
     : descriptorIneligibility(descriptor);
   if (ineligible) {
     return { allowed: false, reason: ineligible, detail: describeIneligibility(descriptor, ineligible) };

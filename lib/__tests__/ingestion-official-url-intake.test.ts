@@ -57,6 +57,44 @@ describe("takeOfficialUrlIntakeLeads", () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it("accepts generation-specific refresh metadata without changing listing provenance", async () => {
+    const requestItemKey = `admin-official:${"a".repeat(64)}`;
+    const { queue, deadLetter } = queueWith([
+      {
+        key: `${requestItemKey}:refresh:2`,
+        claimToken: "claim-refresh-2",
+        payload: {
+          kind: "admin_official_url_v1",
+          officialUrl: "https://sponsor.example.com/rules",
+          idempotencyKey: "partner:promotion-1",
+          authority: {
+            type: "sweepza_operator",
+            appUserId: ACTOR_ID,
+          },
+          refresh: {
+            requestItemKey,
+            generation: 2,
+            reason: "scheduled_revalidation",
+          },
+        },
+      },
+    ]);
+
+    await expect(
+      takeOfficialUrlIntakeLeads(queue, 25),
+    ).resolves.toEqual([
+      {
+        lead: {
+          officialUrl: "https://sponsor.example.com/rules",
+          discoveryWorkKey: `${requestItemKey}:refresh:2`,
+          discoveryWorkClaimToken: "claim-refresh-2",
+        },
+        provenanceSource: `official_direct:operator:${ACTOR_ID}`,
+      },
+    ]);
+    expect(deadLetter).not.toHaveBeenCalled();
+  });
+
   it("dead-letters malformed queue payloads with claim-bound diagnostics", async () => {
     const { queue, complete, deadLetter } = queueWith([
       {
@@ -80,13 +118,49 @@ describe("takeOfficialUrlIntakeLeads", () => {
           },
         },
       },
+      {
+        key: "bad-refresh",
+        claimToken: "claim-bad-refresh",
+        payload: {
+          kind: "admin_official_url_v1",
+          officialUrl: "https://sponsor.example.com/rules",
+          idempotencyKey: "partner:promotion-3",
+          authority: {
+            type: "sweepza_operator",
+            appUserId: ACTOR_ID,
+          },
+          refresh: {
+            requestItemKey: "root",
+            generation: 1,
+            reason: "scheduled_revalidation",
+          },
+        },
+      },
+      {
+        key: `admin-official:${"b".repeat(64)}:refresh:2`,
+        claimToken: "claim-mismatched-refresh",
+        payload: {
+          kind: "admin_official_url_v1",
+          officialUrl: "https://sponsor.example.com/rules",
+          idempotencyKey: "partner:promotion-4",
+          authority: {
+            type: "sweepza_operator",
+            appUserId: ACTOR_ID,
+          },
+          refresh: {
+            requestItemKey: `admin-official:${"c".repeat(64)}`,
+            generation: 2,
+            reason: "operator_revalidation",
+          },
+        },
+      },
     ]);
 
     const leads = await takeOfficialUrlIntakeLeads(queue, 25);
 
     expect(leads).toEqual([]);
     expect(complete).not.toHaveBeenCalled();
-    expect(deadLetter).toHaveBeenCalledTimes(2);
+    expect(deadLetter).toHaveBeenCalledTimes(4);
     expect(deadLetter).toHaveBeenNthCalledWith(
       1,
       "bad-kind",
@@ -97,7 +171,21 @@ describe("takeOfficialUrlIntakeLeads", () => {
       2,
       "bad-url",
       "claim-bad-url",
-      expect.stringContaining("Official URLs must use HTTPS"),
+      expect.stringContaining("URL must use HTTPS"),
+    );
+    expect(deadLetter).toHaveBeenNthCalledWith(
+      3,
+      "bad-refresh",
+      "claim-bad-refresh",
+      expect.stringContaining("greater than or equal to 2"),
+    );
+    expect(deadLetter).toHaveBeenNthCalledWith(
+      4,
+      `admin-official:${"b".repeat(64)}:refresh:2`,
+      "claim-mismatched-refresh",
+      expect.stringContaining(
+        "refresh generation does not match the claimed queue key",
+      ),
     );
   });
 

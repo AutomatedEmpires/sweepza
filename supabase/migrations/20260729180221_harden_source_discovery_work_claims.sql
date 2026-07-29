@@ -7,7 +7,8 @@ alter table public.source_discovery_work_item
   add column claimed_at timestamptz,
   add column claim_expires_at timestamptz,
   add column dead_lettered_at timestamptz,
-  add column dead_letter_reason text;
+  add column dead_letter_reason text,
+  add column last_failure_reason text;
 
 alter table public.source_discovery_work_item
   add constraint source_discovery_work_claim_fields_consistent
@@ -36,11 +37,20 @@ alter table public.source_discovery_work_item
         and nullif(btrim(dead_letter_reason), '') is not null
         and char_length(dead_letter_reason) <= 1000
       )
+    ),
+  add constraint source_discovery_work_last_failure_reason_bounded
+    check (
+      last_failure_reason is null
+      or (
+        nullif(btrim(last_failure_reason), '') is not null
+        and char_length(last_failure_reason) <= 1000
+      )
     );
 
 create index source_discovery_work_claimable_idx
   on public.source_discovery_work_item (
     source_id,
+    attempts,
     next_attempt_at,
     claim_expires_at,
     discovered_at,
@@ -102,7 +112,8 @@ begin
         claimed_at = null,
         claim_expires_at = null,
         dead_lettered_at = null,
-        dead_letter_reason = null
+        dead_letter_reason = null,
+        last_failure_reason = null
     where existing.payload is distinct from excluded.payload;
 
   get diagnostics v_count = row_count;
@@ -190,17 +201,46 @@ language sql
 security definer
 set search_path = ''
 as $$
-  with due as (
+  with exhausted as (
+    -- Rows already at the retry ceiling are terminal before the claim window
+    -- is selected. They can never consume another bounded worker slot.
+    update public.source_discovery_work_item as poison
+       set completed_at = clock_timestamp(),
+           dead_lettered_at = clock_timestamp(),
+           dead_letter_reason = left(
+             'retry_exhausted_after_5_attempts'
+               || case
+                    when poison.last_failure_reason is null then ''
+                    else ': ' || poison.last_failure_reason
+                  end,
+             1000
+           ),
+           last_failure_reason = null,
+           claim_token = null,
+           claimed_at = null,
+           claim_expires_at = null
+     where poison.source_id = p_source_id
+       and poison.completed_at is null
+       and poison.attempts >= 5
+       and poison.next_attempt_at <= clock_timestamp()
+       and (
+         poison.claim_expires_at is null
+         or poison.claim_expires_at <= clock_timestamp()
+       )
+    returning poison.source_id, poison.item_key
+  ), due as (
     select pending.source_id, pending.item_key
     from public.source_discovery_work_item as pending
     where pending.source_id = p_source_id
       and pending.completed_at is null
+      and pending.attempts < 5
       and pending.next_attempt_at <= clock_timestamp()
       and (
         pending.claim_expires_at is null
         or pending.claim_expires_at <= clock_timestamp()
       )
     order by
+      pending.attempts,
       pending.next_attempt_at,
       pending.discovered_at,
       pending.item_key
@@ -235,6 +275,7 @@ as $$
 begin
   update public.source_discovery_work_item
      set completed_at = clock_timestamp(),
+         last_failure_reason = null,
          claim_token = null,
          claimed_at = null,
          claim_expires_at = null
@@ -249,17 +290,51 @@ $$;
 create function public.defer_source_discovery_work(
   p_source_id text,
   p_item_key text,
-  p_claim_token uuid
+  p_claim_token uuid,
+  p_reason text
 ) returns boolean
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_reason text := left(btrim(coalesce(p_reason, '')), 1000);
 begin
+  if v_reason = '' then
+    raise exception 'defer reason is required';
+  end if;
+
   update public.source_discovery_work_item
      set attempts = attempts + 1,
-         next_attempt_at = clock_timestamp()
-           + make_interval(mins => least(1440, 5 * (2 ^ least(attempts, 8))::integer)),
+         next_attempt_at = case
+           when attempts + 1 >= 5 then clock_timestamp()
+           else clock_timestamp()
+             + make_interval(
+                 mins => least(
+                   1440,
+                   5 * (2 ^ least(attempts, 8))::integer
+                 )
+               )
+         end,
+         completed_at = case
+           when attempts + 1 >= 5 then clock_timestamp()
+           else null
+         end,
+         dead_lettered_at = case
+           when attempts + 1 >= 5 then clock_timestamp()
+           else null
+         end,
+         dead_letter_reason = case
+           when attempts + 1 >= 5 then left(
+             'retry_exhausted_after_5_attempts: ' || v_reason,
+             1000
+           )
+           else null
+         end,
+         last_failure_reason = case
+           when attempts + 1 >= 5 then null
+           else v_reason
+         end,
          claim_token = null,
          claimed_at = null,
          claim_expires_at = null
@@ -292,6 +367,7 @@ begin
      set completed_at = clock_timestamp(),
          dead_lettered_at = clock_timestamp(),
          dead_letter_reason = v_reason,
+         last_failure_reason = null,
          claim_token = null,
          claimed_at = null,
          claim_expires_at = null
@@ -309,7 +385,7 @@ revoke all on function public.claim_source_discovery_work(text, integer, integer
   from public, anon, authenticated;
 revoke all on function public.complete_source_discovery_work(text, text, uuid)
   from public, anon, authenticated;
-revoke all on function public.defer_source_discovery_work(text, text, uuid)
+revoke all on function public.defer_source_discovery_work(text, text, uuid, text)
   from public, anon, authenticated;
 revoke all on function public.dead_letter_source_discovery_work(text, text, uuid, text)
   from public, anon, authenticated;
@@ -320,7 +396,7 @@ grant execute on function public.claim_source_discovery_work(text, integer, inte
   to service_role;
 grant execute on function public.complete_source_discovery_work(text, text, uuid)
   to service_role;
-grant execute on function public.defer_source_discovery_work(text, text, uuid)
+grant execute on function public.defer_source_discovery_work(text, text, uuid, text)
   to service_role;
 grant execute on function public.dead_letter_source_discovery_work(text, text, uuid, text)
   to service_role;
@@ -337,7 +413,7 @@ comment on function public.claim_source_discovery_work(text, integer, integer) i
   'Atomically claims due discovery work with a bounded lease and CAS token. Service role only.';
 comment on function public.complete_source_discovery_work(text, text, uuid) is
   'Completes only the currently claimed discovery-work generation. Service role only.';
-comment on function public.defer_source_discovery_work(text, text, uuid) is
-  'Defers only the currently claimed discovery-work generation. Service role only.';
+comment on function public.defer_source_discovery_work(text, text, uuid, text) is
+  'Defers only the currently claimed discovery-work generation with bounded diagnostics; the fifth failure is terminally quarantined. Service role only.';
 comment on function public.dead_letter_source_discovery_work(text, text, uuid, text) is
-  'Terminally records malformed discovery work with a persisted diagnostic. Service role only.';
+  'Terminally quarantines malformed, denied, or otherwise permanent discovery work with a persisted diagnostic. Service role only.';

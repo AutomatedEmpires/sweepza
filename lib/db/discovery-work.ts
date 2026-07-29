@@ -8,6 +8,11 @@ import type {
 
 const OFFICIAL_INTAKE_CONFLICT =
   "official_url_intake_idempotency_conflict";
+const MAX_DIAGNOSTIC_CHARS = 1000;
+
+function boundedDiagnostic(reason: string, fallback: string): string {
+  return (reason.trim() || fallback).slice(0, MAX_DIAGNOSTIC_CHARS);
+}
 
 export class OfficialUrlIntakeIdempotencyConflictError extends Error {
   constructor() {
@@ -121,12 +126,13 @@ export function discoveryWorkQueue(sourceId: string): DiscoveryWorkQueue {
       }
     },
 
-    async defer(key: string, claimToken: string) {
+    async defer(key: string, claimToken: string, reason: string) {
       const supabase = createServiceRoleClient();
       const { data, error } = await supabase.rpc("defer_source_discovery_work", {
         p_source_id: sourceId,
         p_item_key: key,
         p_claim_token: claimToken,
+        p_reason: boundedDiagnostic(reason, "retryable_work_deferred"),
       });
       if (error) throw new Error(`discoveryWorkQueue.defer failed: ${error.message}`);
       if (data !== true) {
@@ -144,7 +150,7 @@ export function discoveryWorkQueue(sourceId: string): DiscoveryWorkQueue {
           p_source_id: sourceId,
           p_item_key: key,
           p_claim_token: claimToken,
-          p_reason: reason,
+          p_reason: boundedDiagnostic(reason, "terminal_work_quarantined"),
         },
       );
       if (error) {
