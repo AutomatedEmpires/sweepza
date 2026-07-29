@@ -49,6 +49,11 @@ export function WinnerCard({
             prizeName={listing?.prizeName ?? post.listingTitle ?? "Winner story"}
             sponsorName={listing?.host?.name ?? listing?.originalSponsorName}
             category={listing?.prizeCategory}
+            attribution={
+              !memberPhotoUrl && officialImageUrl
+                ? listing?.imageAttribution
+                : undefined
+            }
             representative={representativePhoto}
             sizes="(min-width: 1024px) 480px, 100vw"
           />

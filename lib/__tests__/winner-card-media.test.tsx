@@ -56,4 +56,34 @@ describe("WinnerCard media truth", () => {
       'alt="Photo shared by Taylor with their winner story"',
     );
   });
+
+  it("attributes official listing media but not a member-supplied photo", () => {
+    const listingWithOfficialMedia: Listing = {
+      ...listing,
+      mainImageUrl: "https://cdn.example/official-vacation.webp",
+      imageAttribution: "Example Sponsor",
+    };
+
+    const officialHtml = renderToStaticMarkup(
+      <WinnerCard post={post} listing={listingWithOfficialMedia} />,
+    );
+    expect(officialHtml).toContain("Image: Example Sponsor");
+    expect(officialHtml).toContain(
+      'alt="Official sponsor photo of the vacation package"',
+    );
+
+    const memberHtml = renderToStaticMarkup(
+      <WinnerCard
+        post={{
+          ...post,
+          photoUrl: "https://cdn.example/member-win.webp",
+        }}
+        listing={listingWithOfficialMedia}
+      />,
+    );
+    expect(memberHtml).not.toContain("Image: Example Sponsor");
+    expect(memberHtml).toContain(
+      'alt="Photo shared by Taylor with their winner story"',
+    );
+  });
 });
