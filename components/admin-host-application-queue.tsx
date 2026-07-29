@@ -72,7 +72,7 @@ function ApplicationCard({ item }: { item: HostApplicationQueueItem }) {
         />
       </label>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => review("approve")} disabled={pending !== null || notes.trim().length < 5} className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+        <button type="button" onClick={() => review("approve")} disabled={pending !== null || notes.trim().length < 5} className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-on-trust disabled:opacity-60">
           {pending === "approve" ? "Approving…" : "Approve host"}
         </button>
         <button type="button" onClick={() => review("reject")} disabled={pending !== null || notes.trim().length < 5} className="min-h-11 rounded-xl border border-flame/40 px-4 py-2 text-sm font-semibold text-flame disabled:opacity-60">

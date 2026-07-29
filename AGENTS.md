@@ -11,7 +11,7 @@
 - **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, email=resend (sender isolation — OWN identity, never E&E's), storage=none (Sweepza has no Cloudinary account, code, or env — the previous "own account/env" claim was false; corrected 2026-07-18), ai=anthropic (ingestion extraction, claude-opus-4-8).
 - **LOCKED:** Sweepza is FULLY INDEPENDENT from Explore & Earn — no shared Stripe/Resend/Supabase resources, ever
 - **LOCKED:** Launch gate: NO-GO until 6 founder decisions are made — CI-green code is not launch permission
-- **LOCKED:** Theme: tokenized day/night hybrid (auto by local clock, dark 8pm-6am) — edit app/tokens.css only
+- **LOCKED:** Theme: tokenized Midnight (dark) default; signed-in users may explicitly choose Sunrise (light) only from Profile → Appearance. No clock-based automatic mode.
 - **Warn before:** MERGING TO MAIN DEPLOYS sweepza.com
 - **Warn before:** activating ingestion crons (needs founder env + per-source compliance approval)
 - **Warn before:** sending email

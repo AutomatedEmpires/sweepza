@@ -5,8 +5,8 @@ import { nextEntryAt } from "@/lib/sweep-routine";
 import type { EntryFrequency } from "@/lib/types/listing";
 
 // The daily-loop timer. For a recurring sweep the seeker has entered, this
-// counts down to the moment it can be entered again (daily/instant-win reset at
-// the next local midnight; weekly/monthly on a rolling window) and calls
+// counts down to the moment it can be entered again (daily/instant-win use a
+// conservative rolling 24-hour window; weekly/monthly use rolling windows) and calls
 // `onReady` the instant the window re-opens, so the card flips its action to
 // "Enter again". Ticks live on the client only — the render clock elsewhere is
 // frozen for SSR safety, so this owns its own second-by-second time.

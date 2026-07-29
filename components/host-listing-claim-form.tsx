@@ -49,7 +49,7 @@ export function HostListingClaimForm({ defaultListingId }: { defaultListingId: s
       <label className="block text-xs font-medium text-graphite">Evidence URL (optional)<input name="authorityEvidenceUrl" type="url" className={inputClass} placeholder="https://..." /></label>
       <label className="flex items-start gap-3 rounded-xl border border-line bg-paper p-3 text-sm leading-relaxed text-ink"><input name="authorityAttested" type="checkbox" required className="mt-1" />I attest that I am authorized to manage this promotion on behalf of its sponsor or administrator.</label>
       {message ? <p role="status" className={status === "error" ? "text-sm text-flame" : "text-sm text-pine"}>{message}</p> : null}
-      <button type="submit" disabled={status === "submitting" || status === "success"} className="min-h-11 rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{status === "submitting" ? "Submitting…" : "Submit claim"}</button>
+      <button type="submit" disabled={status === "submitting" || status === "success"} className="min-h-11 rounded-xl bg-ember px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-60">{status === "submitting" ? "Submitting…" : "Submit claim"}</button>
     </form>
   );
 }

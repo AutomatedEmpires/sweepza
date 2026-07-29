@@ -11,9 +11,9 @@
   to `rgb(var(--color-accent) / 0.1)`. Never store colors as hex here.
 
   Two themes ship today:
-    · Sunrise  — the day palette (light). Default.
-    · Midnight — the night palette (dark). Applied via [data-theme="dark"].
-  Theme selection (auto-by-time, or manual) is handled in lib/theme.tsx.
+    · Midnight — the casino palette (dark). Default.
+    · Sunrise  — the optional light palette from the user dashboard.
+  Theme selection is handled in lib/theme.tsx.
   ============================================================================
 */
 
@@ -87,9 +87,37 @@
 
   /* ------------------------------------------------------------------ */
   /* 3 · SEMANTIC TOKENS — what components actually consume.             */
-  /*     Default = SUNRISE (light / day).                                */
+  /*     Default = MIDNIGHT (dark / casino).                             */
   /* ------------------------------------------------------------------ */
 
+  --color-bg: var(--mid-paper);
+  --color-surface: var(--mid-surface);
+  --color-surface-2: var(--mid-surface-2);
+  --color-text: var(--mid-ink);
+  --color-text-muted: var(--mid-graphite);
+  --color-border: var(--mid-line);
+  --color-accent: var(--mid-ember);
+  --color-urgent: var(--mid-flame);
+  --color-won: var(--mid-gold);
+  --color-info: var(--mid-ocean);
+  --color-trust: var(--mid-pine);
+  --color-on-accent: var(--mid-paper);
+  --color-on-urgent: var(--mid-paper);
+  --color-on-won: var(--mid-paper);
+  --color-on-info: var(--mid-paper);
+  --color-on-trust: var(--mid-paper);
+
+  --shadow-e1: 0 2px 10px rgb(0 0 0 / 0.40), 0 0 12px rgb(203 107 255 / 0.08);
+  --shadow-e2: 0 8px 28px rgb(0 0 0 / 0.52), 0 0 20px rgb(203 107 255 / 0.12);
+  --shadow-e3: 0 24px 64px rgb(0 0 0 / 0.68), 0 0 32px rgb(203 107 255 / 0.18);
+
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ */
+/* SEMANTIC TOKENS — SUNRISE (optional light mode).                    */
+/* ------------------------------------------------------------------ */
+:root[data-theme="light"] {
   --color-bg: var(--sun-paper);
   --color-surface: var(--sun-surface);
   --color-surface-2: var(--sun-surface-2);
@@ -101,9 +129,6 @@
   --color-won: var(--sun-gold);
   --color-info: var(--sun-ocean);
   --color-trust: var(--sun-pine);
-  /* Text/icon color placed ON each filled action color. Sunrise fills are
-     deep enough for white; Midnight fills are bright, so ink flips dark —
-     every pairing holds ≥4.5:1 in both themes. */
   --color-on-accent: 255 255 255;
   --color-on-urgent: 255 255 255;
   --color-on-won: 255 255 255;
@@ -117,39 +142,7 @@
   color-scheme: light;
 }
 
-/* Explicit light selection == the defaults above. */
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-/* ------------------------------------------------------------------ */
-/* SEMANTIC TOKENS — MIDNIGHT (dark / night).                          */
-/* Only the semantic layer flips; primitives and scales are shared.    */
-/* ------------------------------------------------------------------ */
+/* Explicit dark selection matches the Midnight defaults above. */
 :root[data-theme="dark"] {
-  --color-bg: var(--mid-paper);
-  --color-surface: var(--mid-surface);
-  --color-surface-2: var(--mid-surface-2);
-  --color-text: var(--mid-ink);
-  --color-text-muted: var(--mid-graphite);
-  --color-border: var(--mid-line);
-  --color-accent: var(--mid-ember);
-  --color-urgent: var(--mid-flame);
-  --color-won: var(--mid-gold);
-  --color-info: var(--mid-ocean);
-  --color-trust: var(--mid-pine);
-  /* Midnight action colors are bright by design (they must read as TEXT on
-     the dark canvas), so the text sitting on them flips to ink. Measured:
-     ember 6.6:1 · flame 6.8:1 · gold 13.5:1 · ocean 9.1:1 · pine 12.0:1. */
-  --color-on-accent: var(--mid-paper);
-  --color-on-urgent: var(--mid-paper);
-  --color-on-won: var(--mid-paper);
-  --color-on-info: var(--mid-paper);
-  --color-on-trust: var(--mid-paper);
-
-  --shadow-e1: 0 2px 10px rgb(0 0 0 / 0.40), 0 0 12px rgb(203 107 255 / 0.08);
-  --shadow-e2: 0 8px 28px rgb(0 0 0 / 0.52), 0 0 20px rgb(203 107 255 / 0.12);
-  --shadow-e3: 0 24px 64px rgb(0 0 0 / 0.68), 0 0 32px rgb(203 107 255 / 0.18);
-
   color-scheme: dark;
 }

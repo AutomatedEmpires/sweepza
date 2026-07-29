@@ -49,7 +49,7 @@ export const viewport: Viewport = {
 };
 
 const THEME_BOOTSTRAP_SCRIPT =
-  "(function(){var p='auto';try{var s=localStorage.getItem('sweepza-theme');if(s==='light'||s==='dark'||s==='auto')p=s;}catch(e){}var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));var r=d?'dark':'light';document.documentElement.setAttribute('data-theme',r);var m=document.querySelector('meta[data-sweepza-theme-color]');if(m){var c=m.getAttribute(d?'data-sweepza-midnight':'data-sweepza-sunrise');if(c)m.setAttribute('content',c);}})();";
+  "(function(){var r='dark';try{if(localStorage.getItem('sweepza-theme')==='light')r='light';}catch(e){}document.documentElement.setAttribute('data-theme',r);var m=document.querySelector('meta[data-sweepza-theme-color]');if(m){var c=m.getAttribute(r==='dark'?'data-sweepza-midnight':'data-sweepza-sunrise');if(c)m.setAttribute('content',c);}})();";
 
 // Only read the per-request nonce when CSP enforcement is active: headers()
 // makes every route dynamic, and in the default report-only mode the static
@@ -73,13 +73,14 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="dark"
       suppressHydrationWarning
       className={manrope.variable}
     >
       <head>
         <meta
           name="theme-color"
-          content={THEME_COLORS.sunrise.paper}
+          content={THEME_COLORS.midnight.paper}
           data-sweepza-theme-color
           data-sweepza-sunrise={THEME_COLORS.sunrise.paper}
           data-sweepza-midnight={THEME_COLORS.midnight.paper}

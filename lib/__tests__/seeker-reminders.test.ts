@@ -7,12 +7,11 @@ import {
   type ReminderListing,
 } from "@/lib/seeker-reminders";
 
-// Times are built relative to a local NOW (no trailing Z), matching
-// sweep-routine.test.ts. nextEntryAt uses local setHours, so anchoring on a
-// local instant keeps these assertions timezone-independent.
+// Times are anchored in UTC; the rolling cadence itself is instant-relative
+// and therefore deterministic across rendering, reminders, and time zones.
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-const NOW = new Date("2026-07-14T12:00:00");
+const NOW = new Date("2026-07-14T12:00:00.000Z");
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 function listing(overrides: Partial<ReminderListing> = {}): ReminderListing {

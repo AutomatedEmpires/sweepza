@@ -11,6 +11,7 @@ import { ReentryCountdown } from "@/components/reentry-countdown";
 import { track } from "@/lib/analytics";
 import { SOURCE_LABEL_TEXT, daysUntil, isExpired, listingExpiration } from "@/lib/listing-badges";
 import { describeEligibility } from "@/lib/eligibility";
+import { getListingEntryAction } from "@/lib/listing-entry-action";
 import { pickListingContext } from "@/lib/listing-context";
 import {
   ENTRY_FREQUENCY_LABEL,
@@ -18,6 +19,7 @@ import {
   formatPrizeValue,
 } from "@/lib/listing-format";
 import { useNow } from "@/lib/now";
+import { openOfficialSource } from "@/lib/open-official-source";
 import { useSeekerState } from "@/lib/seeker-state";
 import type { Listing, SeekerUiState } from "@/lib/types/listing";
 
@@ -64,10 +66,10 @@ export function ListingCard({
   const [localState, setLocalState] = useState<SeekerUiState>(initialState);
   const [localSaved, setLocalSaved] = useState(initialState === "saved");
   const [confirmEntry, setConfirmEntry] = useState(false);
+  const [entryOpenFailed, setEntryOpenFailed] = useState(false);
 
   const uiState = store ? store.getState(listing.id) ?? initialState : localState;
   const saved = store ? store.isSaved(listing.id) : localSaved;
-  const won = uiState === "won";
   const entered = uiState === "entered";
 
   // Memory-lifecycle motion. A transient flag plays a celebratory beat only
@@ -135,11 +137,13 @@ export function ListingCard({
   }
 
   function handleEnter() {
-    if (expired || won) return;
+    if (!entryAction.canOpen) return;
     track("listing_enter_clicked", baseProps);
-    if (typeof window !== "undefined") {
-      window.open(listing.entryUrl, "_blank", "noopener,noreferrer");
+    if (!openOfficialSource(listing.entryUrl)) {
+      setEntryOpenFailed(true);
+      return;
     }
+    setEntryOpenFailed(false);
     setConfirmEntry(true);
   }
 
@@ -147,8 +151,20 @@ export function ListingCard({
     setPrimary("entered");
     setReopened(false);
     setConfirmEntry(false);
+    setEntryOpenFailed(false);
     track("listing_marked_entered", { listing_id: listing.id });
   }
+
+  const activity = store?.getActivity(listing.id);
+  const enteredAt = activity?.enteredAt ?? listing.seekerState?.enteredAt;
+  const entryAction = getListingEntryAction({
+    listing,
+    uiState,
+    enteredAt,
+    now,
+    reopened,
+  });
+  const readyAgain = entryAction.state === "again";
 
   const context = useMemo(
     () =>
@@ -157,11 +173,11 @@ export function ListingCard({
         {
           uiState,
           saved,
-          activity: store?.getActivity(listing.id),
+          activity,
         },
         now,
       ),
-    [listing, uiState, saved, store, now],
+    [listing, uiState, saved, activity, now],
   );
 
   const sourceText = SOURCE_LABEL_TEXT[listing.sourceLabel];
@@ -180,9 +196,13 @@ export function ListingCard({
         : `${countdown} · ${formattedEndDate}`;
   const days = daysUntil(listing.endDate, now);
   const urgentEnd = !expired && days <= 3;
+  const eligibilityFacets = useMemo(
+    () => describeEligibility(listing).facets,
+    [listing],
+  );
   const presentEligibility = useMemo(
     () =>
-      describeEligibility(listing).facets.filter(
+      eligibilityFacets.filter(
         (facet) =>
           facet.certainty === "known" ||
           (facet.label === "Region" &&
@@ -191,34 +211,8 @@ export function ListingCard({
                 listing.eligibilityStates?.some((state) => state.trim()),
             )),
       ),
-    [listing],
+    [eligibilityFacets, listing],
   );
-
-  // The daily loop: an entered, recurring sweep counts down to its next entry
-  // window, then re-opens as "Enter again". `reopened` is the live client flip
-  // from the in-card countdown; `context.tone === "again"` is the frozen-clock
-  // check that also covers server render and first paint.
-  const activity = store?.getActivity(listing.id);
-  const enteredAt = activity?.enteredAt ?? listing.seekerState?.enteredAt;
-  const recurring =
-    listing.entryFrequency === "daily" ||
-    listing.entryFrequency === "instant_win" ||
-    listing.entryFrequency === "weekly" ||
-    listing.entryFrequency === "monthly";
-  const readyAgain = context.tone === "again" || reopened;
-  const awaitingReentry =
-    entered && recurring && !readyAgain && !won && !expired && Boolean(enteredAt);
-  const enterState = won
-    ? "won"
-    : expired
-      ? "expired"
-      : entered && readyAgain
-        ? "again"
-        : awaitingReentry
-          ? "waiting"
-          : entered
-            ? "entered"
-            : "open";
 
   if (variant === "compact") {
     return (
@@ -325,7 +319,7 @@ export function ListingCard({
                 rel="noopener noreferrer"
                 className="mt-1 inline-flex min-h-11 items-center gap-1 pr-2 text-[11px] font-semibold text-graphite underline-offset-2 transition hover:text-ink hover:underline"
               >
-                Official rules
+                Official Rules
                 <Icon name="externalLink" size={10} />
               </a>
             )}
@@ -333,7 +327,7 @@ export function ListingCard({
         </div>
 
         <div className="flex items-stretch gap-2 border-t border-line p-3 sm:px-4">
-          {enterState === "waiting" ? (
+          {entryAction.state === "waiting" ? (
             <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/[0.08] px-3 text-[13px] font-medium text-pine">
               <Icon name="clock" size={15} />
               <span className="min-w-0 truncate">
@@ -352,17 +346,19 @@ export function ListingCard({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={expired || won || enterState === "entered"}
+              disabled={!entryAction.canOpen}
               className={cn(
                 "relative flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-3 text-[13px] font-semibold transition",
-                enterState === "won"
+                entryAction.state === "won"
                   ? "cursor-default bg-pine text-on-trust"
-                  : enterState === "expired"
+                  : entryAction.state === "expired" ||
+                      entryAction.state === "upcoming" ||
+                      entryAction.state === "unavailable"
                     ? "cursor-not-allowed bg-line text-graphite"
-                    : enterState === "entered"
+                    : entryAction.state === "recorded"
                       ? "cursor-default bg-pine/[0.12] text-pine"
                       : "bg-ember text-on-accent hover:bg-ember/90",
-                enterState === "again" && "animate-ready-glow",
+                entryAction.state === "again" && "animate-ready-glow",
               )}
             >
               {celebrate === "won" && (
@@ -371,30 +367,30 @@ export function ListingCard({
                   className="animate-sheen pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
                 />
               )}
-              {enterState === "won" ? (
+              {entryAction.state === "won" ? (
                 <>
                   <span className={cn(celebrate === "won" && "animate-pop-in")}>
                     <Icon name="trophy" size={16} weight="fill" />
                   </span>
-                  Won
+                  {entryAction.label}
                 </>
-              ) : enterState === "expired" ? (
-                "Ended"
-              ) : enterState === "again" ? (
+              ) : entryAction.state === "again" ? (
                 <>
-                  Enter again <Icon name="repeat" size={15} />
+                  {entryAction.label} <Icon name="repeat" size={15} />
                 </>
-              ) : enterState === "entered" ? (
+              ) : entryAction.state === "recorded" ? (
                 <>
                   <span className={cn(celebrate === "entered" && "animate-pop-in")}>
                     <Icon name="check" size={16} />
                   </span>
-                  Entered
+                  {entryAction.label}
+                </>
+              ) : entryAction.state === "open" ? (
+                <>
+                  {entryAction.label} <Icon name="externalLink" size={14} />
                 </>
               ) : (
-                <>
-                  Open official entry <Icon name="externalLink" size={14} />
-                </>
+                entryAction.label
               )}
             </button>
           )}
@@ -424,6 +420,15 @@ export function ListingCard({
             <Icon name="bookmark" size={16} weight={saved ? "fill" : "regular"} />
           </button>
         </div>
+
+        {entryOpenFailed ? (
+          <p
+            className="border-t border-flame/25 bg-flame/[0.08] px-3 py-2 text-xs font-medium text-flame sm:px-4"
+            role="alert"
+          >
+            Your browser blocked the official entry page. Allow pop-ups and try again.
+          </p>
+        ) : null}
 
         {confirmEntry && (!entered || readyAgain) ? (
           <div
@@ -458,15 +463,15 @@ export function ListingCard({
   return (
     <article
       className={cn(
-        "group flex flex-col overflow-hidden rounded-card border border-gold/25 bg-surface shadow-e2 transition duration-200 hover:-translate-y-0.5 hover:border-gold/45 hover:shadow-e3",
+        "group flex flex-col overflow-hidden rounded-[1.75rem] border border-gold/30 bg-surface shadow-e2 transition duration-200 hover:-translate-y-0.5 hover:border-gold/55 hover:shadow-e3",
         expired && "opacity-[0.78]",
       )}
     >
-      {/* Cover — the hero. One context chip, one save control. */}
+      {/* Cinematic cover: one context, one deadline, one save control. */}
       <div
         className={cn(
           "relative w-full overflow-hidden bg-line",
-          tone === "featured" ? "aspect-[16/9]" : "aspect-[4/3]",
+          tone === "featured" ? "aspect-[16/10]" : "aspect-[16/11]",
         )}
       >
         <ListingMedia
@@ -481,8 +486,8 @@ export function ListingCard({
           }
           priority={priority}
           imageClassName="transition duration-500 group-hover:scale-[1.03]"
-          representativeLabelPosition={prizeValue ? "below-prize" : "top"}
-          attributionPosition={prizeValue ? "below-prize" : "top"}
+          representativeLabelPosition="top"
+          attributionPosition="top"
           sizes={
             tone === "featured"
               ? "(min-width:1024px) 720px, 100vw"
@@ -492,19 +497,11 @@ export function ListingCard({
 
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-        <div className="absolute left-3 top-3 flex max-w-[calc(100%-4.75rem)] flex-wrap gap-2">
-          {prizeValue ? (
-            <span className="nums rounded-pill border border-gold bg-gold px-3 py-1.5 font-display text-lg leading-none text-on-won shadow-e2">
-              {prizeValue}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="absolute inset-x-3 bottom-3 flex items-end justify-between gap-2">
+        <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-2">
           <ContextTag context={context} variant="chip" />
           <span
             className={cn(
-              "nums shrink-0 rounded-pill border px-2.5 py-1.5 text-[11px] font-extrabold shadow-e1 backdrop-blur",
+              "nums shrink-0 rounded-pill border px-3 py-2 text-xs font-extrabold shadow-e1 backdrop-blur",
               expired
                 ? "border-white/25 bg-black/65 text-white/75"
                 : urgentEnd
@@ -522,7 +519,7 @@ export function ListingCard({
           aria-pressed={saved}
           aria-label={saved ? `Saved ${listing.title}` : `Save ${listing.title}`}
           className={cn(
-            "absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full shadow-e1 backdrop-blur transition active:scale-90",
+            "absolute right-4 top-4 grid h-12 w-12 place-items-center rounded-full border border-white/35 shadow-e2 backdrop-blur transition active:scale-90",
             savePop && "animate-save-pop",
             saved
               ? "bg-ember text-on-accent"
@@ -535,87 +532,95 @@ export function ListingCard({
         {celebrate && <CardCelebration kind={celebrate} />}
       </div>
 
-      {/* Record — title, prize, timing, trust, action. */}
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="min-w-0 text-[17px] font-semibold leading-snug tracking-tightest text-ink">
+      {/* Clear record sheet: prize, dates, rules, then one primary action. */}
+      <div className="flex flex-1 flex-col px-5 pb-5 pt-5">
+        <div className="text-center">
+          {prizeValue ? (
+            <p className="nums text-sm font-extrabold uppercase tracking-[0.1em] text-gold">
+              {prizeValue} estimated value
+            </p>
+          ) : null}
+          <h3 className="mt-1 text-[22px] font-extrabold leading-tight tracking-tightest text-ink">
             <Link
               href={`/sweeps/${listing.slug}`}
-              className="line-clamp-2 outline-none transition hover:text-ink/70 focus-visible:underline"
+              className="line-clamp-2 outline-none transition hover:text-ember focus-visible:underline"
             >
               {listing.title}
             </Link>
           </h3>
-          {listing.winnerCount && listing.winnerCount > 1 ? (
-            <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-graphite">
-              {listing.winnerCount} winners
-            </p>
-          ) : null}
+          <p className="mx-auto mt-2 line-clamp-2 max-w-[42ch] text-sm leading-6 text-graphite">
+            {listing.shortDescription}
+          </p>
+          <p className="mt-2 inline-flex max-w-full items-center justify-center gap-1.5 text-xs text-graphite">
+            <span className="font-bold text-ink/80">
+              Sponsor: {attributionName || "Not stated"}
+            </span>
+            {hostVerified ? (
+              <span
+                className="inline-flex text-pine"
+                aria-label="Verified sponsor"
+                title="Verified sponsor"
+              >
+                <Icon name="verified" size={13} weight="fill" />
+              </span>
+            ) : null}
+          </p>
         </div>
 
-        <p className="mt-1.5 line-clamp-1 text-sm text-graphite">
-          {listing.shortDescription}
-        </p>
-
-        <p className="mt-2 truncate text-xs text-graphite">
-          <span className="font-bold text-ink/75">Sponsor:</span>{" "}
-          {attributionName || "Not stated"}
-          {hostVerified && (
-            <span
-              className="ml-1 inline-flex translate-y-0.5 text-pine"
-              aria-label="Verified sponsor"
-              title="Verified sponsor"
-            >
-              <Icon name="verified" size={12} weight="fill" />
-            </span>
-          )}
-        </p>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-line bg-surface-2 px-2.5 text-[10px] font-bold text-ink/75">
-            <Icon name="repeat" size={12} />
-            {ENTRY_FREQUENCY_LABEL[listing.entryFrequency]}
-          </span>
-          {presentEligibility.map((facet) => (
-            <span
-              key={facet.label}
-              title={`${facet.label}: ${facet.value}`}
-              className="inline-flex min-h-7 max-w-full items-center gap-1 rounded-pill border border-line bg-surface-2 px-2.5 text-[10px] font-bold text-ink/75"
-            >
-              {facet.label === "Region" ? <Icon name="location" size={12} /> : null}
-              <span className="max-w-[10rem] truncate">{facet.value}</span>
-            </span>
-          ))}
-          <span className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-pine/25 bg-pine/[0.08] px-2.5 text-[10px] font-bold text-pine">
-            <Icon name="shield" size={12} />
-            {sourceText}
-          </span>
-        </div>
-
-        {/* Begins / Ends — Ends carries urgency and the exact date remains visible. */}
-        <div className="mt-3 flex items-end justify-between border-t border-line pt-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-graphite">
+        <dl className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3.5 text-left">
+            <dt className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-ember">
+              <Icon name="calendar" size={15} />
               Begins
-            </div>
-            <div className="nums mt-0.5 text-[13px] font-medium text-ink/75">
-              {listing.startDate ? formatEndDate(listing.startDate) : "—"}
-            </div>
+            </dt>
+            <dd className="nums mt-1 text-sm font-semibold text-ink">
+              {listing.startDate ? formatEndDate(listing.startDate) : "Not stated"}
+            </dd>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-graphite">
+          <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3.5 text-left">
+            <dt className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-ember">
+              <Icon name="calendar" size={15} />
               Ends
-            </div>
-            <div
+            </dt>
+            <dd
               className={cn(
-                "nums mt-0.5 text-[13px] font-semibold",
+                "nums mt-1 text-sm font-semibold",
                 expired ? "text-graphite" : urgentEnd ? "text-flame" : "text-ink",
               )}
             >
-              {countdown}
-            </div>
+              {formatEndDate(listing.endDate)}
+            </dd>
           </div>
-        </div>
+        </dl>
+
+        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line">
+          {[
+            {
+              label: "Entry schedule",
+              value: ENTRY_FREQUENCY_LABEL[listing.entryFrequency],
+            },
+            { label: "Source", value: sourceText },
+            ...eligibilityFacets.map((facet) => ({
+              label: facet.label,
+              value: facet.value,
+            })),
+          ].map((fact) => (
+            <div
+              key={fact.label}
+              className="min-w-0 bg-surface px-3 py-2.5 text-left"
+            >
+              <dt className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-ember">
+                {fact.label}
+              </dt>
+              <dd
+                className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-4 text-ink/80"
+                title={fact.value}
+              >
+                {fact.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
 
         {listing.officialRulesUrl && (
           <a
@@ -623,17 +628,17 @@ export function ListingCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="mt-1 inline-flex min-h-11 w-fit items-center gap-1 pr-3 text-xs font-medium text-graphite underline-offset-2 transition hover:text-ink hover:underline"
+            className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-ember/70 bg-ember/[0.06] px-4 text-sm font-bold text-ember transition hover:bg-ember/[0.12]"
           >
-            Official rules
-            <Icon name="externalLink" size={11} />
+            <Icon name="rules" size={17} />
+            Official Rules
+            <Icon name="externalLink" size={13} />
           </a>
         )}
 
-        {/* Action — one primary, one quiet route to the full record. */}
-        <div className="mt-3.5 flex items-stretch gap-2">
-          {enterState === "waiting" ? (
-            <div className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-pine/25 bg-pine/[0.08] px-4 text-[13px] font-medium text-pine">
+        <div className="mt-3 flex items-stretch gap-2">
+          {entryAction.state === "waiting" ? (
+            <div className="flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-pine/25 bg-pine/[0.08] px-4 text-[13px] font-bold text-pine">
               <Icon name="clock" size={15} />
               <span className="min-w-0 truncate">
                 {enteredAt ? (
@@ -643,7 +648,7 @@ export function ListingCard({
                     onReady={() => setReopened(true)}
                   />
                 ) : (
-                  "Entered"
+                  entryAction.label
                 )}
               </span>
             </div>
@@ -651,66 +656,76 @@ export function ListingCard({
             <button
               type="button"
               onClick={handleEnter}
-              disabled={expired || won || enterState === "entered"}
-            className={cn(
-              "relative flex min-h-11 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl px-4 text-sm font-semibold transition",
-              enterState === "won"
-                ? "cursor-default bg-pine text-on-trust"
-                : enterState === "expired"
-                  ? "cursor-not-allowed bg-line text-graphite"
-                  : enterState === "entered"
-                    ? "cursor-default bg-pine/[0.12] text-pine"
-                    : "bg-ember text-on-accent hover:bg-ember/90",
-              // The recurrence invitation: a calm breathing ring while a
-              // re-entry window is open again.
-              enterState === "again" && "animate-ready-glow",
-            )}
-          >
-            {/* One-time sheen sweep the moment a win lands. */}
-            {celebrate === "won" && (
-              <span
-                aria-hidden
-                className="animate-sheen pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
-              />
-            )}
-            {enterState === "won" ? (
-              <>
-                <span className={cn(celebrate === "won" && "animate-pop-in")}>
-                  <Icon name="trophy" size={16} weight="fill" />
-                </span>{" "}
-                Won
-              </>
-            ) : enterState === "expired" ? (
-              "Ended"
-            ) : enterState === "again" ? (
-              <>
-                Enter again <Icon name="repeat" size={15} />
-              </>
-            ) : enterState === "entered" ? (
-              <>
-                <span className={cn(celebrate === "entered" && "animate-pop-in")}>
-                  <Icon name="check" size={16} />
-                </span>{" "}
-                Entered
-              </>
-            ) : (
-              <>
-                Open official entry <Icon name="externalLink" size={15} />
-              </>
-            )}
+              disabled={!entryAction.canOpen}
+              className={cn(
+                "relative flex min-h-12 flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-extrabold tracking-[0.02em] transition",
+                entryAction.state === "won"
+                  ? "cursor-default bg-pine text-on-trust"
+                  : entryAction.state === "expired" ||
+                      entryAction.state === "upcoming" ||
+                      entryAction.state === "unavailable"
+                    ? "cursor-not-allowed bg-line text-graphite"
+                    : entryAction.state === "recorded"
+                      ? "cursor-default bg-pine/[0.12] text-pine"
+                      : "bg-ember text-on-accent shadow-e2 hover:-translate-y-0.5 hover:shadow-e3",
+                entryAction.state === "again" && "animate-ready-glow",
+              )}
+            >
+              {celebrate === "won" ? (
+                <span
+                  aria-hidden
+                  className="animate-sheen pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                />
+              ) : null}
+              {entryAction.state === "won" ? (
+                <>
+                  <span className={cn(celebrate === "won" && "animate-pop-in")}>
+                    <Icon name="trophy" size={17} weight="fill" />
+                  </span>
+                  {entryAction.label}
+                </>
+              ) : entryAction.state === "again" ? (
+                <>
+                  <Icon name="repeat" size={17} />
+                  {entryAction.label}
+                </>
+              ) : entryAction.state === "recorded" ? (
+                <>
+                  <span className={cn(celebrate === "entered" && "animate-pop-in")}>
+                    <Icon name="check" size={17} />
+                  </span>
+                  {entryAction.label}
+                </>
+              ) : entryAction.state === "open" ? (
+                <>
+                  <Icon name="sparkle" size={17} weight="fill" />
+                  {entryAction.label}
+                </>
+              ) : (
+                entryAction.label
+              )}
             </button>
           )}
 
           <Link
             href={`/sweeps/${listing.slug}`}
             aria-label={`More info about ${listing.title}`}
-            className="grid w-11 place-items-center rounded-xl border border-line text-ink/70 transition hover:border-ink/25 hover:text-ink"
+            className="grid min-h-12 w-12 shrink-0 place-items-center rounded-2xl border border-ember/50 text-ember transition hover:bg-ember/[0.08]"
           >
-            <Icon name="info" size={18} />
+            <Icon name="info" size={20} />
           </Link>
         </div>
+        {entryOpenFailed ? (
+          <p
+            className="mt-3 rounded-2xl border border-flame/25 bg-flame/[0.08] px-3 py-2 text-center text-xs font-medium text-flame"
+            role="alert"
+          >
+            Your browser blocked the official entry page. Allow pop-ups and try again.
+          </p>
+        ) : null}
+
         {confirmEntry && (!entered || readyAgain) ? (
-          <div className="mt-3 rounded-xl border border-pine/25 bg-pine/5 p-3" role="status">
+          <div className="mt-3 rounded-2xl border border-pine/25 bg-pine/5 p-3" role="status">
             <p className="text-sm font-medium text-ink">Did you complete the sponsor&apos;s entry?</p>
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={markEntered} className="min-h-11 rounded-xl bg-pine px-3 py-2 text-xs font-semibold text-on-trust">

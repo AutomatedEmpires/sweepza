@@ -3,7 +3,7 @@
 // app/discover/[category]/opengraph-image.tsx). Centralized so the two cards
 // cannot drift apart visually or — more importantly — in what they claim.
 //
-// Brand values are generated from the light-theme tokens in app/tokens.css.
+// Brand values are generated from the default Midnight tokens in app/tokens.css.
 // Satori cannot read CSS variables, so the build syncs concrete values into a
 // typed generated module instead of maintaining a second hand-edited palette.
 //
@@ -15,12 +15,12 @@
 
 import { THEME_COLORS } from "@/lib/generated/theme-colors";
 
-export const OG_PAPER = THEME_COLORS.sunrise.paper;
-export const OG_INK = THEME_COLORS.sunrise.ink;
-export const OG_GRAPHITE = THEME_COLORS.sunrise.graphite;
-export const OG_EMBER = THEME_COLORS.sunrise.ember;
-export const OG_GOLD = THEME_COLORS.sunrise.gold;
-export const OG_PINE = THEME_COLORS.sunrise.pine;
+export const OG_PAPER = THEME_COLORS.midnight.paper;
+export const OG_INK = THEME_COLORS.midnight.ink;
+export const OG_GRAPHITE = THEME_COLORS.midnight.graphite;
+export const OG_EMBER = THEME_COLORS.midnight.ember;
+export const OG_GOLD = THEME_COLORS.midnight.gold;
+export const OG_PINE = THEME_COLORS.midnight.pine;
 
 export const OG_TRUST_CHIPS = [
   "Free to enter — always",

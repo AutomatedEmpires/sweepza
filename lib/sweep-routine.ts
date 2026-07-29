@@ -31,9 +31,10 @@ export const EMPTY_ROUTINE_SNAPSHOT: RoutineSnapshot = {
 
 /**
  * When a listing can be entered again after `enteredAt`, per its canonical
- * entry frequency. Daily (and daily-style instant win) resets at the start of
- * the next local day — the "come back tomorrow" loop. Weekly/monthly use
- * rolling windows. One-time and unknown cadences never re-open.
+ * entry frequency. Because canonical listings do not yet model a sponsor's
+ * reset timezone, daily (and daily-style instant win) uses a conservative
+ * rolling 24-hour boundary. Weekly/monthly use rolling windows. One-time and
+ * unknown cadences never re-open.
  */
 export function nextEntryAt(
   enteredAt: string,
@@ -44,11 +45,8 @@ export function nextEntryAt(
 
   switch (frequency) {
     case "daily":
-    case "instant_win": {
-      const next = new Date(entered);
-      next.setHours(24, 0, 0, 0);
-      return next;
-    }
+    case "instant_win":
+      return new Date(entered.getTime() + DAY_MS);
     case "weekly":
       return new Date(entered.getTime() + 7 * DAY_MS);
     case "monthly":

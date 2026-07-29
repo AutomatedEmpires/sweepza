@@ -58,12 +58,13 @@ describe("authentication product context", () => {
 describe("profile account truth and preferences", () => {
   const profile = source("app/profile/page.tsx");
 
-  it("exposes the existing theme control in a named Appearance section", () => {
+  it("keeps the optional light-mode control in the named dashboard Appearance section", () => {
     expect(profile).toContain('title="Appearance"');
     expect(profile).toContain("<ThemeToggle");
     expect(profile).toContain(
-      "Cycle through automatic, light, and dark",
+      "Dark by default. Switch to light here when you prefer it.",
     );
+    expect(profile).not.toContain("automatic, light, and dark");
   });
 
   it("does not promise that guest history is imported into an account", () => {

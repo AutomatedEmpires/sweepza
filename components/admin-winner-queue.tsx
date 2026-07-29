@@ -139,7 +139,7 @@ function WinnerReviewCard({ item }: { item: WinnerModerationQueueItem }) {
             type="button"
             onClick={() => moderate("publish")}
             disabled={pending !== null || (verifiedWin && !evidenceUrl)}
-            className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="min-h-11 rounded-xl bg-pine px-4 py-2 text-sm font-semibold text-on-trust disabled:opacity-60"
           >
             {pending === "publish" ? "Publishing…" : "Publish"}
           </button>

@@ -1,5 +1,5 @@
 // Detail-route transition fallback shaped like the real record — hero photo,
-// title, mobile action card, prose — so navigation from a card feels like the
+// title, mobile action card, summary, information sheet — so navigation feels
 // page is materializing rather than being replaced. (The root loading.tsx
 // shows a feed silhouette, which is the wrong shape here.)
 export default function ListingDetailLoading() {
@@ -27,19 +27,40 @@ export default function ListingDetailLoading() {
           <div className="mt-5 rounded-card border border-line bg-surface p-5 shadow-e1 lg:hidden">
             <div className="h-8 w-28 animate-pulse rounded bg-ink/[0.08]" />
             <div className="mt-2 h-3 w-36 animate-pulse rounded bg-ink/[0.06]" />
-            <div className="mt-4 h-12 w-full animate-pulse rounded-xl bg-ink/[0.08]" />
+            <div className="mt-4 h-12 w-full animate-pulse rounded-2xl bg-ink/[0.06]" />
+            <div className="mt-3 h-12 w-full animate-pulse rounded-2xl bg-ink/[0.08]" />
             <div className="mt-3 flex gap-2">
               <div className="h-11 flex-1 animate-pulse rounded-xl bg-ink/[0.06]" />
               <div className="h-11 flex-1 animate-pulse rounded-xl bg-ink/[0.06]" />
             </div>
           </div>
 
-          {/* Prose */}
-          <div className="mt-8 flex flex-col gap-2.5">
+          {/* Summary */}
+          <div className="mt-8 flex flex-col gap-2.5 rounded-sheet border border-line bg-surface p-5">
             <div className="h-6 w-44 animate-pulse rounded bg-ink/[0.08]" />
             <div className="h-3.5 w-full animate-pulse rounded bg-ink/[0.06]" />
             <div className="h-3.5 w-11/12 animate-pulse rounded bg-ink/[0.06]" />
             <div className="h-3.5 w-4/5 animate-pulse rounded bg-ink/[0.06]" />
+          </div>
+
+          {/* Uniform information sheet */}
+          <div className="mt-8">
+            <div className="mb-3 h-6 w-56 animate-pulse rounded bg-ink/[0.08]" />
+            <div className="grid gap-px overflow-hidden rounded-sheet border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 10 }, (_, index) => (
+                <div
+                  key={index}
+                  className={
+                    index === 9
+                      ? "min-h-24 bg-surface p-4 sm:col-span-2 lg:col-span-3"
+                      : "min-h-24 bg-surface p-4"
+                  }
+                >
+                  <div className="h-3 w-20 animate-pulse rounded bg-ink/[0.06]" />
+                  <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-ink/[0.08]" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -48,7 +69,8 @@ export default function ListingDetailLoading() {
           <div className="rounded-card border border-line bg-surface p-6 shadow-e2">
             <div className="h-9 w-32 animate-pulse rounded bg-ink/[0.08]" />
             <div className="mt-3 h-4 w-40 animate-pulse rounded bg-ink/[0.06]" />
-            <div className="mt-5 h-12 w-full animate-pulse rounded-xl bg-ink/[0.08]" />
+            <div className="mt-5 h-12 w-full animate-pulse rounded-2xl bg-ink/[0.06]" />
+            <div className="mt-3 h-12 w-full animate-pulse rounded-2xl bg-ink/[0.08]" />
             <div className="mt-3 flex gap-2">
               <div className="h-11 flex-1 animate-pulse rounded-xl bg-ink/[0.06]" />
               <div className="h-11 flex-1 animate-pulse rounded-xl bg-ink/[0.06]" />

@@ -97,18 +97,21 @@ describe("ListingMedia representative-photo disclosure", () => {
     expect(html).not.toContain("/images/listing-fallbacks/travel.webp");
   });
 
-  it("keeps card disclosure below the prize pill and renders the value once", () => {
+  it("keeps card disclosure clear of the save control and renders the value once", () => {
     const html = renderToStaticMarkup(
       <ListingCard listing={cardListing} />,
     );
 
-    expect(html).toContain("top-[4.25rem]");
+    expect(html).toContain("Representative photo");
+    expect(html).toContain("absolute left-2 z-10");
+    expect(html).toContain('aria-label="Save Travel prize"');
+    expect(html).toContain("absolute right-4 top-4");
     expect(html.match(/\$500/g)).toHaveLength(1);
     expect(html).not.toContain("bg-pine/8");
     expect(html).not.toContain("bg-pine/12");
   });
 
-  it("keeps official attribution above countdowns and renders every known eligibility fact", () => {
+  it("keeps official attribution and every known eligibility fact in the standard card", () => {
     const html = renderToStaticMarkup(
       <ListingCard
         listing={{
@@ -125,7 +128,7 @@ describe("ListingMedia representative-photo disclosure", () => {
     );
 
     expect(html).toContain("Image: Example Sponsor");
-    expect(html).toContain("top-[4.25rem]");
+    expect(html).toContain("Found by Sweepza");
     expect(html).toContain("US — CA, NV");
     expect(html).toContain("18+");
     expect(html).toContain("Confirmed");
