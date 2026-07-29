@@ -50,8 +50,10 @@ describe("mobile navigation and jewel theme", () => {
   it("keeps browser chrome synchronized with the tokenized jewel canvases", () => {
     const tokens = source("app/tokens.css");
     const layout = source("app/layout.tsx");
+    const theme = source("lib/theme.tsx");
     const manifest = source("app/manifest.ts");
     const ogTheme = source("lib/og-theme.tsx");
+    const listingOg = source("app/api/og/sweeps/[slug]/route.tsx");
     const icon = source("app/icon.svg");
 
     expect(tokens).not.toContain("--sun-ember: 190 64 50");
@@ -60,6 +62,12 @@ describe("mobile navigation and jewel theme", () => {
 
     expect(layout).toContain("THEME_COLORS.sunrise.paper");
     expect(layout).toContain("THEME_COLORS.midnight.paper");
+    expect(layout).toContain("data-sweepza-theme-color");
+    expect(layout).toContain("s==='light'||s==='dark'||s==='auto'");
+    expect(layout).not.toContain("prefers-color-scheme");
+    expect(theme).toContain('meta[data-sweepza-theme-color]');
+    expect(theme).toContain("THEME_COLORS.midnight.paper");
+    expect(theme).toContain("THEME_COLORS.sunrise.paper");
     expect(manifest).toContain("THEME_COLORS.sunrise.paper");
     expect(ogTheme).toContain(
       "OG_PAPER = THEME_COLORS.sunrise.paper",
@@ -70,6 +78,11 @@ describe("mobile navigation and jewel theme", () => {
     expect(ogTheme).toContain(
       "OG_GOLD = THEME_COLORS.sunrise.gold",
     );
+    expect(listingOg).toContain(
+      'import { OG_EMBER, OG_INK, OG_PAPER, OG_PINE } from "@/lib/og-theme"',
+    );
+    expect(listingOg).not.toContain("#f5f0e7");
+    expect(listingOg).not.toContain("#c13e19");
     expect(icon).toContain('fill="#10061f"');
     expect(icon).toContain('stroke="#cb6bff"');
     expect(icon).toContain('stroke="#ffd05c"');
@@ -77,24 +90,38 @@ describe("mobile navigation and jewel theme", () => {
 
   it("puts a current listing first on mobile without overstating review status", () => {
     const page = source("app/page.tsx");
-
-    expect(page).toContain("order-2 max-w-xl lg:order-1");
-    expect(page).toContain("relative order-1");
-    expect(page).toContain("lg:order-2");
-    expect(page.indexOf("relative order-1")).toBeLessThan(
-      page.indexOf("order-2 max-w-xl"),
+    const publicHero = page.slice(page.indexOf("// ---- Signed-out"));
+    const titleIndex = publicHero.indexOf('<h1 className="order-3');
+    const listingIndex = publicHero.indexOf(
+      'aria-labelledby="daily-drop-heading"',
     );
-    expect(page).toContain(
+    const brandIndex = publicHero.indexOf(
+      '<div className="order-2 max-w-xl',
+    );
+    const actionsIndex = publicHero.indexOf(
+      '<div className="order-4 max-w-xl',
+    );
+
+    expect(titleIndex).toBeGreaterThanOrEqual(0);
+    expect(titleIndex).toBeLessThan(listingIndex);
+    expect(listingIndex).toBeLessThan(brandIndex);
+    expect(brandIndex).toBeLessThan(actionsIndex);
+    expect(publicHero.match(/<h1/g)).toHaveLength(1);
+    expect(publicHero).toContain("relative order-1 mb-6");
+    expect(publicHero).toContain("order-2 max-w-xl");
+    expect(publicHero).toContain("order-3 mt-5");
+    expect(publicHero).toContain("order-4 max-w-xl");
+    expect(publicHero).toContain(
       'className="aspect-[2500/1696] w-full object-contain"',
     );
-    expect(page).toContain("One current listing at a glance");
-    expect(page).toContain("New listings appear after review");
-    expect(page).toContain("{active.length} shown today");
-    expect(page).toContain("Browse today&apos;s board");
-    expect(page).not.toContain("One verified listing at a glance");
-    expect(page).not.toContain("live now");
-    expect(page).toContain("<h2");
-    expect(page).toContain("Daily drop");
+    expect(publicHero).toContain("One current listing at a glance");
+    expect(publicHero).toContain("New listings appear after review");
+    expect(publicHero).toContain("{active.length} shown today");
+    expect(publicHero).toContain("Browse today&apos;s board");
+    expect(publicHero).not.toContain("One verified listing at a glance");
+    expect(publicHero).not.toContain("live now");
+    expect(publicHero).toContain('<h3 className="mt-3');
+    expect(publicHero).toContain("Daily drop");
   });
 
   it("emits the gamification strip's subtle surfaces and readable microcopy", () => {

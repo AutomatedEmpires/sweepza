@@ -61,6 +61,18 @@ describe("listing SEO helpers", () => {
     expect(jsonLd).not.toHaveProperty("offers");
   });
 
+  it("does not present representative category art as an official primary image", () => {
+    const jsonLd = buildListingJsonLd(
+      makeListing({
+        categoryFallbackImageUrl:
+          "/images/listing-fallbacks/general-prize.webp",
+      }),
+      "https://sweepza.com/sweeps/test-sweep",
+    );
+
+    expect(jsonLd).not.toHaveProperty("primaryImageOfPage");
+  });
+
   it("neutralizes script-closing text before inline JSON-LD rendering", () => {
     const serialized = serializeJsonLd(
       buildListingJsonLd(

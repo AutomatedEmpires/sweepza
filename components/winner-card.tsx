@@ -2,10 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Icon } from "@/components/icon";
+import { ListingMedia } from "@/components/listing-media";
 import { WinnerReportButton } from "@/components/winner-report-button";
 import { WinnerReactionBar } from "@/components/winner-reaction-bar";
 import { canOptimizeImage } from "@/lib/image";
 import { formatEndDate, formatPrizeValue } from "@/lib/listing-format";
+import { listingMediaPresentationUrl } from "@/lib/listing-media";
 import type { WinnerPost } from "@/lib/types/winner";
 import type { Listing } from "@/lib/types/listing";
 
@@ -20,26 +22,38 @@ export function WinnerCard({
   isAuthenticated?: boolean;
   clerkConfigured?: boolean;
 }) {
+  const memberPhotoUrl = post.photoUrl;
+  const officialImageUrl = listing?.mainImageUrl;
+  const representativeImageUrl = listing?.categoryFallbackImageUrl;
   const imageUrl =
-    post.photoUrl ?? listing?.mainImageUrl ?? listing?.categoryFallbackImageUrl;
-  const altText =
-    listing?.imageAltText ??
-    `Photo shared by ${post.winnerDisplayName} with their winner story`;
+    memberPhotoUrl ?? officialImageUrl ?? representativeImageUrl;
+  const representativePhoto =
+    !memberPhotoUrl && !officialImageUrl && Boolean(representativeImageUrl);
+  const presentationImageUrl = listingMediaPresentationUrl(
+    imageUrl,
+    listing?.prizeCategory,
+  );
+  const altText = memberPhotoUrl
+    ? `Photo shared by ${post.winnerDisplayName} with their winner story`
+    : officialImageUrl
+      ? listing?.imageAltText ?? listing?.prizeName
+      : undefined;
 
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface shadow-e1 transition duration-200 hover:shadow-e2">
       {imageUrl ? (
         <div className="relative aspect-[4/3] w-full bg-line">
-          <Image
-            src={imageUrl}
-            alt={altText}
-            fill
-            className="object-cover"
+          <ListingMedia
+            sourceUrl={imageUrl}
+            altText={altText}
+            prizeName={listing?.prizeName ?? post.listingTitle ?? "Winner story"}
+            sponsorName={listing?.host?.name ?? listing?.originalSponsorName}
+            category={listing?.prizeCategory}
+            representative={representativePhoto}
             sizes="(min-width: 1024px) 480px, 100vw"
-            unoptimized={!canOptimizeImage(imageUrl)}
           />
           {post.verifiedWin ? (
-            <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-gold px-2.5 py-1 text-xs font-semibold text-on-won shadow-e1">
+            <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-pill bg-gold px-2.5 py-1 text-xs font-semibold text-on-won shadow-e1">
               <Icon name="verified" size={14} weight="fill" />
               Verified win
             </span>
@@ -87,15 +101,15 @@ export function WinnerCard({
             href={`/sweeps/${listing?.slug ?? post.listingSlug}`}
             className="flex items-center gap-3 rounded-xl border border-line bg-paper p-2.5 transition hover:border-ember/40 focus-visible:border-ember focus-visible:outline-none"
           >
-            {imageUrl ? (
+            {presentationImageUrl ? (
               <Image
-                src={imageUrl}
+                src={presentationImageUrl}
                 alt=""
                 aria-hidden
                 width={48}
                 height={48}
                 className="h-12 w-12 flex-none rounded-lg object-cover"
-                unoptimized={!canOptimizeImage(imageUrl)}
+                unoptimized={!canOptimizeImage(presentationImageUrl)}
               />
             ) : null}
             <span className="min-w-0 flex-1">

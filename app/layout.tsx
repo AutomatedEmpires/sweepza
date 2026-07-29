@@ -44,19 +44,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    {
-      media: "(prefers-color-scheme: light)",
-      color: THEME_COLORS.sunrise.paper,
-    },
-    {
-      media: "(prefers-color-scheme: dark)",
-      color: THEME_COLORS.midnight.paper,
-    },
-  ],
   width: "device-width",
   initialScale: 1,
 };
+
+const THEME_BOOTSTRAP_SCRIPT = `(function(){var p='auto';try{var s=localStorage.getItem('sweepza-theme');if(s==='light'||s==='dark'||s==='auto')p=s;}catch(e){}var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));var r=d?'dark':'light';document.documentElement.setAttribute('data-theme',r);var m=document.querySelector('meta[data-sweepza-theme-color]');if(m)m.setAttribute('content',d?${JSON.stringify(THEME_COLORS.midnight.paper)}:${JSON.stringify(THEME_COLORS.sunrise.paper)});})();`;
 
 // Only read the per-request nonce when CSP enforcement is active: headers()
 // makes every route dynamic, and in the default report-only mode the static
@@ -83,14 +75,21 @@ export default async function RootLayout({
       suppressHydrationWarning
       className={manrope.variable}
     >
-      <body>
+      <head>
+        <meta
+          name="theme-color"
+          content={THEME_COLORS.sunrise.paper}
+          data-sweepza-theme-color
+          suppressHydrationWarning
+        />
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html:
-              "(function(){try{var p=localStorage.getItem('sweepza-theme')||'auto';var h=new Date().getHours();var d=p==='dark'||(p==='auto'&&(h>=20||h<6));document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
+            __html: THEME_BOOTSTRAP_SCRIPT,
           }}
         />
+      </head>
+      <body>
         <ObservabilityProviders>
           <SweepzaProviders
             clerkPublishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}

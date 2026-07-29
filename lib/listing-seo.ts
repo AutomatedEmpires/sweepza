@@ -15,7 +15,10 @@ export function listingOgImagePath(slug: string): string {
  * the generic WebPage vocabulary is the truthful structured-data boundary.
  */
 export function buildListingJsonLd(listing: Listing, canonicalUrl: string) {
-  const imageUrl = listing.mainImageUrl ?? listing.categoryFallbackImageUrl;
+  // Only an official listing image can represent the promotion in structured
+  // data. Sweepza's owned category art is deliberately omitted because JSON-LD
+  // has no adjacent disclosure surface for a representative fallback.
+  const imageUrl = listing.mainImageUrl;
 
   return {
     "@context": "https://schema.org",

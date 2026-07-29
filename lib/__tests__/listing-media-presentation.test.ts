@@ -4,6 +4,7 @@ import {
   listingFallbackAltText,
   listingFallbackAssetUrl,
   listingMediaPresentationUrl,
+  normalizeFallbackCategory,
 } from "@/lib/listing-media";
 
 function ownedAsset(name: string): string {
@@ -116,6 +117,20 @@ describe("listing media presentation URLs", () => {
       "Representative photo for tech prize listings; not the official promotion image.",
     );
   });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])(
+    "rejects inherited object key %s as an unknown category",
+    (category) => {
+      expect(normalizeFallbackCategory(category)).toBe("other");
+      expect(listingFallbackAssetUrl(category)).toBe(
+        ownedAsset("general-prize.webp"),
+      );
+      expect(() => listingFallbackAltText(category)).not.toThrow();
+      expect(listingFallbackAltText(category)).toBe(
+        "Representative photo for prize giveaway listings; not the official promotion image.",
+      );
+    },
+  );
 });
 
 describe("listing fallback image route", () => {
@@ -136,6 +151,23 @@ describe("listing fallback image route", () => {
     );
     expect(response.headers.get("cache-control")).toContain(
       "s-maxage=31536000",
+    );
+  });
+
+  it("redirects inherited object keys to the neutral owned asset", async () => {
+    const { GET } = await import(
+      "@/app/api/images/listing-fallback/[category]/route"
+    );
+    const response = await GET(
+      new Request(
+        "https://sweepza.test/api/images/listing-fallback/constructor",
+      ),
+      { params: Promise.resolve({ category: "constructor" }) },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      `https://sweepza.test${ownedAsset("general-prize.webp")}`,
     );
   });
 });

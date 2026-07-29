@@ -394,6 +394,10 @@ export function ListingDetail({
               sponsorName={attributionName}
               category={listing.prizeCategory}
               attribution={listing.imageAttribution}
+              representative={
+                !listing.mainImageUrl &&
+                Boolean(listing.categoryFallbackImageUrl)
+              }
               priority
               sizes="(min-width:1024px) 640px, 100vw"
             />

@@ -241,6 +241,10 @@ export function ListingCard({
               sponsorName={attributionName}
               category={listing.prizeCategory}
               attribution={listing.imageAttribution}
+              representative={
+                !listing.mainImageUrl &&
+                Boolean(listing.categoryFallbackImageUrl)
+              }
               priority={priority}
               imageClassName="transition duration-500 group-hover:scale-[1.03]"
               sizes="(min-width: 640px) 112px, 96px"
@@ -472,6 +476,9 @@ export function ListingCard({
           sponsorName={attributionName}
           category={listing.prizeCategory}
           attribution={listing.imageAttribution}
+          representative={
+            !listing.mainImageUrl && Boolean(listing.categoryFallbackImageUrl)
+          }
           priority={priority}
           imageClassName="transition duration-500 group-hover:scale-[1.03]"
           representativeLabelPosition={prizeValue ? "below-prize" : "top"}

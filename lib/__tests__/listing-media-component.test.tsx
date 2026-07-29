@@ -74,6 +74,29 @@ describe("ListingMedia representative-photo disclosure", () => {
     expect(html).not.toContain("Representative photo");
   });
 
+  it("discloses an explicitly representative external image", () => {
+    const html = renderToStaticMarkup(
+      <ListingMedia
+        {...requiredProps}
+        sourceUrl="https://cdn.example/category-travel.webp"
+        altText="Official beachfront vacation package"
+        representative
+      />,
+    );
+
+    expect(html).toContain("Representative photo");
+    expect(html).toContain(
+      'alt="Representative photo for travel prize listings; not the official promotion image."',
+    );
+    expect(html).not.toContain(
+      'alt="Official beachfront vacation package"',
+    );
+    expect(html).toContain(
+      'src="https://cdn.example/category-travel.webp"',
+    );
+    expect(html).not.toContain("/images/listing-fallbacks/travel.webp");
+  });
+
   it("keeps card disclosure below the prize pill and renders the value once", () => {
     const html = renderToStaticMarkup(
       <ListingCard listing={cardListing} />,

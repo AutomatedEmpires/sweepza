@@ -234,11 +234,21 @@ export default async function TodayPage() {
           aria-hidden
           className="absolute -left-32 bottom-0 h-64 w-64 rounded-full bg-ember/25 blur-3xl"
         />
-        <div className="relative mx-auto grid w-full max-w-[1440px] items-start gap-6 px-4 pb-7 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:gap-10 lg:px-10 lg:py-12">
-          <div className="relative order-1 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:order-2">
+        <div className="relative mx-auto grid w-full max-w-[1440px] items-start gap-x-10 gap-y-0 px-4 pb-7 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:grid-cols-[0.78fr_1.22fr] lg:grid-rows-[auto_auto_1fr] lg:px-10 lg:py-12">
+          <h1 className="order-3 mt-5 max-w-[15ch] font-display text-[40px] leading-[0.98] tracking-[-0.055em] text-paper sm:text-[54px] lg:col-start-1 lg:row-start-2 lg:text-[62px]">
+            Real sweeps. One bold daily run.
+          </h1>
+
+          <section
+            aria-labelledby="daily-drop-heading"
+            className="relative order-1 mb-6 rounded-[1.75rem] border border-gold/35 bg-paper/[0.08] p-3 shadow-e3 backdrop-blur sm:p-4 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:mb-0 lg:self-center"
+          >
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
-                <h2 className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper">
+                <h2
+                  id="daily-drop-heading"
+                  className="text-xs font-extrabold uppercase tracking-[0.16em] text-paper"
+                >
                   Daily drop
                 </h2>
                 <p className="mt-0.5 text-sm font-semibold text-paper">
@@ -261,7 +271,7 @@ export default async function TodayPage() {
             ) : (
               <div className="rounded-card border border-dashed border-line bg-surface px-6 py-12 text-center">
                 <Icon name="discover" size={28} className="mx-auto text-pine" />
-                <h2 className="mt-3 text-lg font-bold text-ink">Fresh listings are being reviewed</h2>
+                <h3 className="mt-3 text-lg font-bold text-ink">Fresh listings are being reviewed</h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-graphite">
                   Sweepza only shows listings that meet the public catalog gates.
                   Check Discover for the latest available inventory.
@@ -272,9 +282,9 @@ export default async function TodayPage() {
               Sweepza summarizes and tracks third-party promotions. The named
               sponsor or administrator controls the promotion and its official rules.
             </p>
-          </div>
+          </section>
 
-          <div className="order-2 max-w-xl lg:order-1">
+          <div className="order-2 max-w-xl lg:col-start-1 lg:row-start-1">
             <div className="relative overflow-hidden rounded-sheet border border-gold/40 bg-paper/5 shadow-e3">
               <Image
                 src="/brand/sweepza-logo-mobile.webp"
@@ -295,9 +305,9 @@ export default async function TodayPage() {
                 </span>
               </div>
             </div>
-            <h1 className="mt-5 max-w-[15ch] font-display text-[40px] leading-[0.98] tracking-[-0.055em] text-paper sm:text-[54px] lg:text-[62px]">
-              Real sweeps. One bold daily run.
-            </h1>
+          </div>
+
+          <div className="order-4 max-w-xl lg:col-start-1 lg:row-start-3">
             <p className="mt-3 max-w-[56ch] text-sm leading-6 text-paper/75 sm:text-base">
               Scan the prize, sponsor, eligibility, deadline, and entry rhythm.
               Then continue on the promotion&apos;s official site.

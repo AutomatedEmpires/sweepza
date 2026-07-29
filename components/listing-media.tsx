@@ -19,6 +19,7 @@ export function ListingMedia({
   sponsorName,
   category,
   attribution,
+  representative = false,
   priority = false,
   sizes,
   className,
@@ -32,6 +33,7 @@ export function ListingMedia({
   sponsorName?: string;
   category?: string;
   attribution?: string;
+  representative?: boolean;
   priority?: boolean;
   sizes: string;
   className?: string;
@@ -45,11 +47,12 @@ export function ListingMedia({
 
   const presentationSource = listingMediaPresentationUrl(sourceUrl, category);
   const representativeSource = listingFallbackAssetUrl(category);
-  const representativePhoto =
+  const mustUseOwnedFallback =
     isGeneratedListingFallbackUrl(presentationSource) ||
     !presentationSource ||
     failedUrls.has(presentationSource);
-  const candidateSource = representativePhoto
+  const representativePhoto = representative || mustUseOwnedFallback;
+  const candidateSource = mustUseOwnedFallback
     ? representativeSource
     : presentationSource;
   const usableSource =

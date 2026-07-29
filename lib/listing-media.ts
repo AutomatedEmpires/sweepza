@@ -80,7 +80,8 @@ const GENERATED_MEDIA_HOSTS = new Set([
 
 export function normalizeFallbackCategory(category: string | null | undefined): string {
   if (!category) return "other";
-  if (THEMES[category]) return category;
+  if (Object.hasOwn(THEMES, category)) return category;
+  if (!Object.hasOwn(DISPLAY_TO_CODE, category)) return "other";
   return DISPLAY_TO_CODE[category as PrizeCategory] ?? "other";
 }
 
@@ -96,8 +97,9 @@ export function listingFallbackAssetUrl(
   category: string | null | undefined,
 ): string {
   const normalizedCategory = normalizeFallbackCategory(category);
-  const assetName =
-    ASSET_BY_CATEGORY[normalizedCategory] ?? ASSET_BY_CATEGORY.other;
+  const assetName = Object.hasOwn(ASSET_BY_CATEGORY, normalizedCategory)
+    ? ASSET_BY_CATEGORY[normalizedCategory]
+    : ASSET_BY_CATEGORY.other;
 
   return `${OWNED_FALLBACK_ASSET_PREFIX}${assetName}`;
 }
@@ -150,7 +152,7 @@ export function listingMediaPresentationUrl(
     ? parsed.pathname.split("/").filter(Boolean).at(-1)
     : undefined;
   const ownedAssetCategory =
-    ownedAssetName && ownedAssetName in CATEGORY_BY_ASSET
+    ownedAssetName && Object.hasOwn(CATEGORY_BY_ASSET, ownedAssetName)
       ? CATEGORY_BY_ASSET[ownedAssetName as ListingFallbackAssetName]
       : undefined;
   const normalizedCategory = normalizeFallbackCategory(

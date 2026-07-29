@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { ImageResponse } from "next/og";
 import { getListingBySlug } from "@/lib/db/listings";
+import { OG_EMBER, OG_INK, OG_PAPER, OG_PINE } from "@/lib/og-theme";
 import { APP_NAME } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +10,6 @@ const OG_CACHE_CONTROL =
   "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
 const TITLE_LIMIT = 110;
 
-// Current editorial brand tokens from tailwind.config.ts. Satori does not
-// evaluate Tailwind classes, so the generated image uses their exact values.
-const PAPER = "#f5f0e7";
-const INK = "#17130f";
-const PINE = "#3e6b52";
-const EMBER = "#c13e19";
-
 const containerStyle: CSSProperties = {
   width: "100%",
   height: "100%",
@@ -23,7 +17,7 @@ const containerStyle: CSSProperties = {
   flexDirection: "column",
   justifyContent: "space-between",
   overflow: "hidden",
-  backgroundColor: PAPER,
+  backgroundColor: OG_PAPER,
   padding: "72px 80px",
 };
 
@@ -39,7 +33,7 @@ const brandStyle: CSSProperties = {
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: "0.14em",
-  color: PINE,
+  color: OG_PINE,
 };
 
 const titleStyle: CSSProperties = {
@@ -47,7 +41,7 @@ const titleStyle: CSSProperties = {
   fontWeight: 700,
   lineHeight: 1.05,
   letterSpacing: "-0.025em",
-  color: INK,
+  color: OG_INK,
   margin: "28px 0 0",
 };
 
@@ -55,19 +49,19 @@ const footerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  color: INK,
+  color: OG_INK,
 };
 
 const prizeStyle: CSSProperties = {
   fontSize: 34,
   fontWeight: 700,
-  color: EMBER,
+  color: OG_EMBER,
   maxWidth: "65%",
 };
 
 const endStyle: CSSProperties = {
   fontSize: 28,
-  color: INK,
+  color: OG_INK,
   opacity: 0.72,
 };
 
