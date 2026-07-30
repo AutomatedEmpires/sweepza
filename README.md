@@ -14,7 +14,7 @@ Sweepza is a consumer web app for sweepstakes seekers: one place to find real, v
 
 The other side of the marketplace is hosts — the brands and sponsors running sweepstakes. Sweepza gives them a listing workspace, a claim flow for listings that reference their promotions, and a subscription entitlement model. Seekers never pay; the platform is designed to be host-funded, and that billing path is built but not yet collecting (see Status).
 
-Every listing passes through an operator review queue before it is public, entry always happens on the sponsor's official page (Sweepza never collects entries itself), and the gamification layer only counts things a seeker genuinely did. That trust posture is enforced in code, not just copy.
+Every listing passes through an operator review queue before it is public, and entry always happens on the sponsor's official page — Sweepza never collects entries itself, and therefore treats a seeker's entry record as self-reported rather than sponsor-confirmed. That trust posture is enforced in code, not just copy.
 
 ## Why it exists
 
@@ -28,13 +28,15 @@ Sweepstakes discovery today is scattered across forums, expired links, and aggre
 - **Discover** (`/discover`, `/discover/swipe`) — one discovery system with feed and swipe modes, full-text search, category hubs, and shared filter chips and sorting.
 - **My Sweeps** (`/my-sweeps`) — the seeker control center: Ready, Saved, Entered, Ready Again, Ending Soon, Won, and Skipped lanes computed by `lib/sweep-routine.ts` over per-seeker state (database when signed in, localStorage when not).
 - **Listing detail** (`/sweeps/[slug]`) — verification badges, eligibility, entry frequency, re-entry countdowns, and a one-tap path to the sponsor's official entry page.
-- **Winners** (`/winners`) — real winner posts with reactions, community submissions, and operator verification before anything is displayed.
-- **Gamification** (`lib/gamification.ts`) — entry streaks and badges derived exclusively from real entry events and wins; a streak counts distinct days with at least one genuine entry, so it cannot be farmed by opening the app.
+- **Winners** (`/winners`) — winner posts with reactions and community submissions. Every post is operator-moderated before it can appear; separately, posts whose win has been checked against evidence carry a verified badge, so moderation and verification are distinct states.
+- **Gamification** (`lib/gamification.ts`) — entry streaks and badges derived from the seeker's own recorded entry events and wins. Entries are self-reported (the sponsor never confirms them back to Sweepza), so a streak measures a tracked daily routine: distinct days with at least one recorded entry, not app opens.
 - **Reminders** — per-seeker notification preferences and a durable daily digest pipeline (built end to end; delivery is gated, see Status).
 
 ### Host workspace (`/host`)
 
-Listing submission and management, listing claims, profile and logo, analytics, notification preferences, and billing. The entitlement model is a baseline subscription with included active-listing slots plus per-slot add-ons, capped by a database CHECK constraint (`lib/billing/plans.ts`).
+Listing submission and management, listing claims, host profile, analytics, notification preferences, and billing. The entitlement model is a baseline subscription with included active-listing slots plus per-slot add-ons, capped by a database CHECK constraint (`lib/billing/plans.ts`).
+
+Logo upload is present in the code but **not available in production**: the binding provider contract fixes `storage=none`, so no bucket is provisioned for it. It needs a storage decision before it can be offered.
 
 ### Admin console (`/admin`)
 
@@ -52,7 +54,7 @@ An honest snapshot. Live means operating on sweepza.com today; gated means merge
 | --- | --- |
 | Discovery, listing detail, search, My Sweeps tracking | **Live** |
 | Gamification (streaks, badges) | **Live** |
-| Winners wall with operator verification | **Live** |
+| Winners wall (operator-moderated; verification badged separately) | **Live** |
 | Admin review and operations console | **Live** (operator-facing) |
 | Host workspace and application flow | **Live**; paid billing dark |
 | Stale-listing expiry cron | **Live** (twice daily) |
@@ -130,7 +132,7 @@ Environment variable names (values are never committed): `NEXT_PUBLIC_APP_URL`; 
 
 ## Repository layout
 
-```
+```text
 app/            App Router pages + API routes (seeker, host, admin, cron, webhooks)
 components/     UI components (dashboards, swipe deck, queues, forms, shells)
 lib/            Domain logic: sweep-routine, gamification, billing, email, ingestion, db
