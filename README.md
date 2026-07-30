@@ -84,6 +84,18 @@ Theming ships two token palettes: **Midnight** (dark, the default experience) an
 
 Notable subsystems: durable reminder-email outbox with bounded scan queues (`lib/email/`), atomic ingestion source-state transitions in SQL, attribution-guarded listing image ingestion with generated per-category fallback art, security headers + report-only CSP, and structured data / OG image generation for listings.
 
+### Scheduled jobs
+
+Vercel crons declared in `vercel.json`, each authorized with `CRON_SECRET`:
+
+| Cron | Schedule | Purpose |
+| --- | --- | --- |
+| `/api/cron/ingest` | twice daily 05:30 and 17:30 UTC | Runs enabled, compliance-approved official-source ingestion; a safe no-op otherwise. |
+| `/api/cron/expire-stale` | twice daily 06:10 and 18:10 UTC | Expires active listings past their end date after each ingestion window. |
+| `/api/cron/seeker-reminders` | daily 14:00 UTC | Claims one bounded, acknowledged seeker-scan wave and creates at most one durable digest per seeker per UTC day. Database-free until both email gates are ready. |
+
+`/api/cron/email-deliveries` is implemented but deliberately unscheduled until the email gates open. This table is not decoration: a test asserts it matches `vercel.json` exactly, so a schedule change must update both.
+
 ## Engineering discipline
 
 - **Delivery pipeline** — every change moves Spec → Acceptance Criteria → Branch → PR → independent review → green CI → squash-merge → deploy. Nothing lands on `main` without a PR (`AGENTS.md`).
