@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   paymentsEnabled: false,
   outboundEmailConfigured: true,
   outboundEmailEnabled: false,
+  getIngestionReadiness: vi.fn(),
   env: {
     NEXT_PUBLIC_APP_URL: "https://sweepza.com",
     STRIPE_SECRET_KEY: "sk_configured",
@@ -22,6 +23,9 @@ vi.mock("@/lib/email/outbound-gate", () => ({
   isOutboundEmailConfigured: () => mocks.outboundEmailConfigured,
   isOutboundEmailEnabled: () => mocks.outboundEmailEnabled,
 }));
+vi.mock("@/lib/db/source-health", () => ({
+  getIngestionReadiness: mocks.getIngestionReadiness,
+}));
 
 import { GET } from "@/app/api/health/route";
 
@@ -30,6 +34,17 @@ describe("health payment status", () => {
     mocks.paymentsEnabled = false;
     mocks.outboundEmailConfigured = true;
     mocks.outboundEmailEnabled = false;
+    mocks.getIngestionReadiness.mockReset();
+    mocks.getIngestionReadiness.mockResolvedValue({
+      enabled: false,
+      configured: true,
+      ready: false,
+      operationalDataReadable: true,
+      officialSourceReady: false,
+      directOfficialIntakeReady: false,
+      eligibleDiscoverySources: 0,
+      blockers: ["disabled"],
+    });
   });
 
   it("reports configured email separately from disabled delivery", async () => {
@@ -42,6 +57,7 @@ describe("health payment status", () => {
       ready: false,
     });
     expect(body.ok).toBe(true);
+    expect(response.status).toBe(200);
   });
 
   it("fails health when email is enabled without complete configuration", async () => {
@@ -57,6 +73,7 @@ describe("health payment status", () => {
       ready: false,
     });
     expect(body.ok).toBe(false);
+    expect(response.status).toBe(503);
   });
 
   it("reports configured Stripe resources separately from activation", async () => {
@@ -83,6 +100,93 @@ describe("health payment status", () => {
     expect(body.integrations.stripe.enabled).toBe(true);
     expect(body.integrations.stripe.ready).toBe(true);
     expect(body.ok).toBe(true);
+  });
+
+  it("reports intentionally disabled ingestion without failing app health", async () => {
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.ingestion).toEqual({
+      enabled: false,
+      configured: true,
+      ready: false,
+      operationalDataReadable: true,
+      officialSourceReady: false,
+      directOfficialIntakeReady: false,
+      eligibleDiscoverySources: 0,
+      blockers: ["disabled"],
+    });
+    expect(body.ok).toBe(true);
+  });
+
+  it("fails health closed when enabled ingestion is not operationally ready", async () => {
+    mocks.getIngestionReadiness.mockResolvedValue({
+      enabled: true,
+      configured: true,
+      ready: false,
+      operationalDataReadable: false,
+      officialSourceReady: false,
+      directOfficialIntakeReady: false,
+      eligibleDiscoverySources: 0,
+      blockers: [
+        "operational_data_unreadable",
+        "official_source_not_ready",
+      ],
+    });
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.ingestion.enabled).toBe(true);
+    expect(body.integrations.ingestion.ready).toBe(false);
+    expect(body.ok).toBe(false);
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 503 when enabled ingestion has zero executable official destinations", async () => {
+    mocks.getIngestionReadiness.mockResolvedValue({
+      enabled: true,
+      configured: true,
+      ready: false,
+      operationalDataReadable: true,
+      officialSourceReady: false,
+      directOfficialIntakeReady: false,
+      eligibleDiscoverySources: 2,
+      blockers: ["official_source_not_ready"],
+    });
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.ingestion).toMatchObject({
+      enabled: true,
+      ready: false,
+      operationalDataReadable: true,
+      officialSourceReady: false,
+      blockers: ["official_source_not_ready"],
+    });
+    expect(body.ok).toBe(false);
+    expect(response.status).toBe(503);
+  });
+
+  it("keeps health green when enabled ingestion is fully ready", async () => {
+    mocks.getIngestionReadiness.mockResolvedValue({
+      enabled: true,
+      configured: true,
+      ready: true,
+      operationalDataReadable: true,
+      officialSourceReady: true,
+      directOfficialIntakeReady: true,
+      eligibleDiscoverySources: 2,
+      blockers: [],
+    });
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.integrations.ingestion.ready).toBe(true);
+    expect(body.ok).toBe(true);
+    expect(response.status).toBe(200);
   });
 
   it.each([

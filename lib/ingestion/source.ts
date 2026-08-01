@@ -24,6 +24,12 @@ export interface DiscoveredLead {
   hint?: { title?: string; endDate?: string };
   /** Durable discovery backlog item; completed only after downstream terminal work. */
   discoveryWorkKey?: string;
+  /**
+   * Opaque claim token for the exact queue generation that produced this lead.
+   * Completion/defer is compare-and-set against this token so an expired worker
+   * cannot acknowledge newer replacement work under the same key.
+   */
+  discoveryWorkClaimToken?: string;
 }
 
 /**
@@ -48,11 +54,16 @@ export interface DiscoveryWorkItem {
   payload: Record<string, unknown>;
 }
 
+export interface ClaimedDiscoveryWorkItem extends DiscoveryWorkItem {
+  claimToken: string;
+}
+
 export interface DiscoveryWorkQueue {
   enqueue(items: DiscoveryWorkItem[]): Promise<void>;
-  take(limit: number): Promise<DiscoveryWorkItem[]>;
-  complete(key: string): Promise<void>;
-  defer(key: string): Promise<void>;
+  take(limit: number): Promise<ClaimedDiscoveryWorkItem[]>;
+  complete(key: string, claimToken: string): Promise<void>;
+  defer(key: string, claimToken: string, reason: string): Promise<void>;
+  deadLetter(key: string, claimToken: string, reason: string): Promise<void>;
 }
 
 /**
@@ -182,7 +193,7 @@ export const SOURCE_REGISTRY: SourceDescriptor[] = [
     requestBudgetPerRun: 50,
     maxConcurrency: 1,
     timeoutMs: 15000,
-    refreshIntervalMinutes: 1440,
+    refreshIntervalMinutes: 720,
     supportsConditionalRequests: true,
     maxRetries: 2,
     failureThreshold: 5,

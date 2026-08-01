@@ -37,12 +37,13 @@
     "@sentry/nextjs": "^10.63.0",
     "@supabase/supabase-js": "^2.45.4",
     "cheerio": "1.2.0",
-    "next": "^15.1.0",
+    "next": "^15.5.21",
     "posthog-js": "^1.398.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "0.35.3",
     "stripe": "^22.2.0",
+    "tldts": "7.4.9",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -52,7 +53,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.0",
-    "postcss": "^8.5.10",
+    "postcss": "8.5.18",
     "tailwindcss": "^3.4.15",
     "tsx": "4.23.1",
     "typescript": "^5.8.3",
@@ -61,10 +62,11 @@
   "pnpm": {
     "overrides": {
       "brace-expansion@1.1.15": "1.1.16",
-      "brace-expansion@5.0.6": "5.0.7",
+      "brace-expansion@5.0.6": "5.0.8",
+      "brace-expansion@5.0.7": "5.0.8",
       "dompurify@3.4.11": "3.4.12",
       "fast-uri@3.1.2": "3.1.4",
-      "postcss": ">=8.5.10",
+      "postcss": "8.5.18",
       "sharp@0.34.5": "0.35.3"
     }
   }

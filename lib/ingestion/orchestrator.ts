@@ -8,8 +8,13 @@ import { extractOfficialPage } from "@/lib/ingestion/extract";
 import { normalizeUrl } from "@/lib/ingestion/fingerprint";
 import { evaluateSourceGate, describeGateDecision } from "@/lib/ingestion/gate";
 import {
+  evaluateOfficialDestinationPolicy,
+  type OfficialDestinationPolicy,
+} from "@/lib/ingestion/official-destination-policy";
+import {
   createSourceHttpClient,
   isRetryable,
+  isRetryableOnLaterRun,
   type FetchFailureClass,
   type FetchStatePort,
 } from "@/lib/ingestion/http";
@@ -19,8 +24,14 @@ import {
   SOURCE_REGISTRY,
   SourceFetchError,
   getSourceDescriptor,
+  type DiscoveredLead,
+  type DiscoveryWorkQueue,
   type SourceAdapter,
 } from "@/lib/ingestion/source";
+import {
+  takeOfficialUrlIntakeLeads,
+  type AttributedOfficialLead,
+} from "@/lib/ingestion/official-url-intake";
 import { verifyCandidate } from "@/lib/ingestion/verify";
 import {
   createIngestedListingWithProvenance,
@@ -28,6 +39,8 @@ import {
   startIngestionRun,
   type IngestionRunCounts,
 } from "@/lib/db/ingestion";
+import { listCurrentOfficialDestinationPolicies } from "@/lib/db/official-destination-policy";
+import { enqueueDueOfficialUrlRevalidations } from "@/lib/db/official-url-intake";
 import { discoveryWorkQueue } from "@/lib/db/discovery-work";
 import { finalizeListingImage } from "@/lib/db/listing-media";
 import {
@@ -62,6 +75,26 @@ export interface IngestionSourceSummary extends IngestionRunCounts {
   status: "ok" | "error" | "skipped";
   /** Present whenever the gate refused the source. */
   gate?: string;
+}
+
+interface OfficialLeadBatchDiagnostics {
+  held: string[];
+  mediaRetries: string[];
+  destinationDenials: string[];
+  healthyResponses: number;
+  availabilityFailures: number;
+  successfulExtractions: number;
+  extractionFailures: string[];
+}
+
+const MAX_FAILURE_DETAIL_CHARS = 500;
+
+function boundedFailureDetail(error: unknown): string {
+  const detail =
+    error instanceof Error ? error.message : String(error);
+  return (detail.trim() || "unknown failure")
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_FAILURE_DETAIL_CHARS);
 }
 
 /**
@@ -144,14 +177,28 @@ export async function runIngestion(
   });
   const officialFetchState = fetchStatePort(official.id);
   let officialHttp: ReturnType<typeof createSourceHttpClient> | null = null;
+  let officialDestinationPolicies: OfficialDestinationPolicy[] | null = null;
   let officialLeaseToken: string | null = null;
   let officialLeaseDenial: string | null = null;
   let officialHealthyResponses = 0;
   let officialAvailabilityFailures = 0;
 
+  const loadOfficialDestinationPolicies = async (
+    options: { refresh?: boolean } = {},
+  ) => {
+    if (!options.refresh && officialDestinationPolicies) {
+      return officialDestinationPolicies;
+    }
+    const currentPolicies =
+      await listCurrentOfficialDestinationPolicies();
+    officialDestinationPolicies = currentPolicies;
+    return currentPolicies;
+  };
+
   const ensureOfficialClient = async () => {
     if (officialHttp) return officialHttp;
     if (officialLeaseDenial) return null;
+    await loadOfficialDestinationPolicies();
     const lease = await acquireSourceRunLease(
       official.id,
       official.refreshIntervalMinutes,
@@ -161,11 +208,430 @@ export async function runIngestion(
       return null;
     }
     officialLeaseToken = lease.token;
-    officialHttp = createSourceHttpClient(official, { fetchState: officialFetchState });
+    officialHttp = createSourceHttpClient(official, {
+      fetchState: officialFetchState,
+      // The transport re-applies this database-backed authority to the initial
+      // request, every redirect, and every image request. official_direct's
+      // empty static host list can never become blanket internet reach.
+      // Refresh the ledger on every initial/redirect/asset decision. Refreshing
+      // only once per lead left a redirect or image fetch authorized by a
+      // snapshot that could have been revoked while the request was in flight.
+      urlPolicy: async (url) =>
+        evaluateOfficialDestinationPolicy({
+          url,
+          policies: await loadOfficialDestinationPolicies({ refresh: true }),
+        }).allowed,
+    });
     return officialHttp;
   };
 
+  const readOfficialStats = () => {
+    const client =
+      officialHttp as ReturnType<typeof createSourceHttpClient> | null;
+    return client?.stats() ?? {
+      requests: 0,
+      budget: official.requestBudgetPerRun,
+      notModified: 0,
+      failures: 0,
+    };
+  };
+
+  /**
+   * The one official-page processing path for both directory discoveries and
+   * authenticated first-party intake. Origin changes provenance only; every
+   * URL still crosses the same destination authority, extraction, hard
+   * verification, atomic identity claim, rights-safe media, and draft boundary.
+   */
+  const processOfficialLeadBatch = async (
+    items: AttributedOfficialLead[],
+    workQueue: DiscoveryWorkQueue,
+    counts: Required<IngestionRunCounts>,
+  ): Promise<OfficialLeadBatchDiagnostics> => {
+    const held: string[] = [];
+    const mediaRetries: string[] = [];
+    const destinationDenials: string[] = [];
+    let healthyResponses = 0;
+    let availabilityFailures = 0;
+    let successfulExtractions = 0;
+    const extractionFailures: string[] = [];
+
+    for (const item of items) {
+      const { lead } = item;
+      const acknowledgeLead = async () => {
+        if (lead.discoveryWorkKey) {
+          if (!lead.discoveryWorkClaimToken) {
+            throw new Error(
+              `discovery work "${lead.discoveryWorkKey}" is missing its claim token`,
+            );
+          }
+          await workQueue.complete(
+            lead.discoveryWorkKey,
+            lead.discoveryWorkClaimToken,
+          );
+        }
+      };
+      const deferLead = async (reason: string) => {
+        if (lead.discoveryWorkKey) {
+          if (!lead.discoveryWorkClaimToken) {
+            throw new Error(
+              `discovery work "${lead.discoveryWorkKey}" is missing its claim token`,
+            );
+          }
+          await workQueue.defer(
+            lead.discoveryWorkKey,
+            lead.discoveryWorkClaimToken,
+            reason,
+          );
+        }
+      };
+      const quarantineLead = async (reason: string) => {
+        if (lead.discoveryWorkKey) {
+          if (!lead.discoveryWorkClaimToken) {
+            throw new Error(
+              `discovery work "${lead.discoveryWorkKey}" is missing its claim token`,
+            );
+          }
+          await workQueue.deadLetter(
+            lead.discoveryWorkKey,
+            lead.discoveryWorkClaimToken,
+            reason,
+          );
+        }
+      };
+      const urlKey = normalizeUrl(lead.officialUrl);
+      if (!urlKey) {
+        await quarantineLead("invalid_official_url");
+        counts.skipped += 1;
+        continue;
+      }
+
+      // Source approval never grants blanket internet reach. Each initial URL,
+      // redirect, and image request requires a current attributed destination
+      // policy. A denied/missing decision is terminally quarantined rather than
+      // retried forever; an unreadable ledger remains a bounded retry.
+      const destinationPolicies =
+        await loadOfficialDestinationPolicies({ refresh: true }).catch(
+          async (error: unknown) => {
+            const policyFailure = boundedFailureDetail(error);
+            let deferFailure: string | null = null;
+            try {
+              await deferLead(
+                "official_destination_policy_unavailable",
+              );
+            } catch (deferError) {
+              deferFailure = boundedFailureDetail(deferError);
+            }
+            throw new Error(
+              `official destination policy unavailable: ${policyFailure}` +
+                (deferFailure
+                  ? `; queue defer failed: ${deferFailure}`
+                  : ""),
+            );
+          },
+        );
+      const destinationDecision = evaluateOfficialDestinationPolicy({
+        url: lead.officialUrl,
+        policies: destinationPolicies,
+      });
+      if (!destinationDecision.allowed) {
+        counts.skipped += 1;
+        destinationDenials.push(
+          `${urlKey}: ${destinationDecision.reason}`,
+        );
+        await quarantineLead(
+          `official_destination_policy_denied:${destinationDecision.reason}`,
+        );
+        continue;
+      }
+
+      // Acquire the official lease only after at least one queued destination
+      // is independently approved. A quiet or entirely gated batch consumes no
+      // source cadence and performs no network request.
+      const activeOfficialHttp = await ensureOfficialClient();
+      if (!activeOfficialHttp) {
+        await deferLead("official_source_lease_unavailable");
+        throw new Error(
+          `official_direct ${officialLeaseDenial ?? "lease unavailable"}`,
+        );
+      }
+
+      const result = await extractOfficialPage(lead.officialUrl, {
+        http: activeOfficialHttp,
+      }).catch((error: unknown) => ({
+        status: "unextractable" as const,
+        message: error instanceof Error ? error.message : String(error),
+      }));
+      counts.fetched += 1;
+
+      if (result.status === "not_modified") {
+        healthyResponses += 1;
+        officialHealthyResponses += 1;
+        counts.skipped += 1;
+        await acknowledgeLead();
+        continue;
+      }
+      if (result.status === "failed") {
+        // 404/410 and non-retryable transport/policy outcomes are durable
+        // quarantine decisions. Only the central later-run retry taxonomy may
+        // re-enter the bounded queue.
+        if (result.failure === "not_found") {
+          healthyResponses += 1;
+          officialHealthyResponses += 1;
+          counts.skipped += 1;
+          await quarantineLead("official_page_not_found");
+          continue;
+        }
+        counts.failed += 1;
+        if (result.failure === "policy_unavailable") {
+          // Authority becoming unreadable mid-hop is our control-plane
+          // failure, not evidence that the sponsor is down. Preserve the work
+          // and fail the run immediately; continuing would either use stale
+          // permission or turn a compliance outage into a healthy cron.
+          await deferLead("official_destination_policy_unavailable");
+          throw new Error(result.message);
+        }
+        if (isSourceAvailabilityFailure(result.failure)) {
+          availabilityFailures += 1;
+          officialAvailabilityFailures += 1;
+        }
+        if (isRetryableOnLaterRun(result.failure)) {
+          await deferLead(`official_fetch_${result.failure}`);
+        } else {
+          await quarantineLead(
+            `terminal_official_fetch_${result.failure}`,
+          );
+        }
+        continue;
+      }
+      if (result.status === "unextractable") {
+        // The sponsor page answered successfully, so this is healthy source
+        // HTTP and must never open that source's circuit. It is still an
+        // internal pipeline failure: if every attempted extraction ends here,
+        // the run must fail so the cron alerts instead of reporting success
+        // through a total Anthropic/extractor outage.
+        healthyResponses += 1;
+        officialHealthyResponses += 1;
+        extractionFailures.push(
+          `${urlKey}: ${result.message.slice(0, 500)}`,
+        );
+        counts.failed += 1;
+        await deferLead(
+          `official_extraction_failed:${result.message.slice(0, 500)}`,
+        );
+        continue;
+      }
+
+      healthyResponses += 1;
+      officialHealthyResponses += 1;
+      successfulExtractions += 1;
+
+      const mapped = mapExtraction(result.extraction.raw);
+      // Never trust or hotlink a model-emitted image URL. The media pipeline
+      // can only persist rights-classified media or its generated fallback.
+      const candidate = {
+        ...mapped.candidate,
+        mainImageUrl: null,
+        imageAltText: null,
+      };
+      const verification = verifyCandidate(candidate);
+      if (!verification.publishable) {
+        await saveAcceptedOfficialFetchState(
+          lead.officialUrl,
+          result.extraction,
+          officialFetchState,
+        );
+        counts.failed += 1;
+        held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
+        await quarantineLead(
+          `verification_failed:${verification.hardFailures.join(",")}`,
+        );
+        continue;
+      }
+
+      // This RPC creates only a private, unreviewed draft and owns exact +
+      // suspected duplicate identity atomically. Intake authority never grants
+      // publication or moderation authority.
+      const claim = await createIngestedListingWithProvenance(candidate, {
+        officialUrlKey: candidate.dedup.urlKey,
+        contentFingerprint: candidate.dedup.contentKey,
+        variantKey: candidate.dedup.variantKey,
+        discoverySource: item.provenanceSource,
+        officialSourceUrl: urlKey,
+        extractionConfidence: verification.confidence,
+        extractionFactors: verification.factors,
+        extractionSummary: verification.summary,
+        contentHash: result.extraction.contentHash,
+      });
+
+      const imageResult = await processListingImage({
+        discovery: result.extraction.imageDiscovery,
+        prizeCategory: candidate.prizeCategory,
+        prizeName: candidate.prizeName,
+        http: activeOfficialHttp,
+        storage: null,
+      });
+      await finalizeListingImage({
+        listingId: claim.listingId,
+        sourcePageUrl: result.extraction.finalUrl,
+        result: imageResult,
+      });
+
+      if (claim.created) counts.created += 1;
+      else counts.skipped += 1;
+
+      if (imageResult.retryable) {
+        counts.failed += 1;
+        mediaRetries.push(urlKey);
+        await deferLead("listing_media_retry_required");
+        continue;
+      }
+
+      await saveAcceptedOfficialFetchState(
+        lead.officialUrl,
+        result.extraction,
+        officialFetchState,
+      );
+      await acknowledgeLead();
+    }
+
+    return {
+      held,
+      mediaRetries,
+      destinationDenials,
+      healthyResponses,
+      availabilityFailures,
+      successfulExtractions,
+      extractionFailures,
+    };
+  };
+
   try {
+    // Authenticated first-party intake is a durable queue on official_direct,
+    // not a synthetic directory source. It is drained first so approved
+    // operator-supplied work gets the daily official-source budget without
+    // falsifying discovery provenance.
+    if (officialDecision.allowed) {
+      // Enqueueing due revalidations is a maintenance step. If it fails, the
+      // next scheduled run retries it; letting the throw escape here would
+      // abort every discovery source in the invocation before any
+      // ingestion_run row could record why.
+      let revalidationFailure: string | null = null;
+      try {
+        await enqueueDueOfficialUrlRevalidations({
+          limit,
+          minAgeSeconds: official.refreshIntervalMinutes * 60,
+        });
+      } catch (error) {
+        revalidationFailure = `official revalidation enqueue failed: ${(error instanceof Error ? error.message : String(error)).slice(0, MAX_FAILURE_DETAIL_CHARS)}`;
+      }
+      const directQueue = discoveryWorkQueue(official.id);
+      const directLeads = await takeOfficialUrlIntakeLeads(
+        directQueue,
+        limit,
+      );
+
+      if (directLeads.length > 0) {
+        const runId = await startIngestionRun(official.id);
+        const counts: Required<IngestionRunCounts> = {
+          discovered: directLeads.length,
+          fetched: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        };
+        const statsBefore = readOfficialStats();
+        const directStats = () => {
+          const current = readOfficialStats();
+          return {
+            requests: current.requests - statsBefore.requests,
+            notModified: current.notModified - statsBefore.notModified,
+          };
+        };
+
+        try {
+          const diagnostics = await processOfficialLeadBatch(
+            directLeads,
+            directQueue,
+            counts,
+          );
+          const sourceOutage =
+            diagnostics.availabilityFailures > 0 &&
+            diagnostics.healthyResponses === 0;
+          const extractorOutage =
+            diagnostics.extractionFailures.length > 0 &&
+            diagnostics.successfulExtractions === 0;
+          const failed = sourceOutage || extractorOutage;
+          const notes = [
+            revalidationFailure,
+            sourceOutage
+              ? `every observable official response failed (${diagnostics.availabilityFailures} failures)`
+              : null,
+            extractorOutage
+              ? `every attempted official-page extraction failed (${diagnostics.extractionFailures.length} failures): ${diagnostics.extractionFailures.join("; ")}`
+              : null,
+            diagnostics.held.length > 0
+              ? `held: ${diagnostics.held.join("; ")}`
+              : null,
+            diagnostics.destinationDenials.length > 0
+              ? `official destination denied: ${diagnostics.destinationDenials.join("; ")}`
+              : null,
+            diagnostics.mediaRetries.length > 0
+              ? `media retry: ${diagnostics.mediaRetries.join("; ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
+          const stats = directStats();
+
+          await finishIngestionRun(
+            runId,
+            counts,
+            failed ? "error" : "ok",
+            notes.length > 0 ? notes.slice(0, 2000) : null,
+            {
+              gateDecision: "allowed",
+              requestsMade: stats.requests,
+              notModified: stats.notModified,
+            },
+          );
+          summaries.push({
+            source: official.id,
+            status: failed ? "error" : "ok",
+            ...counts,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const stats = directStats();
+          await finishIngestionRun(runId, counts, "error", message, {
+            gateDecision: "allowed",
+            requestsMade: stats.requests,
+            notModified: stats.notModified,
+          }).catch(() => undefined);
+          summaries.push({
+            source: official.id,
+            status: "error",
+            ...counts,
+          });
+        }
+      } else if (revalidationFailure) {
+        // No intake run exists to carry the note, so surface the failure as
+        // an explicit error summary. The cron route reports error summaries
+        // to Sentry, and the next scheduled invocation retries the sweep.
+        summaries.push({
+          source: official.id,
+          status: "error",
+          discovered: 0,
+          fetched: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 1,
+        });
+      }
+    }
+
     for (const descriptor of SOURCE_REGISTRY) {
     const adapter = ADAPTERS[descriptor.id];
     if (!adapter) continue;
@@ -250,12 +716,6 @@ export async function runIngestion(
       http = createSourceHttpClient(descriptor, {
         fetchState: fetchStatePort(descriptor.id),
       });
-      const readOfficialStats = () => {
-        const client = officialHttp as ReturnType<typeof createSourceHttpClient> | null;
-        return client?.stats() ?? {
-          requests: 0, budget: official.requestBudgetPerRun, notModified: 0, failures: 0,
-        };
-      };
       const officialStatsBefore = readOfficialStats();
       officialRunStats = () => {
         const current = readOfficialStats();
@@ -273,167 +733,25 @@ export async function runIngestion(
       });
       counts.discovered = leads.length;
 
-      const held: string[] = [];
-      const mediaRetries: string[] = [];
-      // Tracked apart from counts.failed, which deliberately conflates two very
-      // different facts: an official page we could not fetch (an outage signal)
-      // and a candidate we fetched fine and then rejected (a policy outcome).
-      // Only the former may trip the circuit breaker.
-      let healthyOfficialResponses = 0;
-      let officialAvailabilityFailuresThisSource = 0;
-      for (const lead of leads) {
-        const acknowledgeLead = async () => {
-          if (lead.discoveryWorkKey) await workQueue.complete(lead.discoveryWorkKey);
-        };
-        const urlKey = normalizeUrl(lead.officialUrl);
-        if (!urlKey) {
-          await acknowledgeLead();
-          counts.skipped += 1;
-          continue;
-        }
-
-        // Acquire the official-source lease lazily. A quiet discovery pass, or
-        // a pass containing only no leads, must not consume the sponsor source's
-        // independent daily cadence. URL alone is not an idempotency key here:
-        // sponsors reuse landing pages for later cycles and regional variants.
-        const activeOfficialHttp = await ensureOfficialClient();
-        if (!activeOfficialHttp) {
-          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
-          throw new Error(`official_direct ${officialLeaseDenial ?? "lease unavailable"}`);
-        }
-
-        // Fetch + extract the official page (the source of truth). The result is
-        // CLASSIFIED: only a real HTTP failure from the source counts toward the
-        // circuit breaker. A 304 is not a failure at all, and an extractor that
-        // returned nothing is our problem, not the sponsor's — charging either
-        // to the source would open its circuit for our own bugs.
-        const result = await extractOfficialPage(lead.officialUrl, { http: activeOfficialHttp })
-          .catch((error: unknown) => ({
-            status: "unextractable" as const,
-            message: error instanceof Error ? error.message : String(error),
-          }));
-        counts.fetched += 1;
-
-        if (result.status === "not_modified") {
-          healthyOfficialResponses += 1;
-          officialHealthyResponses += 1;
-          counts.skipped += 1;
-          await acknowledgeLead();
-          continue;
-        }
-        if (result.status === "failed") {
-          // 404/410 is a durable answer for this discovered item, not an
-          // outage and not retryable work. Policy/budget and transient failures
-          // remain deferred so authority or availability can recover later.
-          if (result.failure === "not_found") {
-            healthyOfficialResponses += 1;
-            officialHealthyResponses += 1;
-            counts.skipped += 1;
-            await acknowledgeLead();
-            continue;
-          }
-          counts.failed += 1;
-          if (isSourceAvailabilityFailure(result.failure)) {
-            officialAvailabilityFailuresThisSource += 1;
-            officialAvailabilityFailures += 1;
-          }
-          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
-          continue;
-        }
-        if (result.status === "unextractable") {
-          healthyOfficialResponses += 1;
-          officialHealthyResponses += 1;
-          counts.failed += 1; // ours: recorded, but never fed to the breaker
-          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
-          continue;
-        }
-
-        healthyOfficialResponses += 1;
-        officialHealthyResponses += 1;
-
-        const mapped = mapExtraction(result.extraction.raw);
-        // Media is deterministic and rights-gated. Never persist an image URL
-        // emitted by the language model or leave an external hotlink in the
-        // canonical listing while the media pipeline is still pending.
-        const candidate = {
-          ...mapped.candidate,
-          mainImageUrl: null,
-          imageAltText: null,
-        };
-
-        // Hard gate: a candidate that fails any non-negotiable (title/
-        // description/prize substance, official rules URL, entry URL,
-        // no-purchase signal, live end date) never becomes a row — not even a
-        // review-queue draft. This is the single hold path, so every held
-        // candidate's failed check ids land in the run notes for operators.
-        // (The title/description/prize hard checks also cover the DB's
-        // NOT NULL constraints — nothing uncreatable gets past this point.)
-        const verification = verifyCandidate(candidate);
-        if (!verification.publishable) {
-          // Verification reached a durable terminal decision for this exact
-          // body. A future 304 may safely skip it; a changed ETag will re-run
-          // extraction and verification.
-          await saveAcceptedOfficialFetchState(
-            lead.officialUrl,
-            result.extraction,
-            officialFetchState,
-          );
-          counts.failed += 1;
-          held.push(`${urlKey}: ${verification.hardFailures.join(",")}`);
-          await acknowledgeLead();
-          continue;
-        }
-
-        // The database owns identity atomically. Same URL+variant claims are
-        // idempotent; cross-URL content matches create a separate private draft
-        // plus an explainable suspected-duplicate pair for human resolution.
-        const claim = await createIngestedListingWithProvenance(candidate, {
-          officialUrlKey: candidate.dedup.urlKey,
-          contentFingerprint: candidate.dedup.contentKey,
-          variantKey: candidate.dedup.variantKey,
-          discoverySource: descriptor.id,
-          officialSourceUrl: urlKey,
-          extractionConfidence: verification.confidence,
-          extractionFactors: verification.factors,
-          extractionSummary: verification.summary,
-          contentHash: result.extraction.contentHash,
-        });
-
-        const imageResult = await processListingImage({
-          discovery: result.extraction.imageDiscovery,
-          prizeCategory: candidate.prizeCategory,
-          prizeName: candidate.prizeName,
-          http: activeOfficialHttp,
-          // The repository contract is storage=none. A null port produces a
-          // terminal generated fallback before any image bytes are fetched.
-          storage: null,
-        });
-        await finalizeListingImage({
-          listingId: claim.listingId,
-          sourcePageUrl: result.extraction.finalUrl,
-          result: imageResult,
-        });
-
-        if (claim.created) counts.created += 1;
-        else counts.skipped += 1;
-
-        if (imageResult.retryable) {
-          counts.failed += 1;
-          mediaRetries.push(urlKey);
-          if (lead.discoveryWorkKey) await workQueue.defer(lead.discoveryWorkKey);
-          continue;
-        }
-
-        // Commit the page validator only after listing identity, media state,
-        // and diagnostics all reached a durable terminal state. If media
-        // persistence fails, the unchanged page must remain retryable.
-        await saveAcceptedOfficialFetchState(
-          lead.officialUrl,
-          result.extraction,
-          officialFetchState,
-        );
-        await acknowledgeLead();
-      }
+      const attributedLeads: AttributedOfficialLead[] = leads.map(
+        (lead: DiscoveredLead) => ({
+          lead,
+          provenanceSource: descriptor.id,
+        }),
+      );
+      const {
+        held,
+        mediaRetries,
+        destinationDenials,
+        healthyResponses: healthyOfficialResponses,
+        availabilityFailures: officialAvailabilityFailuresThisSource,
+        successfulExtractions,
+        extractionFailures,
+      } = await processOfficialLeadBatch(
+        attributedLeads,
+        workQueue,
+        counts,
+      );
 
       // Both sides of the merge are wanted: main (#78) reports which candidates
       // were held back, this branch reports gate + request telemetry. The notes
@@ -445,21 +763,32 @@ export async function runIngestion(
       // into null, so neither reached `catch`. Zero leads with zero failures is
       // still a genuine quiet day; held candidates are a policy outcome and are
       // excluded, because the source answered us perfectly well.
-      const outage = officialAvailabilityFailuresThisSource > 0 && healthyOfficialResponses === 0;
+      const sourceOutage =
+        officialAvailabilityFailuresThisSource > 0 &&
+        healthyOfficialResponses === 0;
+      const extractorOutage =
+        extractionFailures.length > 0 && successfulExtractions === 0;
+      const failed = sourceOutage || extractorOutage;
       const outageNote = `every observable official response failed (${officialAvailabilityFailuresThisSource} failures)`;
+      const extractorOutageNote =
+        `every attempted official-page extraction failed (${extractionFailures.length} failures): ${extractionFailures.join("; ")}`;
 
       const stats = http.stats();
       const officialStats = officialRunStats();
       const notes = [
-        outage ? outageNote : null,
+        sourceOutage ? outageNote : null,
+        extractorOutage ? extractorOutageNote : null,
         held.length > 0 ? `held: ${held.join("; ")}` : null,
+        destinationDenials.length > 0
+          ? `official destination denied: ${destinationDenials.join("; ")}`
+          : null,
         mediaRetries.length > 0 ? `media retry: ${mediaRetries.join("; ")}` : null,
       ].filter(Boolean).join(" | ");
 
       await finishIngestionRun(
         runId,
         counts,
-        outage ? "error" : "ok",
+        failed ? "error" : "ok",
         notes.length > 0 ? notes.slice(0, 2000) : null,
         {
           gateDecision: "allowed",
@@ -476,7 +805,7 @@ export async function runIngestion(
       sourceLeaseFinalized = true;
       summaries.push({
         source: descriptor.id,
-        status: outage ? "error" : "ok",
+        status: failed ? "error" : "ok",
         ...counts,
       });
     } catch (error) {

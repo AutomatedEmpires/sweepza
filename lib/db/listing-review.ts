@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ensureCurrentAppUser } from "@/lib/auth";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { ListingRow } from "./types";
 
@@ -33,10 +34,18 @@ type RawReviewRow = Omit<ReviewQueueListing, "host_display_name"> & {
   host: { display_name: string } | { display_name: string }[] | null;
 };
 
+async function canReviewListings(): Promise<boolean> {
+  const operator = await ensureCurrentAppUser();
+  return Boolean(
+    operator &&
+      (operator.appUser.is_admin || operator.appUser.is_owner),
+  );
+}
+
 // Owner/admin review queue: host and official-source ingestion drafts awaiting
 // a human publication decision.
-// Service-role read; callers MUST verify is_admin/is_owner before invoking.
 export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
+  if (!(await canReviewListings())) return [];
   const supabase = createServiceRoleClient();
 
   const { data, error } = await supabase
@@ -87,6 +96,7 @@ export async function getHostReviewQueue(): Promise<ReviewQueueListing[]> {
 export async function getReviewListingById(
   listingId: string,
 ): Promise<ListingRow | null> {
+  if (!(await canReviewListings())) return null;
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("listing")

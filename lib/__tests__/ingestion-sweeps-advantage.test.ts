@@ -165,7 +165,10 @@ describe("sweepsAdvantageAdapter.discover", () => {
     expect(first.map((lead) => lead.officialUrl)).toEqual([
       "https://sponsor-cash.example.com/daily-cash",
     ]);
-    await workQueue.complete(first[0].discoveryWorkKey!); // downstream durable ack
+    await workQueue.complete(
+      first[0].discoveryWorkKey!,
+      first[0].discoveryWorkClaimToken!,
+    ); // downstream durable ack
 
     const secondHttp = createFixtureHttpClient(descriptor, {
       [`${BASE}/new-sweepstakes`]: { status: 304 },

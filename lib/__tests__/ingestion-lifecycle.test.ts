@@ -287,6 +287,7 @@ describe("dispositionForFailure — a blip is not a burial", () => {
 
   it("never treats our own policy stops as a listing signal", () => {
     expect(dispositionForFailure("blocked_by_policy", 9).action).toBe("no_signal");
+    expect(dispositionForFailure("policy_unavailable", 9).action).toBe("no_signal");
     expect(dispositionForFailure("budget_exhausted", 9).action).toBe("no_signal");
   });
 

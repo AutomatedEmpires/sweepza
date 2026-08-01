@@ -9,14 +9,21 @@ const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
   extractOfficialPage: vi.fn(),
   createIngestedListingWithProvenance: vi.fn(),
+  listCurrentOfficialDestinationPolicies: vi.fn(),
+  enqueueDueOfficialUrlRevalidations: vi.fn(),
   finishIngestionRun: vi.fn(),
   startIngestionRun: vi.fn(),
   getSourceRecord: vi.fn(),
   acquireSourceRunLease: vi.fn(),
   finishSourceRunLease: vi.fn(),
   releaseSourceRunLease: vi.fn(),
+  takeOfficialWork: vi.fn(),
+  completeOfficialWork: vi.fn(),
+  deferOfficialWork: vi.fn(),
+  deadLetterOfficialWork: vi.fn(),
   completeWork: vi.fn(),
   deferWork: vi.fn(),
+  deadLetterWork: vi.fn(),
   getFetchState: vi.fn(),
   saveFetchState: vi.fn(),
   finalizeListingImage: vi.fn(),
@@ -86,11 +93,24 @@ vi.mock("@/lib/db/source-registry", () => ({
 }));
 
 vi.mock("@/lib/db/discovery-work", () => ({
-  discoveryWorkQueue: () => ({
+  discoveryWorkQueue: (sourceId: string) => ({
     enqueue: vi.fn(),
-    take: vi.fn(),
-    complete: mocks.completeWork,
-    defer: mocks.deferWork,
+    take:
+      sourceId === "official_direct"
+        ? mocks.takeOfficialWork
+        : vi.fn(),
+    complete:
+      sourceId === "official_direct"
+        ? mocks.completeOfficialWork
+        : mocks.completeWork,
+    defer:
+      sourceId === "official_direct"
+        ? mocks.deferOfficialWork
+        : mocks.deferWork,
+    deadLetter:
+      sourceId === "official_direct"
+        ? mocks.deadLetterOfficialWork
+        : mocks.deadLetterWork,
   }),
 }));
 
@@ -102,6 +122,16 @@ vi.mock("@/lib/db/ingestion", () => ({
   createIngestedListingWithProvenance: mocks.createIngestedListingWithProvenance,
   finishIngestionRun: mocks.finishIngestionRun,
   startIngestionRun: mocks.startIngestionRun,
+}));
+
+vi.mock("@/lib/db/official-destination-policy", () => ({
+  listCurrentOfficialDestinationPolicies:
+    mocks.listCurrentOfficialDestinationPolicies,
+}));
+
+vi.mock("@/lib/db/official-url-intake", () => ({
+  enqueueDueOfficialUrlRevalidations:
+    mocks.enqueueDueOfficialUrlRevalidations,
 }));
 
 vi.mock("@/lib/db/listing-media", () => ({
@@ -117,6 +147,40 @@ import { runIngestion } from "@/lib/ingestion/orchestrator";
 const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
+
+const approvedDestinationPolicy = {
+  id: 1,
+  hostname: "brand.com",
+  pathPrefix: "/",
+  includeSubdomains: true,
+  complianceState: "approved_for_production" as const,
+  robotsPosture: "permissive" as const,
+  tosPosture: "permits_use" as const,
+  termsUrl: "https://brand.com/terms",
+  robotsUrl: "https://brand.com/robots.txt",
+  approvedBy: "founder@example.com",
+  approvedAt: "2026-07-29T00:00:00.000Z",
+  reviewExpiresAt: "2026-12-31T23:59:59.999Z",
+};
+
+function officialIntakeWork(
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    key: "admin-official-work-1",
+    claimToken: "claim-admin-official-work-1",
+    payload: {
+      kind: "admin_official_url_v1",
+      officialUrl: "https://brand.com/official-rules",
+      idempotencyKey: "partner-feed:promotion-1",
+      authority: {
+        type: "sweepza_operator",
+        appUserId: "33333333-3333-4333-8333-333333333333",
+      },
+      ...overrides,
+    },
+  };
+}
 
 // extractOfficialPage returns a CLASSIFIED result, not `Extraction | null`. The
 // distinction is the point: only a real HTTP failure from the source may feed
@@ -139,9 +203,9 @@ const httpFailed = (failure = "server_error") => ({
   message: `official page -> ${failure}`,
 });
 const notModified = () => ({ status: "not_modified" as const });
-const unextractable = () => ({
+const unextractable = (message = "the extractor returned no structured result") => ({
   status: "unextractable" as const,
-  message: "the extractor returned no structured result",
+  message,
 });
 
 function raw(overrides: Partial<RawExtraction> = {}): RawExtraction {
@@ -180,12 +244,25 @@ beforeEach(() => {
   }));
   mocks.finishSourceRunLease.mockResolvedValue(undefined);
   mocks.releaseSourceRunLease.mockResolvedValue(undefined);
+  mocks.takeOfficialWork.mockResolvedValue([]);
+  mocks.completeOfficialWork.mockResolvedValue(undefined);
+  mocks.deferOfficialWork.mockResolvedValue(undefined);
+  mocks.deadLetterOfficialWork.mockResolvedValue(undefined);
   mocks.completeWork.mockResolvedValue(undefined);
   mocks.deferWork.mockResolvedValue(undefined);
+  mocks.deadLetterWork.mockResolvedValue(undefined);
   mocks.getFetchState.mockResolvedValue(null);
   mocks.saveFetchState.mockResolvedValue(undefined);
+  mocks.listCurrentOfficialDestinationPolicies.mockResolvedValue([
+    approvedDestinationPolicy,
+  ]);
+  mocks.enqueueDueOfficialUrlRevalidations.mockResolvedValue(0);
   mocks.discover.mockResolvedValue([
-    { officialUrl: "https://brand.com/official-rules", discoveryWorkKey: "work-1" },
+    {
+      officialUrl: "https://brand.com/official-rules",
+      discoveryWorkKey: "work-1",
+      discoveryWorkClaimToken: "claim-work-1",
+    },
   ]);
   mocks.extractOfficialPage.mockResolvedValue(ok(raw()));
   mocks.startIngestionRun.mockResolvedValue("run-1");
@@ -202,6 +279,272 @@ beforeEach(() => {
     fallbackUrl: "/api/images/listing-fallback/travel",
     diagnostics: [],
     retryable: false,
+  });
+});
+
+describe("runIngestion — authenticated official URL intake", () => {
+  it("runs attributed intake through the same draft, dedup, and media pipeline", async () => {
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    expect(mocks.enqueueDueOfficialUrlRevalidations).toHaveBeenCalledWith({
+      limit: 25,
+      minAgeSeconds: 720 * 60,
+    });
+    expect(mocks.takeOfficialWork).toHaveBeenCalledWith(25);
+    expect(mocks.extractOfficialPage).toHaveBeenCalledWith(
+      "https://brand.com/official-rules",
+      expect.objectContaining({ http: expect.anything() }),
+    );
+    expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        discoverySource:
+          "official_direct:operator:33333333-3333-4333-8333-333333333333",
+        officialSourceUrl: "https://brand.com/official-rules",
+      }),
+    );
+    expect(mocks.processListingImage).toHaveBeenCalledWith(
+      expect.objectContaining({ storage: null }),
+    );
+    expect(mocks.completeOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+    );
+    expect(mocks.deferOfficialWork).not.toHaveBeenCalled();
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "ok",
+        discovered: 1,
+        created: 1,
+      }),
+    );
+  });
+
+  it("continues the invocation and surfaces an error summary when the revalidation sweep fails with no intake work", async () => {
+    mocks.enqueueDueOfficialUrlRevalidations.mockRejectedValue(
+      new Error("rpc unavailable"),
+    );
+    mocks.takeOfficialWork.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    // The intake lane and every discovery source still run; one maintenance
+    // failure must not abort the whole invocation.
+    expect(mocks.takeOfficialWork).toHaveBeenCalledWith(25);
+    expect(mocks.discover).toHaveBeenCalled();
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "error",
+        failed: 1,
+      }),
+    );
+  });
+
+  it("carries the revalidation failure into run notes when intake work exists", async () => {
+    mocks.enqueueDueOfficialUrlRevalidations.mockRejectedValue(
+      new Error("rpc unavailable"),
+    );
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+
+    await runIngestion();
+
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "ok",
+      expect.stringContaining("official revalidation enqueue failed"),
+      expect.anything(),
+    );
+  });
+
+  it("quarantines missing destination authority without acquiring the official lease or fetching", async () => {
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+    mocks.listCurrentOfficialDestinationPolicies.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    expect(mocks.deadLetterOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+      "official_destination_policy_denied:policy_missing",
+    );
+    expect(mocks.completeOfficialWork).not.toHaveBeenCalled();
+    expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
+    expect(mocks.createIngestedListingWithProvenance).not.toHaveBeenCalled();
+    expect(mocks.acquireSourceRunLease).not.toHaveBeenCalledWith(
+      "official_direct",
+      expect.any(Number),
+    );
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "ok",
+        skipped: 1,
+      }),
+    );
+  });
+
+  it("defers transient official failures and reports the direct run as failed", async () => {
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+    mocks.extractOfficialPage.mockResolvedValue(httpFailed("server_error"));
+
+    const summaries = await runIngestion();
+
+    expect(mocks.deferOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+      "official_fetch_server_error",
+    );
+    expect(mocks.completeOfficialWork).not.toHaveBeenCalled();
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "error",
+        failed: 1,
+      }),
+    );
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "official_direct",
+      "lease-official_direct",
+      expect.objectContaining({ ok: false }),
+    );
+  });
+
+  it("reports a total direct-intake extractor outage as failed without opening the source breaker", async () => {
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+    mocks.extractOfficialPage.mockResolvedValue(
+      unextractable("Anthropic request failed: service unavailable"),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.deferOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+      expect.stringContaining("official_extraction_failed:"),
+    );
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "error",
+        failed: 1,
+      }),
+    );
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ failed: 1 }),
+      "error",
+      expect.stringContaining("every attempted official-page extraction failed"),
+      expect.anything(),
+    );
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "official_direct",
+      "lease-official_direct",
+      expect.objectContaining({ ok: true }),
+    );
+  });
+
+  it("keeps exact duplicate claims terminal without counting a second creation", async () => {
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+    mocks.createIngestedListingWithProvenance.mockResolvedValue({
+      listingId: "existing-listing",
+      created: false,
+      suspectedDuplicateIds: [],
+    });
+
+    const summaries = await runIngestion();
+
+    expect(mocks.completeOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+    );
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "ok",
+        created: 0,
+        skipped: 1,
+      }),
+    );
+  });
+
+  it("refreshes destination authority before every lead and quarantines work revoked mid-batch", async () => {
+    const secondWork = {
+      ...officialIntakeWork(),
+      key: "admin-official-work-2",
+      claimToken: "claim-admin-official-work-2",
+      payload: {
+        ...officialIntakeWork().payload,
+        idempotencyKey: "partner-feed:promotion-2",
+      },
+    };
+    mocks.takeOfficialWork.mockResolvedValue([
+      officialIntakeWork(),
+      secondWork,
+    ]);
+    mocks.discover.mockResolvedValue([]);
+    mocks.listCurrentOfficialDestinationPolicies
+      .mockResolvedValueOnce([approvedDestinationPolicy])
+      .mockResolvedValueOnce([
+        {
+          ...approvedDestinationPolicy,
+          id: 2,
+          complianceState: "revoked",
+          approvedBy: null,
+          approvedAt: null,
+        },
+      ]);
+
+    const summaries = await runIngestion();
+
+    expect(
+      mocks.listCurrentOfficialDestinationPolicies,
+    ).toHaveBeenCalledTimes(2);
+    expect(mocks.extractOfficialPage).toHaveBeenCalledTimes(1);
+    expect(mocks.completeOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-1",
+      "claim-admin-official-work-1",
+    );
+    expect(mocks.deadLetterOfficialWork).toHaveBeenCalledWith(
+      "admin-official-work-2",
+      "claim-admin-official-work-2",
+      "official_destination_policy_denied:policy_not_production_approved",
+    );
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        discovered: 2,
+        created: 1,
+        skipped: 1,
+      }),
+    );
+  });
+
+  it("does not read or mutate direct work while official_direct is gated", async () => {
+    mocks.getSourceRecord.mockImplementation(async (id: string) => ({
+      id,
+      complianceState:
+        id === "official_direct" ? "paused" : "approved_for_production",
+      killSwitch: false,
+      circuitOpenedAt: null,
+    }));
+
+    await runIngestion();
+
+    expect(mocks.enqueueDueOfficialUrlRevalidations).not.toHaveBeenCalled();
+    expect(mocks.takeOfficialWork).not.toHaveBeenCalled();
+    expect(mocks.completeOfficialWork).not.toHaveBeenCalled();
+    expect(mocks.deferOfficialWork).not.toHaveBeenCalled();
   });
 });
 
@@ -238,7 +581,11 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
 
   it("records a FAILURE when every official fetch fails", async () => {
     mocks.discover.mockResolvedValue([
-      { officialUrl: "https://brand.com/a", discoveryWorkKey: "work-1" },
+      {
+        officialUrl: "https://brand.com/a",
+        discoveryWorkKey: "work-1",
+        discoveryWorkClaimToken: "claim-work-1",
+      },
       { officialUrl: "https://brand.com/b" },
     ]);
     mocks.extractOfficialPage.mockResolvedValue(httpFailed()); // the source is down
@@ -297,9 +644,13 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
     expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
   });
 
-  it("completes a dead sponsor page as a durable non-outage", async () => {
+  it("quarantines a dead sponsor page as a durable non-outage", async () => {
     mocks.discover.mockResolvedValue([
-      { officialUrl: "https://brand.com/a", discoveryWorkKey: "work-1" },
+      {
+        officialUrl: "https://brand.com/a",
+        discoveryWorkKey: "work-1",
+        discoveryWorkClaimToken: "claim-work-1",
+      },
       { officialUrl: "https://brand.com/b" },
     ]);
     mocks.extractOfficialPage
@@ -313,8 +664,16 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
-    expect(mocks.deferWork).not.toHaveBeenCalledWith("work-1");
+    expect(mocks.deadLetterWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_page_not_found",
+    );
+    expect(mocks.deferWork).not.toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      expect.anything(),
+    );
   });
 
   it("does NOT blame the source for a 304 — not-modified is not a failure", async () => {
@@ -336,9 +695,9 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
     expect(summaries[0]).toMatchObject({ status: "ok", skipped: 2, created: 0 });
   });
 
-  it("does NOT blame the source when OUR extractor comes up empty", async () => {
-    // We fetched the page fine. An extractor that returns nothing is our bug,
-    // and must never trip a sponsor's circuit breaker.
+  it("fails the run but does NOT blame the source when OUR extractor comes up empty", async () => {
+    // We fetched the page fine. An extractor that returns nothing is our bug:
+    // cron must alert, while both external-source circuit breakers stay healthy.
     mocks.discover.mockResolvedValue([{ officialUrl: "https://brand.com/a" }]);
     mocks.extractOfficialPage.mockResolvedValue(unextractable());
 
@@ -349,7 +708,42 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
-    expect(summaries[0]).toMatchObject({ status: "ok", failed: 1, created: 0 });
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "official_direct",
+      "lease-official_direct",
+      expect.objectContaining({ ok: true }),
+    );
+    expect(summaries[0]).toMatchObject({ status: "error", failed: 1, created: 0 });
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ failed: 1 }),
+      "error",
+      expect.stringContaining("every attempted official-page extraction failed"),
+      expect.anything(),
+    );
+  });
+
+  it("does not report a total extractor outage when another page extracts successfully", async () => {
+    mocks.discover.mockResolvedValue([
+      { officialUrl: "https://brand.com/a" },
+      { officialUrl: "https://brand.com/b" },
+    ]);
+    mocks.extractOfficialPage
+      .mockResolvedValueOnce(unextractable())
+      .mockResolvedValueOnce(ok(raw()));
+
+    const summaries = await runIngestion();
+
+    expect(summaries[0]).toMatchObject({
+      status: "ok",
+      failed: 1,
+      created: 1,
+    });
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "official_direct",
+      "lease-official_direct",
+      expect.objectContaining({ ok: true }),
+    );
   });
 
   it("does NOT blame the source when our shared request budget is exhausted", async () => {
@@ -362,7 +756,36 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
       "lease-sweeps_advantage",
       expect.objectContaining({ ok: true }),
     );
-    expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.deferWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_fetch_budget_exhausted",
+    );
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "official_direct",
+      "lease-official_direct",
+      expect.objectContaining({ ok: true }),
+    );
+  });
+
+  it("fails closed when destination authority becomes unreadable mid-request without opening a source breaker", async () => {
+    mocks.extractOfficialPage.mockResolvedValue(
+      httpFailed("policy_unavailable"),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.deferWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_destination_policy_unavailable",
+    );
+    expect(summaries[0]).toMatchObject({ status: "error", failed: 1 });
+    expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
+      "sweeps_advantage",
+      "lease-sweeps_advantage",
+      expect.objectContaining({ ok: true }),
+    );
     expect(mocks.finishSourceRunLease).toHaveBeenCalledWith(
       "official_direct",
       "lease-official_direct",
@@ -371,7 +794,7 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
   });
 
   it.each(["access_denied", "too_many_redirects", "empty_body", "bot_challenge"])(
-    "does not let page-specific %s outcomes trip the shared official circuit",
+    "quarantines terminal page-specific %s outcomes without tripping the shared official circuit",
     async (failure) => {
       mocks.extractOfficialPage.mockResolvedValue(httpFailed(failure));
 
@@ -382,7 +805,11 @@ describe("runIngestion — a down source must reach the circuit breaker", () => 
         "lease-official_direct",
         expect.objectContaining({ ok: true }),
       );
-      expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
+      expect(mocks.deadLetterWork).toHaveBeenCalledWith(
+        "work-1",
+        "claim-work-1",
+        `terminal_official_fetch_${failure}`,
+      );
       expect(summaries[0]).toMatchObject({ status: "ok", failed: 1 });
     },
   );
@@ -497,11 +924,115 @@ describe("runIngestion — official_direct is gated on its own", () => {
   });
 });
 
+describe("runIngestion — official destinations are default-deny", () => {
+  it("quarantines a malformed official URL instead of retrying poison", async () => {
+    mocks.discover.mockResolvedValue([
+      {
+        officialUrl: "not-a-url",
+        discoveryWorkKey: "work-1",
+        discoveryWorkClaimToken: "claim-work-1",
+      },
+    ]);
+
+    const summaries = await runIngestion();
+
+    expect(mocks.deadLetterWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "invalid_official_url",
+    );
+    expect(mocks.deferWork).not.toHaveBeenCalled();
+    expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
+    expect(summaries[0]).toMatchObject({ status: "ok", skipped: 1 });
+  });
+
+  it("quarantines an unapproved destination without acquiring the official lease or fetching", async () => {
+    mocks.listCurrentOfficialDestinationPolicies.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    expect(mocks.discover).toHaveBeenCalledTimes(1);
+    expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
+    expect(mocks.acquireSourceRunLease).not.toHaveBeenCalledWith(
+      "official_direct",
+      expect.anything(),
+    );
+    expect(mocks.deadLetterWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_destination_policy_denied:policy_missing",
+    );
+    expect(summaries[0]).toMatchObject({
+      source: "sweeps_advantage",
+      status: "ok",
+      discovered: 1,
+      fetched: 0,
+      skipped: 1,
+    });
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain(
+      "official destination denied:",
+    );
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain(
+      "policy_missing",
+    );
+  });
+
+  it("fails closed and preserves work when destination authority is unreadable", async () => {
+    mocks.listCurrentOfficialDestinationPolicies.mockRejectedValue(
+      new Error("policy table unavailable"),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
+    expect(mocks.deferWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_destination_policy_unavailable",
+    );
+    expect(summaries[0]).toMatchObject({ status: "error", fetched: 0 });
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain(
+      "official destination policy unavailable",
+    );
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain(
+      "policy table unavailable",
+    );
+    expect(mocks.finishIngestionRun.mock.calls[0][3]).not.toContain(
+      "queue defer failed",
+    );
+  });
+
+  it("preserves bounded policy and defer failures when the queue claim is lost", async () => {
+    mocks.listCurrentOfficialDestinationPolicies.mockRejectedValue(
+      new Error(`policy table unavailable ${"p".repeat(2_000)}`),
+    );
+    mocks.deferWork.mockRejectedValue(
+      new Error(`claim lost ${"q".repeat(2_000)}`),
+    );
+
+    const summaries = await runIngestion();
+
+    expect(mocks.extractOfficialPage).not.toHaveBeenCalled();
+    expect(mocks.deferWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "official_destination_policy_unavailable",
+    );
+    expect(summaries[0]).toMatchObject({ status: "error", fetched: 0 });
+    const notes = String(mocks.finishIngestionRun.mock.calls[0][3]);
+    expect(notes).toContain(
+      "official destination policy unavailable: policy table unavailable",
+    );
+    expect(notes).toContain("queue defer failed: claim lost");
+    expect(notes.length).toBeLessThanOrEqual(1_100);
+  });
+});
+
 describe("runIngestion publishable gate", () => {
   it("creates a draft for a candidate that passes every hard check", async () => {
     const summaries = await runIngestion();
     expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(1);
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1", "claim-work-1");
     expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
     expect(summaries).toEqual([
       expect.objectContaining({
@@ -535,8 +1066,12 @@ describe("runIngestion publishable gate", () => {
 
     expect(mocks.finalizeListingImage).toHaveBeenCalledTimes(1);
     expect(mocks.saveFetchState).not.toHaveBeenCalled();
-    expect(mocks.deferWork).toHaveBeenCalledWith("work-1");
-    expect(mocks.completeWork).not.toHaveBeenCalledWith("work-1");
+    expect(mocks.deferWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      "listing_media_retry_required",
+    );
+    expect(mocks.completeWork).not.toHaveBeenCalledWith("work-1", "claim-work-1");
     expect(summaries[0]).toMatchObject({ created: 1, failed: 1 });
     expect(mocks.finishIngestionRun.mock.calls[0][3]).toContain("media retry:");
   });
@@ -548,7 +1083,7 @@ describe("runIngestion publishable gate", () => {
       storage: null,
     }));
     expect(mocks.saveFetchState).toHaveBeenCalledTimes(1);
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1", "claim-work-1");
   });
 
   it("does not persist a final-hop validator under a redirecting request URL", async () => {
@@ -559,7 +1094,7 @@ describe("runIngestion publishable gate", () => {
     const summaries = await runIngestion();
 
     expect(mocks.createIngestedListingWithProvenance).toHaveBeenCalledTimes(1);
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1", "claim-work-1");
     expect(mocks.saveFetchState).not.toHaveBeenCalled();
     expect(summaries[0]).toMatchObject({ status: "ok", created: 1 });
   });
@@ -574,7 +1109,7 @@ describe("runIngestion publishable gate", () => {
     await runIngestion();
 
     expect(mocks.saveFetchState).not.toHaveBeenCalled();
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1", "claim-work-1");
   });
 
   it("counts a concurrent database claimant as skipped, never as a second creation", async () => {
@@ -604,6 +1139,11 @@ describe("runIngestion publishable gate", () => {
     expect(summaries).toEqual([
       expect.objectContaining({ status: "ok", created: 0, failed: 1 }),
     ]);
+    expect(mocks.deadLetterWork).toHaveBeenCalledWith(
+      "work-1",
+      "claim-work-1",
+      expect.stringContaining("verification_failed:"),
+    );
 
     const notes = mocks.finishIngestionRun.mock.calls[0][3];
     expect(notes).toContain("held:");
@@ -637,8 +1177,16 @@ describe("runIngestion publishable gate", () => {
 
   it("does not discard repeated official URLs before variant extraction", async () => {
     mocks.discover.mockResolvedValue([
-      { officialUrl: "https://brand.com/official-rules", discoveryWorkKey: "work-1" },
-      { officialUrl: "https://www.brand.com/official-rules/", discoveryWorkKey: "work-2" },
+      {
+        officialUrl: "https://brand.com/official-rules",
+        discoveryWorkKey: "work-1",
+        discoveryWorkClaimToken: "claim-work-1",
+      },
+      {
+        officialUrl: "https://www.brand.com/official-rules/",
+        discoveryWorkKey: "work-2",
+        discoveryWorkClaimToken: "claim-work-2",
+      },
     ]);
     mocks.extractOfficialPage
       .mockResolvedValueOnce(ok(raw({ endDate: FUTURE })))
@@ -652,7 +1200,7 @@ describe("runIngestion publishable gate", () => {
       (call) => call[1].variantKey,
     );
     expect(new Set(variants).size).toBe(2);
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-1");
-    expect(mocks.completeWork).toHaveBeenCalledWith("work-2");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-1", "claim-work-1");
+    expect(mocks.completeWork).toHaveBeenCalledWith("work-2", "claim-work-2");
   });
 });

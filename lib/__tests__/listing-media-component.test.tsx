@@ -111,7 +111,7 @@ describe("ListingMedia representative-photo disclosure", () => {
     expect(html).not.toContain("bg-pine/12");
   });
 
-  it("keeps official attribution and every known eligibility fact in the standard card", () => {
+  it("keeps official attribution and a readable summary without the detail fact grid", () => {
     const html = renderToStaticMarkup(
       <ListingCard
         listing={{
@@ -128,10 +128,11 @@ describe("ListingMedia representative-photo disclosure", () => {
     );
 
     expect(html).toContain("Image: Example Sponsor");
-    expect(html).toContain("Found by Sweepza");
-    expect(html).toContain("US — CA, NV");
-    expect(html).toContain("18+");
-    expect(html).toContain("Confirmed");
-    expect(html).toContain("One entry per household");
+    expect(html).toContain("line-clamp-4");
+    expect(html).toContain(cardListing.shortDescription);
+    expect(html).not.toContain("Entry schedule");
+    expect(html).not.toContain("Entry limits");
+    expect(html).not.toContain("Minimum age");
+    expect(html).not.toContain("No purchase necessary");
   });
 });

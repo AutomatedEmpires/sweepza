@@ -126,23 +126,34 @@ export const sweepstakesTodayAdapter: SourceAdapter = {
     for (const item of await workQueue.take(limit)) {
       const row = item.payload as unknown as SweepstakesTodayRow;
       if (!row.detailPath || !row.title) {
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
       const detail = await http.get(`${BASE}${row.detailPath}`);
       if (detail.status === "not_modified") {
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
       if (detail.status !== "ok") {
-        if (detail.failure === "not_found") await workQueue.complete(item.key);
-        else await workQueue.defer(item.key);
+        if (detail.failure === "not_found") {
+          await workQueue.complete(item.key, item.claimToken);
+        } else {
+          await workQueue.defer(
+            item.key,
+            item.claimToken,
+            `sweepstakes_today_detail_${detail.failure}`,
+          );
+        }
         continue;
       }
 
       const officialUrl = parseSweepstakesTodayOfficialUrl(detail.body);
       if (!officialUrl) {
-        await workQueue.defer(item.key);
+        await workQueue.defer(
+          item.key,
+          item.claimToken,
+          "sweepstakes_today_detail_missing_official_url",
+        );
         continue;
       }
 
@@ -151,6 +162,7 @@ export const sweepstakesTodayAdapter: SourceAdapter = {
         sourceUrl: `${BASE}${row.detailPath}`,
         hint: { title: row.title, endDate: row.hintEndDate },
         discoveryWorkKey: item.key,
+        discoveryWorkClaimToken: item.claimToken,
       });
     }
 

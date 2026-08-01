@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { recoverStaleIngestionRuns } from "@/lib/db/ingestion";
 import { env } from "@/lib/env";
 import { runIngestion } from "@/lib/ingestion/orchestrator";
 
@@ -12,7 +13,7 @@ export const maxDuration = 300;
 //
 // Three gates stand between this route firing and any live request, and they
 // are checked in cost order — cheapest and most global first:
-//   1. INGESTION_ENABLED !== "true"  → 503 here, nothing loads.
+//   1. INGESTION_ENABLED !== "true"  → 200 healthy no-op, nothing loads.
 //   2. ANTHROPIC_API_KEY absent      → 503 here; extraction is impossible.
 //   3. per-source compliance         → lib/ingestion/gate.ts, inside the run.
 // Vercel calls this on schedule today; with the switch unset it is a no-op that
@@ -45,9 +46,43 @@ export async function GET(request: Request) {
   }
 
   try {
+    const recovery = await recoverStaleIngestionRuns();
     const sources = await runIngestion({ limit: 25 });
     const created = sources.reduce((n, s) => n + (s.created ?? 0), 0);
-    return NextResponse.json({ ok: true, created, sources });
+    const failedSources = sources
+      .filter((source) => source.status === "error")
+      .map((source) => source.source);
+
+    if (failedSources.length > 0) {
+      const failure = new Error(
+        `Ingestion source execution failed: ${failedSources.join(", ")}`,
+      );
+      Sentry.captureException(failure, {
+        tags: { operation: "ingestion_cron" },
+        extra: {
+          failedSources,
+          created,
+          recoveredStaleRuns: recovery.recovered,
+        },
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "One or more ingestion sources failed.",
+          created,
+          recoveredStaleRuns: recovery.recovered,
+          sources,
+        },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      created,
+      recoveredStaleRuns: recovery.recovered,
+      sources,
+    });
   } catch (error) {
     Sentry.captureException(
       error instanceof Error ? error : new Error("ingestion cron failed"),

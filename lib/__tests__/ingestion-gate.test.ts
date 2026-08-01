@@ -115,6 +115,166 @@ describe("source execution gate", () => {
     });
   });
 
+  describe("official_direct capability uses per-destination authority", () => {
+    it("can clear the capability gate while static host-level postures stay honest", () => {
+      const official = SOURCE_REGISTRY.find(
+        (source) => source.id === "official_direct",
+      );
+      expect(official).toBeDefined();
+
+      const decision = evaluateSourceGate({
+        descriptor: official,
+        record: record({
+          id: "official_direct",
+          complianceState: "approved_for_production",
+        }),
+        ingestionEnabled: "true",
+      });
+
+      expect(decision.allowed).toBe(true);
+    });
+
+    it("honors the capability's code-level kill switch", () => {
+      const official = SOURCE_REGISTRY.find(
+        (source) => source.id === "official_direct",
+      );
+      expect(official).toBeDefined();
+
+      const decision = evaluateSourceGate({
+        descriptor: official
+          ? { ...official, killSwitch: true }
+          : undefined,
+        record: record({
+          id: "official_direct",
+          complianceState: "approved_for_production",
+        }),
+        ingestionEnabled: "true",
+      });
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.reason).toBe("kill_switch");
+      }
+    });
+
+    it.each(["paused", "blocked", "revoked"] as const)(
+      "preserves the registry %s containment state",
+      (complianceState) => {
+        const official = SOURCE_REGISTRY.find(
+          (source) => source.id === "official_direct",
+        );
+        expect(official).toBeDefined();
+
+        const decision = evaluateSourceGate({
+          descriptor: official
+            ? { ...official, complianceState }
+            : undefined,
+          record: record({
+            id: "official_direct",
+            complianceState: "approved_for_production",
+          }),
+          ingestionEnabled: "true",
+        });
+
+        expect(decision.allowed).toBe(false);
+        if (!decision.allowed) {
+          expect(decision.reason).toBe(
+            "registry_not_production_approved",
+          );
+          expect(decision.detail).toContain(complianceState);
+        }
+      },
+    );
+
+    it.each(["draft", "research_required"] as const)(
+      "refuses the pre-review registry state %s",
+      (complianceState) => {
+        const official = SOURCE_REGISTRY.find(
+          (source) => source.id === "official_direct",
+        );
+        expect(official).toBeDefined();
+
+        const decision = evaluateSourceGate({
+          descriptor: official
+            ? { ...official, complianceState }
+            : undefined,
+          record: record({
+            id: "official_direct",
+            complianceState: "approved_for_production",
+          }),
+          ingestionEnabled: "true",
+        });
+
+        expect(decision.allowed).toBe(false);
+        if (!decision.allowed) {
+          expect(decision.reason).toBe(
+            "registry_not_production_approved",
+          );
+        }
+      },
+    );
+
+    it("fails closed for an unknown future registry state", () => {
+      const official = SOURCE_REGISTRY.find(
+        (source) => source.id === "official_direct",
+      );
+      expect(official).toBeDefined();
+
+      const decision = evaluateSourceGate({
+        descriptor: official
+          ? {
+              ...official,
+              complianceState:
+                "future_unreviewed_state" as SourceComplianceState,
+            }
+          : undefined,
+        record: record({
+          id: "official_direct",
+          complianceState: "approved_for_production",
+        }),
+        ingestionEnabled: "true",
+      });
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.reason).toBe(
+          "registry_not_production_approved",
+        );
+      }
+    });
+
+    it("does not extend the exception to a fixed-host or discovery descriptor", () => {
+      for (const candidate of [
+        descriptor({
+          id: "official_direct",
+          tier: "official",
+          allowedHosts: ["example.com"],
+          complianceState: "reviewed",
+          robotsPosture: "unknown",
+          tosPosture: "unreviewed",
+        }),
+        descriptor({
+          id: "official_direct",
+          tier: "discovery",
+          allowedHosts: [],
+          complianceState: "reviewed",
+          robotsPosture: "unknown",
+          tosPosture: "unreviewed",
+        }),
+      ]) {
+        const decision = evaluateSourceGate({
+          descriptor: candidate,
+          record: record({
+            id: "official_direct",
+            complianceState: "approved_for_production",
+          }),
+          ingestionEnabled: "true",
+        });
+        expect(decision.allowed).toBe(false);
+      }
+    });
+  });
+
   describe("kill switches stop an approved source from either side", () => {
     it("honors the code-level kill switch", () => {
       const decision = evaluateSourceGate({
@@ -159,11 +319,13 @@ describe("the shipped registry is dark", () => {
     expect(approved).toEqual([]);
   });
 
-  it("refuses every configured source even with the switch on and a forged approval record", () => {
+  it("refuses every discovery source even with the switch on and a forged approval record", () => {
     // The scenario this guards: someone sets INGESTION_ENABLED and approves a
     // source in the database. The registry floor must still hold the line,
     // because no source in this codebase has cleared ToS review.
-    for (const source of SOURCE_REGISTRY) {
+    for (const source of SOURCE_REGISTRY.filter(
+      (candidate) => candidate.tier === "discovery",
+    )) {
       const decision = evaluateSourceGate({
         descriptor: source,
         record: record({ id: source.id, complianceState: "approved_for_production" }),
@@ -238,7 +400,9 @@ describe("gate — robots posture", () => {
     // only state + kill switch, so a source whose ToS prohibits use — or whose
     // robots posture is restricted — was reported "approved" by the registry
     // while the gate refused it. Two answers to one question.
-    for (const source of SOURCE_REGISTRY) {
+    for (const source of SOURCE_REGISTRY.filter(
+      (candidate) => candidate.tier === "discovery",
+    )) {
       const gateAllows = evaluateSourceGate({
         descriptor: source,
         record: record({ id: source.id }),
@@ -378,11 +542,14 @@ describe("gate — terms-of-service posture", () => {
     if (!decision.allowed) expect(decision.reason).toBe("tos_not_permitted");
   });
 
-  it("every shipped source is refused on ToS grounds once its ladder is ignored", () => {
-    // Today the registry floor stops each source first. This asserts the ToS
-    // gate would ALSO stop it — so clearing the ladder can't quietly open a
-    // source whose terms were never read.
-    for (const source of SOURCE_REGISTRY) {
+  it("every shipped discovery source is refused on ToS grounds once its ladder is ignored", () => {
+    // Today the registry floor stops each discovery source first. This asserts
+    // the ToS gate would ALSO stop it — so clearing the ladder can't quietly
+    // open a fixed source whose terms were never read. official_direct owns
+    // this evidence per destination after its capability gate.
+    for (const source of SOURCE_REGISTRY.filter(
+      (candidate) => candidate.tier === "discovery",
+    )) {
       const decision = evaluateSourceGate({
         descriptor: { ...source, complianceState: "approved_for_production" },
         record: record({ id: source.id }),

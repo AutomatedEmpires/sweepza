@@ -15,8 +15,11 @@ describe("listing presentation contract", () => {
     expect(card).toContain("<dt");
     expect(card).toContain("Begins");
     expect(card).toContain("Ends");
+    expect(card).toContain("line-clamp-4");
     expect(card).toContain("Official Rules");
     expect(card).toContain('aria-label={`More info about ${listing.title}`}');
+    expect(card).not.toContain('{ label: "Entry schedule"');
+    expect(card).not.toContain('{ label: "Source", value: sourceText }');
     expect(action).toContain('label: "ENTER NOW"');
     expect(action).toContain('label: "ENTER AGAIN"');
     expect(action).toContain('label: "ENTRY RECORDED"');

@@ -172,7 +172,7 @@ export const sweepsAdvantageAdapter: SourceAdapter = {
     for (const item of await workQueue.take(limit)) {
       const card = item.payload as unknown as SweepsAdvantageCard;
       if (!card.sourceId || !card.redirectPath || !card.detailPath || !card.title) {
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
         continue;
       }
       // The redirect is the only way to learn the official URL; a failed
@@ -180,9 +180,15 @@ export const sweepsAdvantageAdapter: SourceAdapter = {
       const resolved = await http.resolve(`${BASE}${card.redirectPath}`);
       if (resolved.status !== "ok") {
         if (resolved.status === "failed" && resolved.failure === "not_found") {
-          await workQueue.complete(item.key);
+          await workQueue.complete(item.key, item.claimToken);
         } else {
-          await workQueue.defer(item.key);
+          await workQueue.defer(
+            item.key,
+            item.claimToken,
+            `sweeps_advantage_redirect_${
+              resolved.status === "failed" ? resolved.failure : "not_modified"
+            }`,
+          );
         }
         continue;
       }
@@ -193,9 +199,10 @@ export const sweepsAdvantageAdapter: SourceAdapter = {
           sourceUrl: `${BASE}${card.detailPath}`,
           hint: { title: card.title, endDate: card.hintEndDate },
           discoveryWorkKey: item.key,
+          discoveryWorkClaimToken: item.claimToken,
         });
       } else {
-        await workQueue.complete(item.key);
+        await workQueue.complete(item.key, item.claimToken);
       }
     }
     return leads;
