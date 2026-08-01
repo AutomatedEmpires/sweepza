@@ -324,6 +324,45 @@ describe("runIngestion — authenticated official URL intake", () => {
     );
   });
 
+  it("continues the invocation and surfaces an error summary when the revalidation sweep fails with no intake work", async () => {
+    mocks.enqueueDueOfficialUrlRevalidations.mockRejectedValue(
+      new Error("rpc unavailable"),
+    );
+    mocks.takeOfficialWork.mockResolvedValue([]);
+
+    const summaries = await runIngestion();
+
+    // The intake lane and every discovery source still run; one maintenance
+    // failure must not abort the whole invocation.
+    expect(mocks.takeOfficialWork).toHaveBeenCalledWith(25);
+    expect(mocks.discover).toHaveBeenCalled();
+    expect(summaries).toContainEqual(
+      expect.objectContaining({
+        source: "official_direct",
+        status: "error",
+        failed: 1,
+      }),
+    );
+  });
+
+  it("carries the revalidation failure into run notes when intake work exists", async () => {
+    mocks.enqueueDueOfficialUrlRevalidations.mockRejectedValue(
+      new Error("rpc unavailable"),
+    );
+    mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
+    mocks.discover.mockResolvedValue([]);
+
+    await runIngestion();
+
+    expect(mocks.finishIngestionRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "ok",
+      expect.stringContaining("official revalidation enqueue failed"),
+      expect.anything(),
+    );
+  });
+
   it("quarantines missing destination authority without acquiring the official lease or fetching", async () => {
     mocks.takeOfficialWork.mockResolvedValue([officialIntakeWork()]);
     mocks.discover.mockResolvedValue([]);

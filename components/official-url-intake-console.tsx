@@ -261,18 +261,35 @@ export function OfficialUrlIntakeConsole() {
         return;
       }
 
+      const confirmedCount =
+        operation === "revalidate"
+          ? typeof body?.revalidated === "number"
+            ? body.revalidated
+            : null
+          : typeof body?.accepted === "number"
+            ? body.accepted
+            : null;
+      if (confirmedCount === null) {
+        // The request succeeded but the server never confirmed how many
+        // entries were queued. Claiming the full batch here would misreport
+        // work the server did not acknowledge.
+        setValue("");
+        setFeedback({
+          kind: "error",
+          message:
+            "The request succeeded but returned no counts. Check the intake status below before resubmitting.",
+        });
+        router.refresh();
+        return;
+      }
       const message =
         operation === "revalidate"
           ? formatOfficialUrlRevalidationSuccess(
-              typeof body?.revalidated === "number"
-                ? body.revalidated
-                : prepared.entries.length,
+              confirmedCount,
               typeof body?.pending === "number" ? body.pending : 0,
             )
           : formatOfficialUrlIntakeSuccess(
-              typeof body?.accepted === "number"
-                ? body.accepted
-                : prepared.entries.length,
+              confirmedCount,
               typeof body?.replayed === "number" ? body.replayed : 0,
             );
       setValue("");

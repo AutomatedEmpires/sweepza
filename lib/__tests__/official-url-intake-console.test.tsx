@@ -172,6 +172,20 @@ describe("OfficialUrlIntakeConsole", () => {
     expect(failure).toContain("Line 2: duplicate.");
   });
 
+  it("reports an unconfirmed outcome instead of assuming the batch size when the server omits counts", () => {
+    const source = readFileSync(
+      join(process.cwd(), "components/official-url-intake-console.tsx"),
+      "utf8",
+    );
+
+    // A 2xx response whose body lacks accepted/revalidated counts must never
+    // be reported as "all N queued" — the server did not confirm that.
+    expect(source).toContain(
+      "The request succeeded but returned no counts.",
+    );
+    expect(source).not.toContain(": prepared.entries.length");
+  });
+
   it("checks page authorization before service-role-backed source reads", () => {
     const page = readFileSync(
       join(process.cwd(), "app/admin/sources/page.tsx"),

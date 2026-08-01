@@ -61,6 +61,14 @@ export function OfficialDestinationPolicyConsole({
 
   function submit(formData: FormData) {
     const expiryDate = String(formData.get("reviewExpiresAt") ?? "").trim();
+    const reviewExpiresAt = expiryDate ? toLocalEndOfDayIso(expiryDate) : null;
+    if (expiryDate && !reviewExpiresAt) {
+      // A browser rendering type="date" as plain text can submit an
+      // unparsable value; sending null here would silently request a
+      // no-expiry decision the operator never chose.
+      setResult({ error: "Enter the review expiry as a valid date." });
+      return;
+    }
     const hostname = normalizeHostname(
       String(formData.get("hostname") ?? ""),
     );
@@ -91,7 +99,7 @@ export function OfficialDestinationPolicyConsole({
       termsUrl: String(formData.get("termsUrl") ?? ""),
       robotsUrl: String(formData.get("robotsUrl") ?? ""),
       reason: String(formData.get("reason") ?? ""),
-      reviewExpiresAt: expiryDate ? toLocalEndOfDayIso(expiryDate) : null,
+      reviewExpiresAt,
       productionApprovalConfirmed:
         formData.get("productionApprovalConfirmed") === "on",
     };

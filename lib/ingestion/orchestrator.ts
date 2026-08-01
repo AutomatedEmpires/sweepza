@@ -511,10 +511,19 @@ export async function runIngestion(
     // operator-supplied work gets the daily official-source budget without
     // falsifying discovery provenance.
     if (officialDecision.allowed) {
-      await enqueueDueOfficialUrlRevalidations({
-        limit,
-        minAgeSeconds: official.refreshIntervalMinutes * 60,
-      });
+      // Enqueueing due revalidations is a maintenance step. If it fails, the
+      // next scheduled run retries it; letting the throw escape here would
+      // abort every discovery source in the invocation before any
+      // ingestion_run row could record why.
+      let revalidationFailure: string | null = null;
+      try {
+        await enqueueDueOfficialUrlRevalidations({
+          limit,
+          minAgeSeconds: official.refreshIntervalMinutes * 60,
+        });
+      } catch (error) {
+        revalidationFailure = `official revalidation enqueue failed: ${(error instanceof Error ? error.message : String(error)).slice(0, MAX_FAILURE_DETAIL_CHARS)}`;
+      }
       const directQueue = discoveryWorkQueue(official.id);
       const directLeads = await takeOfficialUrlIntakeLeads(
         directQueue,
@@ -554,6 +563,7 @@ export async function runIngestion(
             diagnostics.successfulExtractions === 0;
           const failed = sourceOutage || extractorOutage;
           const notes = [
+            revalidationFailure,
             sourceOutage
               ? `every observable official response failed (${diagnostics.availabilityFailures} failures)`
               : null,
@@ -605,6 +615,20 @@ export async function runIngestion(
             ...counts,
           });
         }
+      } else if (revalidationFailure) {
+        // No intake run exists to carry the note, so surface the failure as
+        // an explicit error summary. The cron route reports error summaries
+        // to Sentry, and the next scheduled invocation retries the sweep.
+        summaries.push({
+          source: official.id,
+          status: "error",
+          discovered: 0,
+          fetched: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 1,
+        });
       }
     }
 
