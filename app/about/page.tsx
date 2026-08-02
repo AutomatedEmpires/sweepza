@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME, APP_TAGLINE } from "@/lib/site";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
   title: "About",
   description:
     "What Sweepza is and how it works — a free, mobile-first way to discover sweepstakes, enter on the host's own site, and keep every entry tracked in one place.",
-  alternates: { canonical: "/about" },
-  openGraph: {
-    title: `About ${APP_NAME}`,
-    description: APP_TAGLINE,
-    url: "/about",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/about",
+  ogTitle: `About ${APP_NAME}`,
+  ogDescription: APP_TAGLINE,
+});
 
 // Public trust surface — keep every claim inside what the platform actually
 // enforces (see lib/trust-copy.ts for the claim-to-mechanism map): no

@@ -150,7 +150,17 @@ function readLocalSnapshot(): SeekerStateSnapshot {
 function writeLocalSnapshot(snapshot: SeekerStateSnapshot): void {
   if (typeof window === "undefined") return;
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // setItem throws on quota exhaustion and in browsers that block storage
+    // entirely (Safari private browsing, "block all cookies", some embedded
+    // webviews). This runs inside an effect in the root-layout provider, so an
+    // uncaught throw here takes down every route rather than losing one write.
+    // Device-local state is a convenience; the reader already treats a missing
+    // or unreadable snapshot as empty, so degrading to in-memory-only is the
+    // consistent behavior.
+  }
 }
 
 const STATE_TIMESTAMP: Partial<

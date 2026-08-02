@@ -1,22 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME } from "@/lib/site";
 
 const COOKIES_DESCRIPTION =
   "How Sweepza uses browser storage — essential sign-in and device state, privacy-friendly first-party analytics, no advertising cookies, and we never sell your data.";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
   title: "Cookie & Storage Policy",
   description: COOKIES_DESCRIPTION,
-  alternates: { canonical: "/cookies" },
-  openGraph: {
-    title: "Cookie & Storage Policy",
-    description: COOKIES_DESCRIPTION,
-    url: "/cookies",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/cookies",
+});
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

@@ -21,6 +21,68 @@ const ONCE_PUBLIC_LIFECYCLES: LifecycleStatus[] = [
   "archived",
 ];
 
+/**
+ * Every listing column a client role may read — the mirror of the column
+ * allowlist granted in 20260801160000. The operator note columns
+ * (review_notes, review_notes_internal, sponsor_notes_internal) are absent by
+ * design; nothing on a public surface renders them, and they are not granted
+ * to anon/authenticated.
+ *
+ * This must stay in sync with that grant. If a column is added to the table
+ * and to the grant, add it here too — a column selected without a grant fails
+ * the query, and a column granted but unselected is simply unused.
+ */
+const PUBLIC_LISTING_COLUMNS = [
+  "id",
+  "slug",
+  "title",
+  "short_description",
+  "long_description",
+  "prize_name",
+  "prize_value",
+  "prize_currency",
+  "prize_category",
+  "winner_count",
+  "main_image_url",
+  "image_source_type",
+  "image_alt_text",
+  "category_fallback_image",
+  "image_attribution",
+  "entry_url",
+  "official_rules_url",
+  "start_date",
+  "end_date",
+  "entry_frequency",
+  "entry_limit_notes",
+  "eligibility_country",
+  "eligibility_states",
+  "age_requirement",
+  "no_purchase_necessary",
+  "source_type",
+  "public_source_label",
+  "created_by_role",
+  "created_by_user_id",
+  "host_id",
+  "sponsor_name",
+  "sponsor_url",
+  "sponsor_logo_url",
+  "lifecycle_status",
+  "visibility_status",
+  "moderation_status",
+  "duplicate_status",
+  "listing_verification_status",
+  "is_featured",
+  "created_at",
+  "updated_at",
+  "published_at",
+].join(", ");
+
+/** A listing row as read under a client role: no operator note columns. */
+export type PublicListingRow = Omit<
+  ListingRow,
+  "review_notes" | "review_notes_internal" | "sponsor_notes_internal"
+>;
+
 export interface DiscoverFilters {
   categories?: string[];
   entryFrequencies?: EntryFrequency[];
@@ -47,7 +109,9 @@ function getTagLabel(tag: ListingTagLabelRow["tag"]): string | undefined {
 }
 
 export async function adaptListingRows(
-  rows: ListingRow[],
+  // Accepts the client-role projection too: nothing here reads an operator
+  // note column, so a row without them adapts identically.
+  rows: PublicListingRow[],
   accessToken?: string,
   // Joins (host/tags/winners) run on this client when provided — the seeker
   // history path passes the service-role client so joins resolve for rows
@@ -147,7 +211,11 @@ export async function getPublicListings(
   const supabase = createServerSupabaseClient(accessToken);
   let query = supabase
     .from("listing")
-    .select("*")
+    // Explicit columns, not "*": this is the one listing query that runs under
+    // a client role, and the operator note columns are not granted to it.
+    // Postgres expands "*" before checking privileges, so a star select here
+    // fails the whole query with 42501 rather than omitting those columns.
+    .select(PUBLIC_LISTING_COLUMNS)
     .eq("visibility_status", "public")
     .eq("lifecycle_status", "active")
     .gte("end_date", dateOnlyVisibilityFloor())
@@ -171,7 +239,7 @@ export async function getPublicListings(
   const { data, error } = await query
     .order("published_at", { ascending: false })
     .limit(filters.limit ?? 30)
-    .returns<ListingRow[]>();
+    .returns<PublicListingRow[]>();
 
   if (error) throw new Error(`getPublicListings failed: ${error.message}`);
   return adaptListingRows(data ?? [], accessToken);
