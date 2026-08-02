@@ -1,20 +1,14 @@
 import Link from "next/link";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME } from "@/lib/site";
 
 const TERMS_DESCRIPTION = "Baseline terms governing use of Sweepza.";
 
-export const metadata = {
+export const metadata = publicPageMetadata({
   title: "Terms of Use",
   description: TERMS_DESCRIPTION,
-  alternates: { canonical: "/terms" },
-  openGraph: {
-    title: "Terms of Use",
-    description: TERMS_DESCRIPTION,
-    url: "/terms",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/terms",
+});
 
 const sections = [
   {

@@ -7,6 +7,7 @@ import { CATEGORY_HUBS, getCategoryHub } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
 import { withPublicFallback } from "@/lib/db/resilient";
 import { serializeJsonLd } from "@/lib/listing-seo";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import {
   buildBreadcrumbJsonLd,
   buildItemListJsonLd,
@@ -35,18 +36,11 @@ export async function generateMetadata({
   // returning a fallback title here would ship a 200 for unknown slugs.
   if (!hub) notFound();
 
-  const canonical = new URL(`/discover/${hub.slug}`, SITE_URL);
-  return {
+  return publicPageMetadata({
     title: hub.title,
     description: hub.description,
-    alternates: { canonical },
-    openGraph: {
-      title: hub.title,
-      description: hub.description,
-      url: canonical,
-      type: "website",
-    },
-  };
+    path: `/discover/${hub.slug}`,
+  });
 }
 
 export default async function CategoryHubPage({

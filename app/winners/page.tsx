@@ -3,23 +3,18 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { ensureCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getPublishedWinnerPosts } from "@/lib/db/winners";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME } from "@/lib/site";
 
 const WINNERS_DESCRIPTION =
   "Community-submitted prize wins reviewed by Sweepza before publication.";
 
-export const metadata = {
+export const metadata = publicPageMetadata({
   title: "Winners",
   description: WINNERS_DESCRIPTION,
-  alternates: { canonical: "/winners" },
-  openGraph: {
-    title: "Winner Wall",
-    description: WINNERS_DESCRIPTION,
-    url: "/winners",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/winners",
+  ogTitle: "Winner Wall",
+});
 export const dynamic = "force-dynamic";
 
 export default async function WinnersPage() {

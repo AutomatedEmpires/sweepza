@@ -22,23 +22,18 @@ import { getActiveCategories, getActiveTags } from "@/lib/db/dictionaries";
 import { getHostDashboardSnapshotForAppUser } from "@/lib/db/host-dashboard";
 import { getLatestHostApplicationForUser } from "@/lib/db/host-applications";
 import { getHostByAppUserId } from "@/lib/db/hosts";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { SITE_URL } from "@/lib/site";
 import { createHostCheckoutSession } from "@/lib/stripe/checkout";
 
 const HOST_DESCRIPTION =
   "List your free-to-enter sweepstakes on Sweepza — reviewed listings, official-page entries, and an audience that returns daily to re-enter.";
 
-export const metadata = {
+export const metadata = publicPageMetadata({
   title: "Host Your Sweepstakes",
   description: HOST_DESCRIPTION,
-  alternates: { canonical: new URL("/host", SITE_URL) },
-  openGraph: {
-    title: "Host Your Sweepstakes",
-    description: HOST_DESCRIPTION,
-    url: new URL("/host", SITE_URL),
-    type: "website",
-  },
-};
+  path: "/host",
+});
 export const dynamic = "force-dynamic";
 
 const QUICK_LINKS: Array<{ href: string; icon: IconName; label: string }> = [

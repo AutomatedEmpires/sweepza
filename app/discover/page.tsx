@@ -5,6 +5,7 @@ import { CATEGORY_HUBS, parseCategoryFilter } from "@/lib/category-hubs";
 import { getPublicListings } from "@/lib/db/listings";
 import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildItemListJsonLd } from "@/lib/structured-data";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME, SITE_URL } from "@/lib/site";
 import { getCachedPublicListings } from "@/lib/db/listings-cache";
 import { parseFilterIds, parseSortId } from "@/lib/listing-filters";
@@ -12,18 +13,12 @@ import { parseFilterIds, parseSortId } from "@/lib/listing-filters";
 const DISCOVER_DESCRIPTION =
   "Browse current sweepstakes listings, filter by prize category, deadline, value, eligibility, and entry frequency, then review the linked official source.";
 
-export const metadata = {
+export const metadata = publicPageMetadata({
   title: "Discover",
   description: DISCOVER_DESCRIPTION,
-  alternates: { canonical: "/discover" },
-  openGraph: {
-    title: "Discover sweepstakes",
-    description: DISCOVER_DESCRIPTION,
-    url: "/discover",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/discover",
+  ogTitle: "Discover sweepstakes",
+});
 export const dynamic = "force-dynamic";
 
 // Discover — the single discovery system. Search is a dimension of it

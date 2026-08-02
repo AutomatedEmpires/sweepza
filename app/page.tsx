@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Icon, type IconName } from "@/components/icon";
@@ -15,6 +16,13 @@ import { serializeJsonLd } from "@/lib/listing-seo";
 import { buildOrganizationJsonLd, buildWebSiteJsonLd } from "@/lib/structured-data";
 import { TRUST_BAND_ITEMS } from "@/lib/trust-copy";
 import type { Listing } from "@/lib/types/listing";
+
+// The root layout supplies the title, description, and OG card for "/", but
+// metadata is not inherited for `alternates`, so the highest-authority URL on
+// the domain was the only public page shipping without a canonical link.
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 // Site-level structured data — Organization + WebSite (with a SearchAction for
 // the sitelinks search box). Lives on the homepage, the canonical place for it.

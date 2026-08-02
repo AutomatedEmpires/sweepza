@@ -1,21 +1,15 @@
 import Link from "next/link";
+import { publicPageMetadata } from "@/lib/page-metadata";
 import { APP_NAME } from "@/lib/site";
 
 const PRIVACY_DESCRIPTION =
   "How Sweepza collects, uses, and protects information.";
 
-export const metadata = {
+export const metadata = publicPageMetadata({
   title: "Privacy Policy",
   description: PRIVACY_DESCRIPTION,
-  alternates: { canonical: "/privacy" },
-  openGraph: {
-    title: "Privacy Policy",
-    description: PRIVACY_DESCRIPTION,
-    url: "/privacy",
-    type: "website",
-    siteName: APP_NAME,
-  },
-};
+  path: "/privacy",
+});
 
 const sections = [
   {
