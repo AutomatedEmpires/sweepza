@@ -44,14 +44,43 @@ describe("public metadata contract", () => {
   it("lets a route override only the social title and description", () => {
     const meta = publicPageMetadata({
       title: "Winners",
-      description: "d",
+      description: "page description",
       path: "/winners",
       ogTitle: "Winner Wall",
+      ogDescription: "Stories from recent winners",
     });
 
     expect(meta.title).toBe("Winners");
+    expect(meta.description).toBe("page description");
     expect(meta.openGraph?.title).toBe("Winner Wall");
+    expect(meta.openGraph?.description).toBe("Stories from recent winners");
+    expect(
+      meta.twitter && "description" in meta.twitter && meta.twitter.description,
+    ).toBe("Stories from recent winners");
     expect(meta.openGraph?.images).toEqual([SITE_OG_IMAGE]);
+  });
+
+  it("yields to a route's own opengraph-image when asked", () => {
+    const meta = publicPageMetadata({
+      title: "Cash sweepstakes",
+      description: "d",
+      path: "/discover/cash",
+      useRouteImage: true,
+    });
+
+    // Naming the site image here would replace the per-hub card that
+    // app/discover/[category]/opengraph-image.tsx renders.
+    expect(meta.openGraph).not.toHaveProperty("images");
+    expect(meta.twitter).not.toHaveProperty("images");
+    expect(meta.alternates?.canonical).toBe("/discover/cash");
+  });
+
+  it("keeps the per-hub category card wired to the route image", () => {
+    const src = readFileSync(
+      join(process.cwd(), "app/discover/[category]/page.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("useRouteImage: true");
   });
 
   it("routes that declare openGraph build it through the shared helper", () => {

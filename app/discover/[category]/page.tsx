@@ -40,6 +40,9 @@ export async function generateMetadata({
     title: hub.title,
     description: hub.description,
     path: `/discover/${hub.slug}`,
+    // This route ships its own opengraph-image.tsx, so a category link
+    // unfurls with the hub's headline rather than the generic site card.
+    useRouteImage: true,
   });
 }
 

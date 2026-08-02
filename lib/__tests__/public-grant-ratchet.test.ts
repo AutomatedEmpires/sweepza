@@ -18,7 +18,9 @@ const OPERATOR_ONLY_LISTING_COLUMNS = [
   "review_notes_internal",
   "sponsor_notes_internal",
 ];
-const CLIENT_ROLES = ["anon", "authenticated"];
+// `public` is Postgres's pseudo-role: a grant to it reaches anon and
+// authenticated alike, so it has to count as a client role here.
+const CLIENT_ROLES = ["anon", "authenticated", "public"];
 
 function migrationsAfter(version: string): { name: string; sql: string }[] {
   return readdirSync(MIGRATIONS_DIR)
@@ -81,6 +83,69 @@ describe("public grant ratchet", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("never selects * on listing under a client role", () => {
+    // Postgres expands `*` before privilege checks, so a star select against
+    // the column-scoped grant fails the entire query with 42501 and takes the
+    // public feed down. getPublicListings is the one listing query that runs
+    // under a client role; the others use the service role, which keeps its
+    // table-wide grant.
+    const src = readFileSync(
+      join(process.cwd(), "lib/db/listings.ts"),
+      "utf8",
+    );
+    const publicQuery = src.slice(
+      src.indexOf("export async function getPublicListings"),
+      src.indexOf("export async function getSeekerHistoryListingsByIds"),
+    );
+
+    expect(publicQuery).toContain("createServerSupabaseClient");
+    expect(publicQuery).toContain(".select(PUBLIC_LISTING_COLUMNS)");
+    expect(publicQuery).not.toContain('.select("*")');
+  });
+
+  it("keeps the selected column list and the granted allowlist in sync", () => {
+    const listings = readFileSync(
+      join(process.cwd(), "lib/db/listings.ts"),
+      "utf8",
+    );
+    const migration = readFileSync(
+      join(
+        MIGRATIONS_DIR,
+        "20260801160000_close_public_column_exposure_and_host_attribution.sql",
+      ),
+      "utf8",
+    );
+
+    const selected = new Set(
+      (listings
+        .slice(
+          listings.indexOf("const PUBLIC_LISTING_COLUMNS = ["),
+          listings.indexOf("].join(\", \")"),
+        )
+        .match(/"([a-z_]+)"/g) ?? []).map((token) => token.replaceAll('"', "")),
+    );
+    const grantBlock = migration.slice(
+      migration.indexOf("grant select ("),
+      migration.indexOf(") on table public.listing to anon, authenticated;"),
+    );
+    const granted = new Set(
+      (grantBlock.match(/\b[a-z_]+\b/g) ?? []).filter(
+        (token) => !["grant", "select"].includes(token),
+      ),
+    );
+
+    // Selecting an ungranted column fails the query; granting one that is
+    // never selected is dead surface area. They must match exactly.
+    const selectedNotGranted = [...selected].filter((c) => !granted.has(c));
+    const grantedNotSelected = [...granted].filter(
+      (c) => !selected.has(c) && c !== "search_vector",
+    );
+    expect({ selectedNotGranted, grantedNotSelected }).toEqual({
+      selectedNotGranted: [],
+      grantedNotSelected: [],
+    });
   });
 
   it("keeps host_public projecting only public-safe columns", () => {

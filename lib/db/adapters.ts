@@ -102,7 +102,12 @@ export interface ListingAdapterContext {
  * - `entryFrequency` falls back to "other" when null.
  */
 export function toListing(
-  row: ListingRow,
+  // The operator note columns are never read here, so this accepts the
+  // client-role projection (which omits them) as well as a full row.
+  row: Omit<
+    ListingRow,
+    "review_notes" | "review_notes_internal" | "sponsor_notes_internal"
+  >,
   ctx: ListingAdapterContext = {},
 ): Listing {
   return {

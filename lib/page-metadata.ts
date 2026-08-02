@@ -27,9 +27,16 @@ export function publicPageMetadata(input: {
   ogTitle?: string;
   /** Defaults to `description`. */
   ogDescription?: string;
+  /**
+   * Omit the explicit image so a route's own `opengraph-image.tsx` file
+   * convention supplies the card — /discover/[category] renders a per-hub
+   * card, and naming the site image here would silently replace it.
+   */
+  useRouteImage?: boolean;
 }): Metadata {
   const ogTitle = input.ogTitle ?? input.title;
   const ogDescription = input.ogDescription ?? input.description;
+  const images = input.useRouteImage ? undefined : [SITE_OG_IMAGE];
 
   return {
     title: input.title,
@@ -41,13 +48,13 @@ export function publicPageMetadata(input: {
       url: input.path,
       type: "website",
       siteName: APP_NAME,
-      images: [SITE_OG_IMAGE],
+      ...(images ? { images } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title: ogTitle,
       description: ogDescription,
-      images: [SITE_OG_IMAGE.url],
+      ...(images ? { images: images.map((image) => image.url) } : {}),
     },
   };
 }

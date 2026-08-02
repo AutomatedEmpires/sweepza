@@ -20,6 +20,12 @@
 -- table-wide grant, so the table grant is replaced by an explicit allowlist.
 -- That also makes the allowlist the default posture: a column added later is
 -- not public until someone adds it here deliberately.
+--
+-- ORDERING: apply this migration only AFTER the deploy that ships the matching
+-- explicit column list in lib/db/listings.ts. Postgres expands `select *`
+-- before checking privileges, so a star select against a column-scoped grant
+-- fails the entire query with 42501 — narrowing a grant under running code
+-- that still selects `*` takes the public feed down.
 revoke select on table public.listing from anon, authenticated;
 
 grant select (
@@ -66,8 +72,11 @@ comment on column public.listing.review_notes is
 -- the six safe columns, and only hosts that have chosen to publish — and runs
 -- as its owner so those bounds are the whole exposure rather than a filter on
 -- top of an already-open table.
+-- security_barrier: the WHERE clause is this view's access control, so a
+-- caller-supplied function or operator must not be pushed ahead of it and
+-- observe a private host through an error message or timing side channel.
 create or replace view public.host_public
-with (security_invoker = false)
+with (security_invoker = false, security_barrier = true)
 as
 select
   host.id,
@@ -81,8 +90,15 @@ where exists (
   select 1
     from public.listing
    where listing.host_id = host.id
+     -- The full public-listing boundary, matching listing_public_select. A
+     -- narrower predicate would keep a sponsor visible after its only listing
+     -- expired or was pulled into moderation.
      and listing.visibility_status = 'public'
      and listing.lifecycle_status = 'active'
+     and (listing.end_date::timestamp at time zone 'UTC')
+           + interval '36 hours' > clock_timestamp()
+     and listing.listing_verification_status in ('reviewed', 'verified')
+     and listing.moderation_status not in ('under_review', 'action_taken')
 );
 
 comment on view public.host_public is
