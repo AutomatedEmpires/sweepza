@@ -154,6 +154,26 @@ describe("public grant ratchet", () => {
     });
   });
 
+  it("never re-grants anon a direct read of the host table", () => {
+    // Public sponsor attribution goes through the host_public projection,
+    // which carries its own column list and public-listing predicate. A grant
+    // on the base table would make RLS the only barrier for data the design
+    // never intended anon to reach at all.
+    const offenders: string[] = [];
+    for (const { name, sql } of migrationsAfter("20260801190000")) {
+      for (const statement of withoutComments(sql).split(";")) {
+        const normalized = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (!normalized.startsWith("grant ")) continue;
+        if (!/\bon\s+(table\s+)?(public\.)?host\b/.test(normalized)) continue;
+        if (/\bhost_public\b/.test(normalized)) continue;
+        if (/\bto\b[^;]*\b(anon|public)\b/.test(normalized)) {
+          offenders.push(`${name}: ${normalized.slice(0, 120)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps host_public projecting only public-safe columns", () => {
     const sql = readFileSync(
       join(
