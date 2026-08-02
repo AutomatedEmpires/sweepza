@@ -164,9 +164,31 @@ describe("public grant ratchet", () => {
       for (const statement of withoutComments(sql).split(";")) {
         const normalized = statement.replace(/\s+/g, " ").trim().toLowerCase();
         if (!normalized.startsWith("grant ")) continue;
-        if (!/\bon\s+(table\s+)?(public\.)?host\b/.test(normalized)) continue;
-        if (/\bhost_public\b/.test(normalized)) continue;
-        if (/\bto\b[^;]*\b(anon|public)\b/.test(normalized)) {
+
+        // Parse the whole `on ... to ...` target clause rather than the first
+        // object after ON: Postgres allows comma-separated targets, and this
+        // repo already uses them (20260604120600_rls.sql grants five objects
+        // in one statement), so matching only the first would miss
+        // `grant select on public.category, public.host to anon`.
+        const clause = /\bon\s+(.+?)\s+to\s+(.+)$/.exec(normalized);
+        if (!clause) continue;
+        const [, rawTargets, grantees] = clause;
+
+        const grantsToClientRole = /\b(anon|public)\b/.test(grantees);
+        if (!grantsToClientRole) continue;
+
+        // `on all tables in schema public` sweeps host in without naming it.
+        if (/\ball\s+tables\s+in\s+schema\s+public\b/.test(rawTargets)) {
+          offenders.push(`${name}: schema-wide grant — ${normalized.slice(0, 120)}`);
+          continue;
+        }
+
+        const targets = rawTargets
+          .replace(/^table\s+/, "")
+          .split(",")
+          .map((target) => target.trim().replace(/^public\./, ""));
+        // host_public is the intended public projection and stays allowed.
+        if (targets.includes("host")) {
           offenders.push(`${name}: ${normalized.slice(0, 120)}`);
         }
       }
