@@ -154,6 +154,48 @@ describe("public grant ratchet", () => {
     });
   });
 
+  it("never re-grants anon a direct read of the host table", () => {
+    // Public sponsor attribution goes through the host_public projection,
+    // which carries its own column list and public-listing predicate. A grant
+    // on the base table would make RLS the only barrier for data the design
+    // never intended anon to reach at all.
+    const offenders: string[] = [];
+    for (const { name, sql } of migrationsAfter("20260801190000")) {
+      for (const statement of withoutComments(sql).split(";")) {
+        const normalized = statement.replace(/\s+/g, " ").trim().toLowerCase();
+        if (!normalized.startsWith("grant ")) continue;
+
+        // Parse the whole `on ... to ...` target clause rather than the first
+        // object after ON: Postgres allows comma-separated targets, and this
+        // repo already uses them (20260604120600_rls.sql grants five objects
+        // in one statement), so matching only the first would miss
+        // `grant select on public.category, public.host to anon`.
+        const clause = /\bon\s+(.+?)\s+to\s+(.+)$/.exec(normalized);
+        if (!clause) continue;
+        const [, rawTargets, grantees] = clause;
+
+        const grantsToClientRole = /\b(anon|public)\b/.test(grantees);
+        if (!grantsToClientRole) continue;
+
+        // `on all tables in schema public` sweeps host in without naming it.
+        if (/\ball\s+tables\s+in\s+schema\s+public\b/.test(rawTargets)) {
+          offenders.push(`${name}: schema-wide grant — ${normalized.slice(0, 120)}`);
+          continue;
+        }
+
+        const targets = rawTargets
+          .replace(/^table\s+/, "")
+          .split(",")
+          .map((target) => target.trim().replace(/^public\./, ""));
+        // host_public is the intended public projection and stays allowed.
+        if (targets.includes("host")) {
+          offenders.push(`${name}: ${normalized.slice(0, 120)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps host_public projecting only public-safe columns", () => {
     const sql = readFileSync(
       join(
