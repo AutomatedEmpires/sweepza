@@ -110,13 +110,19 @@ describe("public grant ratchet", () => {
       join(process.cwd(), "lib/db/listings.ts"),
       "utf8",
     );
-    const migration = readFileSync(
-      join(
-        MIGRATIONS_DIR,
-        "20260801160000_close_public_column_exposure_and_host_attribution.sql",
-      ),
-      "utf8",
+
+    // Compare against the LATEST migration that grants listing columns to a
+    // client role, not a fixed filename: the effective grant is whichever one
+    // ran last, and pinning a name would leave a later re-application (like
+    // the 20260801180000 recovery) unvalidated.
+    const grantMigrations = migrationsAfter("00000000000000").filter(
+      ({ sql }) =>
+        /grant\s+select\s*\([^)]*\)\s*on\s+table\s+public\.listing\s+to[^;]*anon/i.test(
+          withoutComments(sql),
+        ),
     );
+    expect(grantMigrations.length).toBeGreaterThan(0);
+    const migration = grantMigrations[grantMigrations.length - 1].sql;
 
     const selected = new Set(
       (listings
